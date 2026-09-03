@@ -51,3 +51,13 @@ decisions per the docs. Raw hook inputs from these runs are saved under `tests/f
 - `on_bash_done.py` stays wired to both `PostToolUse` and `PostToolUseFailure` for Bash (spike 6 decision confirmed).
 - `needs-attention` is a phase in `state.py`: reachable from any non-terminal phase, records `{reason, prior_phase}` in `attention`, and exits only back to `prior_phase` (user-driven resume) or to `discarded`; `merged` is reachable only from `report`, `discarded` from any non-terminal phase.
 - Dev-only pytest lives in `./.venv` (`python3 -m venv .venv && .venv/bin/pip install pytest`); nothing at hook time imports it, so the zero-cost / stdlib-only constraint is untouched.
+
+## Milestone 2: state.py, worktree.py, testcmd.py (2026-09-03)
+
+- `state.find_root()` locates the main checkout by path alone (a `.rehorse` component means "inside a worktree, root is its parent"; otherwise the nearest `.git`), so the SessionStart hook never shells out to git.
+- `state.save()` writes via a temp file and `os.replace`, because a hook killed mid-write must never leave a half-written state file for the next hook to read.
+- `worktree.diff()` is `base_sha..HEAD` only (committed work), per spec; `worktree.dirty()` exists so the report can flag uncommitted files rather than silently ignoring them.
+- `testcmd.is_test_path()` matches test directories *and* filename patterns (`test_*.py`, `*_test.py`, `*.test.ts`, `conftest.py`, `__tests__/`), because a test-path lock keyed on `tests/` alone would let an implementer edit `src/foo_test.py`.
+- `testcmd.is_test_command()` matches on the runner token, not the exact string, because the spikes showed commands like `/venv/bin/python -m pytest -q` and `cd x && npx vitest run`.
+- `testcmd.parse_counts()` reads only the runner's own summary line (pytest `... in 0.01s`, vitest/jest `Tests ...`, cargo `test result:`) and counts errors as failures; `Test Files` lines and `FAILED` detail lines are ignored.
+- `state.py` stays at 150 lines because it runs as the SessionStart hook; other helpers get no such cap but keep the same style.
