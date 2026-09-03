@@ -1,0 +1,9 @@
+{
+  "session_id": "b3058e2a-0d2e-45b6-925b-4ea8ffcf4ef0",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/b3058e2a-0d2e-45b6-925b-4ea8ffcf4ef0.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "11d9b970-f5bf-4c6c-920c-f4d4b00b3d1d",
+  "agent_id": "ae512f998df642068",
+  "agent_type": "general-purpose",
+  "hook_event_name": "SubagentStart"
+}

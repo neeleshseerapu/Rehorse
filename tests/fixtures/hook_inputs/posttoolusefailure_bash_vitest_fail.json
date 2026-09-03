@@ -1,0 +1,20 @@
+{
+  "session_id": "3f66af14-d975-4ea3-884d-dad8a56522c3",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/3f66af14-d975-4ea3-884d-dad8a56522c3.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "a51729c6-897f-4a1c-b750-8b9d77b2258b",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PostToolUseFailure",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "cd /tmp/rehorse-spike/toyjs && npx vitest run",
+    "description": "Run vitest in the toyjs project"
+  },
+  "tool_use_id": "toolu_01TpyqyckBcAzsj3csJ2541y",
+  "error": "Exit code 1\n\n RUN  v5.0.0 /tmp/rehorse-spike/toyjs\n\n \u276f sum.test.js (2 tests | 1 failed) 3ms\n   \u00d7 fails on purpose 2ms\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af Failed Tests 1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af\n\n FAIL  sum.test.js > fails on purpose\nAssertionError: expected 2 to be 3 // Object.is equality\n\n- Expected\n+ Received\n\n- 3\n+ 2\n\n \u276f sum.test.js:3:46\n      1| import { test, expect } from 'vitest'\n      2| test('adds', () => { expect(1+2).toBe(3) })\n      3| test('fails on purpose', () => { expect(1+1).toBe(3) })\n       |                                              ^\n      4|\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af[1/1]\u23af\n\n\n Test Files  1 failed (1)\n      Tests  1 failed | 1 passed (2)\n   Start at  16:29:30\n   Duration  71ms (transform 36%, import 36%, tests 19%, worker 9%)",
+  "is_interrupt": false,
+  "duration_ms": 440
+}

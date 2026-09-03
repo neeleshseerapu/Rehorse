@@ -1,0 +1,11 @@
+{
+  "session_id": "1c62fb3a-eebc-478c-87c5-2f35ea81adec",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/1c62fb3a-eebc-478c-87c5-2f35ea81adec.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "hook_event_name": "SessionStart",
+  "source": "resume",
+  "seconds_since_last_response": 155,
+  "context_tokens": 18921,
+  "prompt_cache_likely_expired": false,
+  "estimated_cache_write_usd": 0.3784
+}

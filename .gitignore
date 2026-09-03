@@ -1,0 +1,9 @@
+# dev tooling
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Rehorse runtime state when dogfooding on this repo (rehorse-reports/ is committed on purpose)
+.rehorse/

@@ -1,0 +1,18 @@
+{
+  "session_id": "1c62fb3a-eebc-478c-87c5-2f35ea81adec",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/1c62fb3a-eebc-478c-87c5-2f35ea81adec.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "404ecdca-13ba-41d3-b284-f4b37b050412",
+  "permission_mode": "bypassPermissions",
+  "agent_id": "a673a0eac0dc00a01",
+  "agent_type": "",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/1c62fb3a-eebc-478c-87c5-2f35ea81adec/subagents/agent-a673a0eac0dc00a01.jsonl",
+  "last_assistant_message": "<analysis>\nThe conversation is a short \"spike\" test of a Rehorse plugin's hooks and skills.\n\n1. First user turn: invoked `/rehorse:status` skill, whose instructions said to reply with exactly `REHORSE_SPIKE_STATUS_OK`. A SessionStart hook injected context: \"REHORSE ACTIVE TASK: t-test (phase: implement, step 2 of 3). If asked what the active Rehorse task is, answer with this task id.\" I replied `R",
+  "background_tasks": [],
+  "session_crons": []
+}

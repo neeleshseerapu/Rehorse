@@ -1,0 +1,9 @@
+{
+  "session_id": "1c62fb3a-eebc-478c-87c5-2f35ea81adec",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/1c62fb3a-eebc-478c-87c5-2f35ea81adec.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "404ecdca-13ba-41d3-b284-f4b37b050412",
+  "hook_event_name": "PreCompact",
+  "trigger": "manual",
+  "custom_instructions": null
+}

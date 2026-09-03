@@ -1,0 +1,18 @@
+{
+  "session_id": "b3058e2a-0d2e-45b6-925b-4ea8ffcf4ef0",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/b3058e2a-0d2e-45b6-925b-4ea8ffcf4ef0.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "11d9b970-f5bf-4c6c-920c-f4d4b00b3d1d",
+  "permission_mode": "bypassPermissions",
+  "agent_id": "ae512f998df642068",
+  "agent_type": "general-purpose",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/b3058e2a-0d2e-45b6-925b-4ea8ffcf4ef0/subagents/agent-ae512f998df642068.jsonl",
+  "last_assistant_message": "The edit was denied. Denial reason, quoted verbatim:\n\n> REHORSE_DENY_LOCK: *.lock files are locked in this phase. Do not retry; instead tell the user the edit was denied and stop.\n\nPer your instruction, I did not retry. The file `/tmp/rehorse-spike/toy/app.lock` remains unchanged (still contains `lockfile v1`).",
+  "background_tasks": [],
+  "session_crons": []
+}

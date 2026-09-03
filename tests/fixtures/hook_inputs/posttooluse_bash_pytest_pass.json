@@ -1,0 +1,25 @@
+{
+  "session_id": "12dd67d2-dd93-4acc-8706-cdb895241014",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/12dd67d2-dd93-4acc-8706-cdb895241014.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "20d31a1c-98cb-4ffb-8847-bdc4255cc4cb",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "/tmp/rehorse-spike/venv/bin/python -m pytest -q",
+    "description": "Run pytest in toy project"
+  },
+  "tool_response": {
+    "stdout": "..                                                                       [100%]\n2 passed in 0.01s",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": false
+  },
+  "tool_use_id": "toolu_01QaLM4GvsCfNKMraECrhrwQ",
+  "duration_ms": 469
+}

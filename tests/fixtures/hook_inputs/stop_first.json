@@ -1,0 +1,15 @@
+{
+  "session_id": "1c62fb3a-eebc-478c-87c5-2f35ea81adec",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/1c62fb3a-eebc-478c-87c5-2f35ea81adec.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "4829bd17-0a76-45fe-b04f-39a1ad2ea432",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "REHORSE_SPIKE_STATUS_OK",
+  "background_tasks": [],
+  "session_crons": []
+}

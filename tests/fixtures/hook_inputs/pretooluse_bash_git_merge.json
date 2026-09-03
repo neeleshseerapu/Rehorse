@@ -1,0 +1,17 @@
+{
+  "session_id": "43e54a1f-11a0-42ac-804a-82e7915cdff9",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/43e54a1f-11a0-42ac-804a-82e7915cdff9.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "11fdb459-eef0-4ee1-bd31-b76dd6dadd55",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git merge some-branch",
+    "description": "Merge some-branch into current branch"
+  },
+  "tool_use_id": "toolu_01PwSPgUM3yJJG1vzoRJujUC"
+}

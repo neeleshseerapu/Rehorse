@@ -1,0 +1,19 @@
+{
+  "session_id": "6d4627b4-aec5-45c7-aa6b-9fe8db1177fb",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/6d4627b4-aec5-45c7-aa6b-9fe8db1177fb.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "fefdf8dd-ed8d-4db4-9837-20a21cc9cf96",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/tmp/rehorse-spike/toy/app.lock",
+    "old_string": "lockfile v1",
+    "new_string": "lockfile v2",
+    "replace_all": false
+  },
+  "tool_use_id": "toolu_01HRZ6SjzM9uyie69yM48sy4"
+}

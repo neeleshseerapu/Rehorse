@@ -1,0 +1,20 @@
+{
+  "session_id": "3f66af14-d975-4ea3-884d-dad8a56522c3",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/3f66af14-d975-4ea3-884d-dad8a56522c3.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "a51729c6-897f-4a1c-b750-8b9d77b2258b",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PostToolUseFailure",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "/tmp/rehorse-spike/venv/bin/python -m pytest -q",
+    "description": "Run pytest in the toy Python project"
+  },
+  "tool_use_id": "toolu_01A8nSinEFSCHQYP4RAhTDsq",
+  "error": "Exit code 1\n..F                                                                      [100%]\n=================================== FAILURES ===================================\n_______________________________ test_sub_missing _______________________________\n\n    def test_sub_missing():\n>       from app import sub\nE       ImportError: cannot import name 'sub' from 'app' (/tmp/rehorse-spike/toy/app.py)\n\ntests/test_red.py:3: ImportError\n=========================== short test summary info ============================\nFAILED tests/test_red.py::test_sub_missing - ImportError: cannot import name ...\n1 failed, 2 passed in 0.01s",
+  "is_interrupt": false,
+  "duration_ms": 165
+}
