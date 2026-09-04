@@ -382,3 +382,12 @@ not used on an accepted stop); SubagentStop `matcher` filters on `agent_type`, i
   The denial reason names that exact path.
 - The verifier agent gets `Read, Write, Edit, Bash, Grep, Glob` (it must read the worktree to write tests that import
   the right things) and no `Agent`; `model: inherit`.
+- **Report** (chunk 3). The banner's `unverified` becomes `verifier PASS` / `verifier CONCERNS (n findings)`; a `fail`
+  verdict leads the banner (`FAIL: verifier found n issues · tests N passed, M failed`) so it is the first thing read, and
+  the merge command is still offered below it, since a fail informs the user's decision rather than making it. The
+  Verifier section (after Changes) shows the verdict with `round N of 3`, the verifier's own run, the tests it added, the
+  findings as `[severity] file:line description`, the coverage table (criterion / evidence / ref), and for round 2+ what each
+  earlier round found. More than five findings go to `rehorse-reports/verifier/<same-name>.md`, linked from the report and
+  committed with it (the spec's "when they exceed one screen"). "Try it yourself" ends with the criteria whose evidence is
+  `none` or `build_only`, labelled as what to try by hand. The drift check ignores `rehorse_verify_*` files, which are the
+  verifier's and always land after `tests_sha`. `PROGRESS.md` carries one `Verifier:` line per round.

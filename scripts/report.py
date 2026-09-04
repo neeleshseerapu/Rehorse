@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Render the rehearsal report: rehorse-reports/<date>-<slug>.md, one screen, in the spec's order
-(banner -> tests -> diff stat -> verifier -> test-file drift -> plan -> merge/discard commands).
+(banner -> summary -> tests -> diff stat -> verifier verdict, findings, coverage -> test-file drift -> plan -> try it
+yourself -> merge/discard commands). More than MAX_FINDINGS findings go to rehorse-reports/verifier/<same-name>.md, linked.
 
 Runs after verify (advances verify -> report itself) or on a task in needs-attention (renders the reason as the banner,
 phase unchanged). Writes the report and PROGRESS.md in the main checkout, where the user looks, then commits copies of
@@ -15,9 +16,12 @@ import sys
 import progress
 import state
 import testcmd
+import verify
 import worktree
 
 REPORTS = "rehorse-reports"
+MAX_FINDINGS = 5
+EYEBALL = {"none": "no test", "build_only": "only built or imported, never exercised"}
 
 
 def report_name(task):
@@ -35,25 +39,62 @@ def drift(wt, task):
     if not task.get("tests_sha"):
         return None
     names = worktree.git(wt, "diff", "--name-only", task["tests_sha"] + "..HEAD").split()
-    return [n for n in names if testcmd.is_test_path(n, task["test_paths"])]
+    return [n for n in names if testcmd.is_test_path(n, task["test_paths"]) and "rehorse_verify_" not in os.path.basename(n)]
 
 
 def banner(task):
-    last = task.get("last_test_run")
+    last, v = task.get("last_test_run"), task.get("verifier")
     if task["phase"] == state.ATTENTION:
         return "## NEEDS ATTENTION: %s (was in %s)" % (task["attention"]["reason"], task["attention"]["prior_phase"])
     if not last:
         return "## NO TEST RUN RECORDED"
+    n = len(v["findings"]) if v else 0
+    tag = "verifier %s%s" % (v["verdict"].upper(), " (%d finding%s)" % (n, "" if n == 1 else "s") if n else "") if v else "unverified"
+    if v and v["verdict"] == "fail":
+        return "## FAIL: verifier found %d issue%s · tests %d passed, %d failed" % (n, "" if n == 1 else "s", last["passed"], last["failed"])
     if last["failed"]:
-        return "## RED: %d failed, %d passed · unverified" % (last["failed"], last["passed"])
-    return "## GREEN: %d passed, 0 failed · unverified" % last["passed"]
+        return "## RED: %d failed, %d passed · %s" % (last["failed"], last["passed"], tag)
+    return "## GREEN: %d passed, 0 failed · %s" % (last["passed"], tag)
+
+
+def coverage_table(cov):
+    if not cov:
+        return ["(no coverage map returned)"]
+    return ["| acceptance criterion | evidence | ref |", "|---|---|---|"] + ["| %s | %s | %s |" % (c["criterion"], c["evidence"], c["ref"]) for c in cov]
+
+
+def verifier_section(task, name):
+    """Report lines for the verdict; second value is the full findings file's text when the report shows only the first few."""
+    v = task.get("verifier")
+    if not v:
+        return ["## Verifier: not run", "", "no verdict recorded.", ""], None
+    n = len(v["findings"])
+    lines = ["## Verifier: %s (round %d of %d)" % (v["verdict"].upper(), v["round"], verify.MAX_ROUNDS), "",
+             "Its run: %s. Tests added: %s" % (progress.counts(v.get("tests")).replace(" / ", ", "), ", ".join(v["tests_added"]) or "none"), "",
+             "Findings:" if n else "Findings: none", *([verify.findings_text({"findings": v["findings"][:MAX_FINDINGS]})] if n else [])]
+    if n > MAX_FINDINGS:
+        lines.append("- ... %d more in %s/verifier/%s" % (n - MAX_FINDINGS, REPORTS, name))
+    lines += ["", *coverage_table(v["coverage"]), ""]
+    for h in task.get("verify_history") or []:
+        lines += ["Round %d: %s (%d finding(s); its run %s)" % (h["round"], h["verdict"].upper(), len(h["findings"]), progress.counts(h.get("tests"))),
+                  verify.findings_text(h), ""]
+    full = "\n".join(["# Verifier findings: %s (round %d, verdict %s)" % (task["id"], v["round"], v["verdict"]), "",
+                      verify.findings_text(v), "", *coverage_table(v["coverage"]), ""]) if n > MAX_FINDINGS else None
+    return lines, full
+
+
+def eyeball(task):
+    """Criteria the verifier could not tie to a test: what the user should try by hand."""
+    items = [c for c in (task.get("verifier") or {}).get("coverage") or [] if c["evidence"] in EYEBALL]
+    return ["Eyeball these; no test covers them:", *["- %s (%s)" % (c["criterion"], EYEBALL[c["evidence"]]) for c in items], ""] if items else []
 
 
 BUILD_FAILED_ROW = "| red (tests written, no implementation) | build failed (new tests reference symbols that don't exist yet) | |"
 
 
-def render(root, task):
+def render(root, task, name):
     wt, tid = progress.wt_path(root, task), task["id"]
+    verifier, full = verifier_section(task, name)
     stat = worktree.diff(root, tid, task["base_sha"], stat=True).strip() if task["base_sha"] else ""
     d = drift(wt, task)
     if d is None:
@@ -80,17 +121,17 @@ def render(root, task):
         *(["**Warning:** %d new test(s) passed before implementation and may not test anything." % task["weak_tests"], ""]
           if task.get("weak_tests") else []),
         "## Changes (base..HEAD)", "", "```", stat or "(no commits)", "```", "",
-        "## Verifier", "", "not run (the verifier arrives in milestone 5).", "",
+        *verifier,
         "## Test-file drift", "", drift_text, "",
         "## Plan", "", *plan, "",
         "## Try it yourself", "", "```", "cd %s" % wt, task["test_cmd"] or "# no test command recorded",
         (testcmd.run_cmd(wt) if os.path.isdir(wt) else None) or "# no run command detected (no package.json dev/start, Makefile run target, build.sh, cargo/go/swift project, or README run line)",
-        "```", "",
+        "```", "", *eyeball(task),
         "## Next", "", "```",
         "/rehorse:merge %s      merge %s into your branch and remove the worktree" % (tid, task["branch"]),
         "/rehorse:discard %s    drop the worktree and the branch" % tid, "```", "",
     ]
-    return "\n".join(lines)
+    return "\n".join(lines), full
 
 
 def commit_evidence(root, task, files):
@@ -100,6 +141,7 @@ def commit_evidence(root, task, files):
         return
     os.makedirs(os.path.join(wt, REPORTS), exist_ok=True)
     for f in files:
+        os.makedirs(os.path.dirname(os.path.join(wt, REPORTS, f)), exist_ok=True)
         shutil.copy(os.path.join(root, REPORTS, f), os.path.join(wt, REPORTS, f))
     worktree.git(wt, "add", "--", REPORTS)
     if worktree.git(wt, "status", "--porcelain", "--", REPORTS).strip():
@@ -124,11 +166,18 @@ def main(argv):
     task["report_path"] = "%s/%s" % (REPORTS, name)
     path = os.path.join(root, REPORTS, name)
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    text, full = render(root, task, name)
     with open(path, "w") as f:
-        f.write(render(root, task))
+        f.write(text)
+    files = [name, "PROGRESS.md"]
+    if full:
+        os.makedirs(os.path.join(root, REPORTS, "verifier"), exist_ok=True)
+        with open(os.path.join(root, REPORTS, "verifier", name), "w") as f:
+            f.write(full)
+        files.append("verifier/" + name)
     state.save(root, s)
     progress.render(root, s)
-    commit_evidence(root, task, [name, "PROGRESS.md"])
+    commit_evidence(root, task, files)
     print(path)
     return 0
 

@@ -37,8 +37,8 @@ def test_report_is_one_screen_in_the_spec_order_and_advances_to_report(repo):
     text = render(repo)
     t = task_state(repo)
     assert t["phase"] == "report" and t["report_path"].startswith("rehorse-reports/") and t["report_path"].endswith("-1.md")
-    order = ["GREEN", "baseline", "1 | 0", "red", "1 | 1", "green", "2 | 0", "app.py", "Verifier", "not run", "drift", "none",
-             "/rehorse:merge t-1", "/rehorse:discard t-1"]
+    order = ["GREEN", "verifier PASS", "baseline", "1 | 0", "red", "1 | 1", "green", "2 | 0", "app.py", "Verifier: PASS", "round 1 of 3",
+             "drift", "none: test files unchanged", "/rehorse:merge t-1", "/rehorse:discard t-1"]
     positions = [text.find(k) for k in order]
     assert all(p >= 0 for p in positions), dict(zip(order, positions))
     assert positions == sorted(positions), order
@@ -146,3 +146,80 @@ def test_summary_is_optional_and_labelled_as_written_by_the_model(repo):
     assert "written by the model" in text[i:i + 200].lower() and "On merge you get sub()." in text
     assert text.index("## Summary") < text.index("## Tests")
     assert task_state(repo)["summary"].startswith("On merge")
+
+
+# ---- verifier verdict, findings, coverage -----------------------------------------------------------------------------
+
+FINDING = {"severity": "high", "file": "app.py", "line": 5, "description": "strings are concatenated, not rejected"}
+COVERAGE = [{"criterion": "1. sub(3, 1) == 2", "evidence": "test", "ref": "tests/test_sub.py::test_sub"},
+            {"criterion": "2. sub raises TypeError on strings", "evidence": "none", "ref": ""},
+            {"criterion": "3. sub is exported", "evidence": "build_only", "ref": "app.py"}]
+
+
+def test_concerns_verdict_replaces_unverified_in_the_banner_and_renders_findings_and_coverage_after_changes(repo):
+    verified_task(repo, verifier=dict(VERDICT, verdict="concerns", findings=[dict(FINDING, severity="medium")], coverage=COVERAGE,
+                                      tests_added=["tests/test_rehorse_verify_t-1.py::test_strings"], tests={"passed": 3, "failed": 0}))
+    text = render(repo)
+    assert "unverified" not in text and "GREEN: 2 passed, 0 failed · verifier CONCERNS (1 finding)" in text
+    i = text.index("## Verifier: CONCERNS (round 1 of 3)")
+    assert text.index("## Changes") < i < text.index("## Test-file drift")
+    section = text[i:text.index("## Test-file drift")]
+    assert "[medium] app.py:5 strings are concatenated, not rejected" in section
+    assert "tests/test_rehorse_verify_t-1.py::test_strings" in section and "3 passed, 0 failed" in section
+    assert "| 2. sub raises TypeError on strings | none |" in section and "| 1. sub(3, 1) == 2 | test | tests/test_sub.py::test_sub |" in section
+
+
+def test_fail_verdict_leads_the_banner_but_the_merge_command_is_still_offered(repo):
+    verified_task(repo, verifier=dict(VERDICT, verdict="fail", findings=[FINDING, dict(FINDING, line=9)], tests={"passed": 3, "failed": 1}))
+    text = render(repo)
+    first = [l for l in text.splitlines() if l.startswith("## ")][0]
+    assert first.startswith("## FAIL: verifier found 2 issue") and "2 passed, 0 failed" in first
+    assert "/rehorse:merge t-1" in text and task_state(repo)["phase"] == "report"
+
+
+def test_try_it_yourself_points_at_criteria_with_no_test_evidence(repo):
+    verified_task(repo, verifier=dict(VERDICT, coverage=COVERAGE))
+    section = render(repo).split("## Try it yourself")[1].split("## Next")[0]
+    assert "2. sub raises TypeError on strings (no test)" in section and "3. sub is exported (only built" in section
+    assert "1. sub(3, 1)" not in section
+    import state
+    s = state.load(str(repo))
+    s["tasks"]["t-1"]["verifier"]["coverage"] = COVERAGE[:1]
+    state.save(str(repo), s)
+    assert "eyeball" not in render(repo).split("## Try it yourself")[1].split("## Next")[0].lower()
+
+
+def test_many_findings_go_to_the_verifier_folder_and_the_report_links_it(repo):
+    findings = [dict(FINDING, line=n, description="finding %d" % n) for n in range(1, 9)]
+    wt = verified_task(repo, verifier=dict(VERDICT, verdict="concerns", findings=findings, coverage=COVERAGE))
+    text = render(repo)
+    name = os.path.basename(task_state(repo)["report_path"])
+    assert "finding 5" in text and "finding 6" not in text and "3 more in rehorse-reports/verifier/%s" % name in text
+    full = open(os.path.join(str(repo), "rehorse-reports", "verifier", name)).read()
+    assert all("finding %d" % n in full for n in range(1, 9)) and "| 2. sub raises TypeError on strings | none |" in full
+    names = git(wt, "show", "--name-only", "--format=", "HEAD").split()
+    assert "rehorse-reports/verifier/" + name in names
+
+
+def test_verifier_test_file_is_not_test_drift(repo):
+    wt = verified_task(repo)
+    commit_in(wt, "tests/test_rehorse_verify_t-1.py", "def test_strings():\n    assert 1\n", "verify: round 1 tests for t-1")
+    text = render(repo)
+    assert "DRIFT" not in text and "drift" in text.lower()
+
+
+def test_later_round_shows_the_count_and_what_earlier_rounds_found(repo):
+    verified_task(repo, verify_round=2, verifier=dict(VERDICT, round=2),
+                  verify_history=[dict(VERDICT, verdict="fail", findings=[FINDING], tests={"passed": 3, "failed": 1})])
+    text = render(repo)
+    assert "## Verifier: PASS (round 2 of 3)" in text
+    assert "Round 1: FAIL" in text and "strings are concatenated, not rejected" in text
+
+
+def test_report_without_a_verdict_in_needs_attention_still_says_unverified(repo):
+    verified_task(repo, verifier=None)
+    s = state.load(str(repo))
+    state.advance(s, "t-1", "needs-attention", reason="8 consecutive Stop blocks")
+    state.save(str(repo), s)
+    text = render(repo)
+    assert "NEEDS ATTENTION" in text[:300] and "## Verifier: not run" in text
