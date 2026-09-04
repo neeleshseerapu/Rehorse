@@ -26,7 +26,23 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import testcmd  # noqa: E402
 
 RESULTS = os.path.join(HERE, "results")
-COLUMNS = ["task", "merged-green", "upstream-tests-pass", "verifier", "rounds", "wall", "turns", "report"]
+COLUMNS = ["task", "tier", "merged-green", "upstream-tests-pass", "verifier", "rounds", "wall", "turns", "report"]
+METHODOLOGY = """## Methodology
+
+- **Tasks** are closed GitHub issues whose merged PR touched 1-5 files, at least one of them a test file and at least
+  one not (`eval/find_tasks.py`). `base_sha` is the merge commit's first parent: the base branch the moment before the
+  fix landed, for true merges and squashes alike. Rehorse sees only the issue title and body.
+- **Grade.** The PR's test files are taken from the PR's *merge commit* (what landed on the base branch), never from
+  the PR head, whose branch can predate the base. They are checked out whole into the rehearsal worktree, replacing
+  Rehorse's edits to the same files, and run with the task's test command; `upstream-tests-pass` is that run green.
+  Rehorse's own tests therefore never count toward the grade; `merged-green` is only Rehorse's self-report (phase
+  `report` reached with 0 failed). `verifier` is its verdict and how many rounds it took.
+- **Environment.** Each task gets a fresh clone and its own venv (`setup_cmd`). For `rich`, `pygments` is pinned to the
+  version in the repo's `poetry.lock` (the syntax tests are golden ANSI output that drift with pygments) and `attrs`, a
+  dev dependency the tests import, is installed. The machine runs Python 3.13, so tasks are chosen from bases that
+  support it (`rich` 14.x, 2025 and later): earlier bases fail at baseline on 3.13-only repr changes, and a baseline
+  that is not green would make `merged-green` unreachable regardless of Rehorse.
+"""
 
 
 def prompt(task):
@@ -142,25 +158,25 @@ def fmt_wall(s):
     return "%dm%02ds" % divmod(s, 60) if s >= 60 else "%ds" % s
 
 
-def render(rows):
-    lines = ["# Eval results", "", "Graded by the upstream PR's tests (checked out into the rehearsal worktree), never by Rehorse's own. "
-             "merged-green: Rehorse reached its report with a green run; verifier: its verdict and how many rounds it took.", "",
-             "| " + " | ".join(COLUMNS) + " |", "|" + "---|" * len(COLUMNS)]
+def render(rows, tiers=None):
+    lines = ["# Eval results", "", METHODOLOGY, "## Results", "", "| " + " | ".join(COLUMNS) + " |", "|" + "---|" * len(COLUMNS)]
     for r in rows:
         report = "[report](%s)" % r["report"] if r.get("report") else r.get("error") or "–"
-        lines.append("| %s | %s | %s | %s | %s | %s | %s | %s |" % (
-            r["id"], "yes" if r["merged_green"] else "no", "**yes**" if r["upstream_pass"] else "no", r.get("verdict") or "–",
-            r.get("rounds", 0), fmt_wall(r.get("wall_s")), r["turns"] if r.get("turns") is not None else "–", report))
+        lines.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+            r["id"], (tiers or {}).get(r["id"], "–"), "yes" if r["merged_green"] else "no", "**yes**" if r["upstream_pass"] else "no",
+            r.get("verdict") or "–", r.get("rounds", 0), fmt_wall(r.get("wall_s")), r["turns"] if r.get("turns") is not None else "–", report))
     n = len(rows)
     lines += ["", "%d of %d tasks pass the upstream PR's tests; %d self-reported green; %d errored." % (
         sum(r["upstream_pass"] for r in rows), n, sum(r["merged_green"] for r in rows), sum(1 for r in rows if r.get("error")))]
     return "\n".join(lines) + "\n"
 
 
-def write_results(results_dir):
+def write_results(results_dir, tasks_path=None):
     rows = [json.load(open(os.path.join(results_dir, f))) for f in sorted(os.listdir(results_dir)) if f.endswith(".json")]
+    tasks_path = tasks_path or os.path.join(HERE, "tasks.json")
+    tiers = {t["id"]: t.get("tier", "–") for t in json.load(open(tasks_path))} if os.path.exists(tasks_path) else {}
     with open(os.path.join(HERE, "results.md"), "w") as f:
-        f.write(render(rows))
+        f.write(render(rows, tiers))
     return rows
 
 
@@ -185,7 +201,7 @@ def main(argv):
             row = {"id": task["id"], "merged_green": False, "upstream_pass": False, "verdict": None, "rounds": 0, "wall_s": 0, "turns": None,
                    "report": None, "error": "%s: %s" % (type(e).__name__, e)}
         json.dump(row, open(os.path.join(RESULTS, task["id"] + ".json"), "w"), indent=1)
-        write_results(RESULTS)
+        write_results(RESULTS, a.tasks)
         print("   merged-green %s, upstream %s, verifier %s, %s, %s turn(s)%s" % (
             row["merged_green"], row["upstream_pass"], row.get("verdict"), fmt_wall(row.get("wall_s")), row.get("turns"),
             "; error: " + row["error"] if row.get("error") else ""), flush=True)

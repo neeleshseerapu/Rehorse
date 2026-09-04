@@ -11,6 +11,7 @@
       "tests/test_prompt.py"
     ],
     "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
-    "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
+    "test_cmd": ".venv/bin/python -m pytest -q --tb=short",
+    "tier": 1
   }
 ]

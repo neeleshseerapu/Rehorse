@@ -55,11 +55,15 @@ def test_results_table_and_one_line_summary():
              "report": "results/rich-3881.report.md"},
             {"id": "rich-3479", "merged_green": False, "upstream_pass": False, "verdict": None, "rounds": 0, "wall_s": 12, "turns": None,
              "report": None, "error": "setup_cmd failed (exit 1)"}]
-    md = run_eval.render(rows)
-    assert "| task | merged-green | upstream-tests-pass | verifier | rounds | wall | turns | report |" in md
-    assert "| rich-2942 | yes | **yes** | pass | 1 | 10m01s | 23 | [report](results/rich-2942.report.md) |" in md
-    assert "| rich-3881 | yes | no | concerns | 2 | 1m28s | 9 | [report](results/rich-3881.report.md) |" in md
-    assert "| rich-3479 | no | no | – | 0 | 12s | – | setup_cmd failed (exit 1) |" in md
+    md = run_eval.render(rows, {"rich-2942": 1, "rich-3881": 2})
+    assert "| task | tier | merged-green | upstream-tests-pass | verifier | rounds | wall | turns | report |" in md
+    assert "| rich-2942 | 1 | yes | **yes** | pass | 1 | 10m01s | 23 | [report](results/rich-2942.report.md) |" in md
+    assert "| rich-3881 | 2 | yes | no | concerns | 2 | 1m28s | 9 | [report](results/rich-3881.report.md) |" in md
+    assert "| rich-3479 | – | no | no | – | 0 | 12s | – | setup_cmd failed (exit 1) |" in md
+    method = md[md.index("## Methodology"):md.index("## Results")]
+    for phrase in ("merge commit's first parent", "*merge commit*", "never from\n  the PR head", "replacing\n  Rehorse's edits",
+                   "never count toward the grade", "`poetry.lock`", "`attrs`", "Python 3.13"):
+        assert phrase in method, phrase
     assert md.rstrip().endswith("1 of 3 tasks pass the upstream PR's tests; 2 self-reported green; 1 errored.")
 
 

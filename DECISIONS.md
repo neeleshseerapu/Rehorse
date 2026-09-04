@@ -585,3 +585,7 @@ pygments 2.19.2 from the lock. Results row: merged-green yes, upstream-tests-pas
   before implementation" were two such guards; with the marker they would have read "2 guards expected to pass; 0
   unexpected passes". Marker rather than reply metadata because the marker lives next to the test, is visible in the diff
   the verifier reads, and survives a re-run of the tests phase.
+- **Methodology at the top of `eval/results.md`** (fix 3): the base commit rule, grading from the merge commit rather
+  than the PR head, upstream files replacing Rehorse's edits so its own tests never count, and the environment pins and
+  Python 3.13 constraint, so the table cannot be read without its rules. The `tier` column comes from `tasks.json` at
+  render time (not copied into result files), so re-tiering a task never leaves a stale value.
