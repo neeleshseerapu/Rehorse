@@ -95,6 +95,26 @@ def origin_and_clone(tmp_path):
     return clone, wt
 
 
+@pytest.fixture(autouse=True)
+def pr_head_is_the_fix(monkeypatch):
+    """The local origin has no gh-resolvable merge commit; grade from the PR head ref, the documented fallback."""
+    monkeypatch.setattr(run_eval, "fix_ref", lambda task: "refs/pull/%s/head" % task["pr_url"].rsplit("/", 1)[1])
+
+
+def test_fix_ref_is_the_merge_commit_from_gh_and_falls_back_to_the_pr_head(monkeypatch):
+    monkeypatch.undo()
+    calls = []
+
+    def fake_run(args, **kw):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="a" * 40 + "\n", stderr="")
+    monkeypatch.setattr(run_eval.subprocess, "run", fake_run)
+    assert run_eval.fix_ref(TASK) == "a" * 40
+    assert calls[0][:3] == ["gh", "api", "repos/Textualize/rich/pulls/2943"]
+    monkeypatch.setattr(run_eval.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(subprocess.CalledProcessError(1, "gh")))
+    assert run_eval.fix_ref(TASK) == "refs/pull/2943/head"
+
+
 def test_grade_checks_out_the_prs_test_files_into_the_worktree_and_runs_them(origin_and_clone):
     clone, wt = origin_and_clone
     task = dict(TASK, pr_url="https://example.invalid/o/r/pull/7", pr_test_files=["tests/test_app.py"],
@@ -105,7 +125,7 @@ def test_grade_checks_out_the_prs_test_files_into_the_worktree_and_runs_them(ori
     (wt / "app.py").write_text("def add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n")
     after = run_eval.grade(task, str(clone), str(wt))
     assert after["upstream_pass"] is True and after["counts"] == {"passed": 2, "failed": 0}
-    assert after["command"].endswith("tests/test_app.py") and after["where"] == str(wt)
+    assert after["command"].endswith("tests/test_app.py") and after["where"] == str(wt) and after["tests_from"] == "refs/pull/7/head"
 
 
 def test_grade_without_a_worktree_runs_in_the_clone_and_says_so(origin_and_clone):

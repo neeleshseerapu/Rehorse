@@ -9,7 +9,7 @@ One result file per task in eval/results/<id>.json (plus a copy of Rehorse's rep
 result file is skipped, so a stopped run resumes where it left off (--rerun redoes it). A failure in one task is recorded
 in its result and the run goes on. eval/results.md is re-rendered from every result file after each task.
 
-Grading is by the upstream PR's tests, never Rehorse's own: the PR's test files are checked out (from refs/pull/N/head)
+Grading is by the upstream PR's tests, never Rehorse's own: the PR's test files are checked out (from its merge commit)
 into the rehearsal worktree and run with the task's test command; `upstream_pass` is that run being green.
 """
 import argparse
@@ -61,17 +61,30 @@ def sh(cmd, cwd, log=None, timeout=None):
     return p.returncode, p.stdout
 
 
+def fix_ref(task):
+    """The commit whose test files grade the task: the PR's merge commit (what landed on the base branch), asked of gh;
+    the PR's head ref when gh cannot answer. The head is the author's branch and can predate the base, so files taken
+    from it could revert base-branch changes made in the same file before the merge."""
+    owner_repo, pr = task["repo"], task["pr_url"].rstrip("/").rsplit("/", 1)[1]
+    try:
+        sha = subprocess.run(["gh", "api", "repos/%s/pulls/%s" % (owner_repo, pr), "--jq", ".merge_commit_sha"],
+                             capture_output=True, text=True, check=True, timeout=60).stdout.strip()
+        return sha if len(sha) == 40 else "refs/pull/%s/head" % pr
+    except (subprocess.SubprocessError, OSError):
+        return "refs/pull/%s/head" % pr
+
+
 def grade(task, clone, wt):
-    """Check the PR's test files out of refs/pull/N/head into the worktree (the clone when there is none) and run them."""
+    """Check the PR's test files out of its merge commit into the worktree (the clone when there is none) and run them."""
     where = wt if wt and os.path.isdir(wt) else clone
-    pr = task["pr_url"].rstrip("/").rsplit("/", 1)[1]
-    subprocess.run(["git", "fetch", "-q", "origin", "refs/pull/%s/head" % pr], cwd=where, check=True)  # FETCH_HEAD is per worktree
+    ref = fix_ref(task)
+    subprocess.run(["git", "fetch", "-q", "origin", ref], cwd=where, check=True)  # FETCH_HEAD is per worktree
     subprocess.run(["git", "checkout", "-q", "FETCH_HEAD", "--", *task["pr_test_files"]], cwd=where, check=True)
     cmd = "%s %s" % (task["test_cmd"], " ".join(task["pr_test_files"]))
     code, out = sh(cmd, where, timeout=1800)
     counts = testcmd.parse_counts(out)
     return {"upstream_pass": bool(counts) and counts["failed"] == 0 and counts["passed"] > 0 and code == 0,
-            "counts": counts, "command": cmd, "where": where, "output_tail": out[-3000:]}
+            "counts": counts, "command": cmd, "where": where, "tests_from": ref, "output_tail": out[-3000:]}
 
 
 def run_claude(task, clone, log, max_turns, timeout):

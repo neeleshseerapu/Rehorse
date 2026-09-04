@@ -232,6 +232,26 @@ or discard. If anything looked wrong, the test command it detected, a hook that 
 a report that misrepresents what happened, open an issue with the report attached and, if you can, the lines from
 `claude --debug-file` that mention `Hook`. Nothing you run touches your branch until you type `/rehorse:merge`.
 
+### Eval
+
+`eval/` measures Rehorse on real bug-fix tasks from open-source repos, SWE-bench style: the task is a closed GitHub
+issue, and the grade is the tests from the upstream PR that fixed it, never Rehorse's own tests.
+
+```bash
+python3 eval/find_tasks.py Textualize/rich          # closed issues whose merged PR touched 1-5 files incl. a test
+python3 eval/run_eval.py                            # every task in eval/tasks.json; resumable; results in eval/results.md
+python3 eval/run_eval.py --only rich-3881 --rerun   # one task again
+```
+
+`find_tasks.py` writes candidates in the `tasks.json` schema (`id, repo, base_sha, issue_url, issue_title, issue_body,
+pr_url, pr_test_files, test_cmd, setup_cmd`); `base_sha` is the base branch the moment before the fix merged. For each
+task `run_eval.py` clones the repo at `base_sha` into `/tmp/rehorse-eval/<id>`, runs `setup_cmd` (the target's own
+venv), runs `claude -p "/rehorse:build \"<issue>\""` with this plugin and permissions bypassed, then checks the PR's
+test files out into the rehearsal worktree and runs them. One JSON result per task lands in `eval/results/` with a copy
+of the report; a task with a result is skipped on the next run, and a failure in one task is a row, not an abort.
+Columns: merged-green (Rehorse reached its report with a green run), upstream-tests-pass (the grade), verifier verdict
+and rounds, wall time, session turns, report.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

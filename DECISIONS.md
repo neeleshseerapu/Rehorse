@@ -534,3 +534,29 @@ Docs re-fetched before writing (CLI reference): `claude -p --output-format json`
 - **The first task is `rich-3881`** (`PromptBase.on_validate_error` should print with markup on: one source file,
   one test file, a precise issue body, 2025 base) so the harness is checked on the smallest possible rehearsal; the
   other nine are the user's pick from `eval/candidates-rich.json`.
+- **Grading takes the test files from the PR's merge commit, not `refs/pull/N/head`.** The first run graded from the
+  head ref and passed, but `git diff base FETCH_HEAD` showed 52 files: the author's branch predated the base by a
+  Unicode-table refactor, so a test file taken from it could revert base-branch changes made in the same file before
+  the merge. `run_eval.fix_ref()` asks `gh api repos/<repo>/pulls/<n>` for `merge_commit_sha` (GitHub serves any
+  reachable commit by SHA to `git fetch`), falls back to the head ref when `gh` cannot answer, and the result records
+  `tests_from`. `rich-3881` was re-graded from `abd5a2a` with the same outcome; the committed result is that grade.
+
+### Evidence: first eval task end to end (`rich-3881`, Claude Code 2.1.261, 2026-09-04)
+
+`python3 eval/run_eval.py --only rich-3881`, one session, exit 0. Clone at `12eeb42`, venv with pytest, attrs and
+pygments 2.19.2 from the lock. Results row: merged-green yes, upstream-tests-pass yes, verifier pass, 1 round, 5m46s,
+20 turns; `total_cost_usd` 2.62 reported by the envelope (informational; the run is on the subscription).
+
+- Hook lines, in order: baseline `recorded test run: 931 passed, 0 failed (edit_seq 1)`; red `933 passed, 5 failed
+  (edit_seq 2)` with the weak-test warning (2 of 7 new tests passed before implementation: the two regression guards);
+  green `938 passed, 0 failed (edit_seq 4)`; verifier `941 passed, 0 failed (edit_seq 5)`; `SubagentStop ... verifier
+  round 1: PASS, 0 finding(s)`. Four shell-write denials (spec, tests, implement, verify: one per phase, as in the
+  toy runs), each followed by the same agent using Write or Edit. No Stop or SubagentStop block was needed.
+- Rehearsal branch: `3ad3ec5c rehorse: report` / `3aeef898 verify: round 1 tests` / `26f7beb3 step 1` / `70749437
+  tests: red` on `12eeb42c`. Rehorse's fix is the upstream one-liner exactly (`self.console.print(error, markup=True)`),
+  plus a CHANGELOG line, seven tests and the verifier's three.
+- Grade: the merge commit's `tests/test_prompt.py` (seven existing tests plus upstream's `test_prompt_confirm_markup`)
+  ran in the worktree: `8 passed`.
+- Seen: the orchestrator ran the test command as `... 2>&1 | tail -6`; `on_bash_done.py` still parsed the summary line.
+  The model's Summary named a behavioural consequence the changelog line omits (unescaped brackets in a user's
+  `InvalidResponse` are now parsed on `markup=False` consoles), which the verifier had turned into a test.
