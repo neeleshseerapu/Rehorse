@@ -5,14 +5,23 @@ Every operation is a git subprocess run from the main checkout or the worktree; 
 checks out, merges, or resets the user's branch. CLI (JSON out):
   worktree.py create <id> | list | diff <id> --base SHA [--stat] [--paths p ...] | dirty <id> | remove <id>
 """
+import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 
 
 def git(cwd, *args, check=True):
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=check).stdout
+
+
+def task_id(title, date=None):
+    """t-<YYYYMMDD>-<slug>: names the task, the branch (rehorse/<id>), the worktree and the report consistently."""
+    date = date or datetime.date.today().strftime("%Y%m%d")
+    words = re.sub(r"[^a-z0-9]+", " ", title.lower()).split()[:6]
+    return "t-%s-%s" % (date, "-".join(words) or "task")
 
 
 def path_for(root, tid):

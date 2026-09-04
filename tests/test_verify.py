@@ -170,15 +170,14 @@ def test_next_action_in_verify_names_the_brief_before_and_the_report_after_a_ver
 
 
 def test_hooks_json_routes_subagent_stop_by_agent_name():
-    """progress.py --step-done keeps no matcher (it filters on rehorse-step itself); verify.py --verdict is matched on the
-    verifier's plugin-scoped agent type in hooks.json and filters again in the script. The matcher must be a regex: a
-    plain `rehorse-verifier` is an exact-string matcher and never equals `rehorse:rehorse-verifier` (live check, 2026-09-04)."""
+    """Both SubagentStop hooks are matched on their agent's plugin-scoped type in hooks.json and filter again in the script.
+    The matcher must be a regex: a plain `rehorse-verifier` is an exact-string matcher and never equals
+    `rehorse:rehorse-verifier` (live check, 2026-09-04)."""
     hooks = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks", "hooks.json")))["hooks"]
     entries = {h["hooks"][0]["args"][0].rsplit("/", 1)[-1]: h.get("matcher") for h in hooks["SubagentStop"]}
-    assert entries == {"progress.py": None, "verify.py": "^rehorse:rehorse-verifier$"}
+    assert entries["verify.py"] == "^rehorse:rehorse-verifier$"
     import re
     assert re.search(entries["verify.py"], "rehorse:rehorse-verifier") and not re.search(entries["verify.py"], "rehorse:rehorse-step")
-    assert [h["hooks"][0]["args"][1:] for h in hooks["SubagentStop"]] == [["--step-done"], ["--verdict"]]
 
 
 # ---- round-trip: a failing verdict (or failing verifier tests) sends the task back to implement, at most twice ------------

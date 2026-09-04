@@ -59,8 +59,9 @@
     ],
     "SubagentStop": [
       {
+        "matcher": "^rehorse:rehorse-step$",
         "hooks": [
-          {"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/progress.py", "--step-done"], "timeout": 30}
+          {"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/step_done.py"], "timeout": 30}
         ]
       },
       {

@@ -6,10 +6,11 @@ import pytest
 from conftest import git, hook_input, run_script
 
 import state
+import worktree
 
 
 def test_task_id_is_date_and_kebab_slug_capped_at_six_words():
-    tid = state.task_id("Add a Dark Mode toggle to the settings page!", date="20260903")
+    tid = worktree.task_id("Add a Dark Mode toggle to the settings page!", date="20260903")
     assert tid == "t-20260903-add-a-dark-mode-toggle-to"
 
 
@@ -279,3 +280,32 @@ def test_verify_can_return_to_implement_and_archives_the_verdict():
     state.advance(s, "t-1", "verify")
     with pytest.raises(ValueError):
         state.advance(s, "t-1", "report")  # the archived verdict does not count for the new round
+
+
+# ---- coverage gate: tests -> implement also needs every acceptance criterion mapped to a new test ---------------------
+
+def test_cli_advance_implement_names_the_uncovered_criteria(repo):
+    from conftest import commit_in, run_script, task_in
+    wt = task_in(repo, "tests", red_check={"passed": 1, "failed": 1},
+                 coverage=[{"criterion": 1, "ref": "tests/test_new.py::test_sub"}])
+    open(os.path.join(wt, "REHORSE_SPEC.md"), "w").write("Add sub and mul.\n\n## Acceptance criteria\n1. sub(5, 3) == 2\n2. mul(2, 3) == 6\n")
+    commit_in(wt, "tests/test_new.py", "def test_sub():\n    assert 0\n", "tests: red")
+    r = run_script("state", ["advance", "implement"], cwd=str(repo))
+    assert r.returncode != 0 and "2. mul(2, 3) == 6" in r.stderr and "1. sub" not in r.stderr
+    assert state.load(str(repo))["tasks"]["t-1"]["phase"] == "tests"
+    commit_in(wt, "tests/test_new.py", "def test_sub():\n    assert 0\n\ndef test_mul():\n    assert 0\n", "tests: mul")
+    s = state.load(str(repo))
+    s["tasks"]["t-1"]["coverage"].append({"criterion": 2, "ref": "tests/test_new.py::test_mul"})
+    state.save(str(repo), s)
+    r = run_script("state", ["advance", "implement"], cwd=str(repo))
+    assert r.returncode == 0, r.stderr
+    assert state.load(str(repo))["tasks"]["t-1"]["phase"] == "implement"
+
+
+def test_in_process_advance_without_a_root_skips_the_coverage_gate():
+    s = state.empty()
+    t = state.new_task(s, "t-1")
+    t["red_check"] = {"passed": 1, "failed": 1}
+    state.advance(s, "t-1", "tests")
+    state.advance(s, "t-1", "implement")  # no root: nothing to read the spec from; the CLI always passes one
+    assert t["phase"] == "implement" and t["coverage"] == []

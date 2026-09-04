@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
-"""rehorse-reports/PROGRESS.md, regenerated from state (never free-formed), plus the SubagentStop hook that closes a step.
+"""rehorse-reports/PROGRESS.md, regenerated from state (never free-formed).
 CLI: progress.py render | plan "<step>" ... (phase implement, clean worktree; records tests_sha) | add "<step>" ...
-Hook: --step-done (SubagentStop, rehorse-step agents in setup/tests/implement): a reply line starting `CONTRADICTS SPEC:` sends
-the task to needs-attention; else block the stop while edits are newer than the last test run or the worktree is uncommitted
-(the reason names the command; 8th block -> needs-attention); else mark the step done with the reply's first two lines."""
-import json
+The SubagentStop hook that closes a step is step_done.py; verify.py records the verifier's verdict."""
 import os
 import sys
 
-import guard_stop
 import state
 import worktree
 
-STEP_AGENT, MAX_STEPS = "rehorse-step", 6
+MAX_STEPS = 6
 
 
 def wt_path(root, task):
@@ -92,38 +88,7 @@ def set_plan(root, s, task, titles):
     task["step"] = 0
 
 
-def step_done(hook):
-    root, s, task = state.active(hook.get("cwd"))
-    if not task or task["phase"] not in ("setup", "tests", "implement") or (hook.get("agent_type") or "").split(":")[-1] != STEP_AGENT:
-        return 0
-    wt, plan, i = wt_path(root, task), task["plan"], task["step"]
-    said = [l.strip() for l in (hook.get("last_assistant_message") or "").splitlines() if l.strip()]
-    contra = next((l for l in said if l.startswith("CONTRADICTS SPEC:")), None)
-    if contra:  # a test (the verifier's included) disagrees with the spec: the user decides, the implementer does not work around it
-        guard_stop.attention(root, s, task, contra)
-        render(root, s)
-        return 0
-    title = plan[i]["title"] if task["phase"] == "implement" and i < len(plan) else None
-    pending = task["edit_seq"] - (task.get("last_test_run") or {}).get("after_edit_seq", 0)
-    if pending > 0 and task["test_cmd"]:
-        return guard_stop.block(root, s, task, "%d edit(s) since the last recorded test run. Run `cd %s && %s`, then stop again." % (pending, wt, task["test_cmd"]), "step-done")
-    dirty = worktree.dirty(root, task["id"])
-    if dirty:
-        msg = "step %d: %s" % (i + 1, title) if title else ("setup: test harness for %s" if task["phase"] == "setup" else "tests: red for %s") % task["id"]
-        return guard_stop.block(root, s, task, "uncommitted changes in the worktree (%s). Run `cd %s && git add -A && git commit -m \"%s\"`, then stop again."
-                     % (", ".join(dirty[:5]), wt, msg), "step-done")
-    task["stop_blocks"] = 0
-    if title:
-        plan[i].update(done=True, summary="\n".join(said[:2]), commit=worktree.git(wt, "rev-parse", "HEAD").strip()[:7])
-        task["step"] = i + 1
-    state.save(root, s)
-    render(root, s)
-    return 0
-
-
 def main(argv):
-    if argv[:1] == ["--step-done"]:
-        return step_done(json.load(sys.stdin))
     root, s, task = state.active(os.getcwd())
     if not root or (not task and argv[:1] != ["render"]):
         sys.exit("progress.py: not inside a git repository" if not root else "progress.py: no active task")

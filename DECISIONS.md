@@ -472,3 +472,14 @@ and report.
   moved into the worktree, so it is judged by that cwd and the reason says so. `.rehorse/` cannot be denied wholesale
   because the worktree lives under it. Other agents and the orchestrator are untouched, and the hook writes nothing. The
   README's "prose-guided" caveat for the verifier is gone, and so is the IDEAS.md entry.
+- **Coverage gate in the tests phase** (`coverage.py`, `step_done.py`, `state.gate`). The tests-phase agent's reply ends
+  with the verifier's coverage shape (`{"coverage": [{"criterion", "ref": "<file>::<test>"}]}`); `step_done.py` records it
+  and blocks the stop while any acceptance criterion in `REHORSE_SPEC.md` has no entry whose ref names a real test in a new
+  or changed test file (a missing `## Acceptance criteria` section counts as uncovered, so the orchestrator must write it).
+  `state.py advance implement` re-checks it and names the uncovered criteria. The check is mechanical on purpose: it
+  proves each criterion has *a* new test, not that the test asserts the right thing; the live run 3 drive maps the
+  divide-by-zero criterion to the happy-path test to show exactly that, and the verifier is what catches it. In-process
+  callers of `state.advance` with no `root` skip the coverage clause (nothing to read the spec from); only the CLI advances
+  a real task. The SubagentStop hook for step agents moved from `progress.py --step-done` to `step_done.py`, matched on
+  `^rehorse:rehorse-step$`, because the rule pushed `progress.py` past 150 lines and the hook and the renderer are two
+  jobs; `task_id` moved to `worktree.py` for the same reason on `state.py`.

@@ -39,7 +39,7 @@ event, cwd = sys.argv[1], sys.argv[2]
 d = {"session_id": "drive", "transcript_path": "/dev/null", "cwd": cwd, "hook_event_name": event, "permission_mode": "default"}
 for kv in sys.argv[3:]:
     k, v = kv.split("=", 1)
-    d[k] = json.loads(v) if v[:1] in "{[\"" else v
+    d[k] = open(v[1:]).read() if v[:1] == "@" else json.loads(v) if v[:1] in "{[\"" else v
 print(json.dumps(d))
 PY
 }
@@ -82,6 +82,8 @@ python3 "$R/state.py" advance tests
 printf 'import app\n\n\ndef test_sub():\n    assert app.sub(5, 3) == 2\n\n\ndef test_mul():\n    assert app.mul(2, 3) == 6\n' > "$WT/tests/test_new.py"
 run_tests                                             # red_check
 (cd "$WT" && git add -A && git commit -q -m "tests: red for $ID")
+printf 'Added tests/test_new.py.\nBoth fail.\n```json\n{"coverage": [{"criterion": 1, "ref": "tests/test_new.py::test_sub"}, {"criterion": 2, "ref": "tests/test_new.py::test_mul"}]}\n```\n' > "$OUT/live2-reply.txt"
+hook SubagentStop "$WT" agent_type=rehorse:rehorse-step agent_id=drive "last_assistant_message=@$OUT/live2-reply.txt" | python3 "$R/step_done.py"; echo
 python3 "$R/state.py" advance implement
 python3 "$R/progress.py" plan "add sub(a, b) to app.py" "add mul(a, b) to app.py"
 echo "--- driven to:"; phase
@@ -113,13 +115,17 @@ python3 "$R/state.py" advance tests
 printf 'import app\n\n\ndef test_divide():\n    assert app.divide(6, 3) == 2\n' > "$WT/tests/test_divide.py"   # happy path only, on purpose
 run_tests                                             # red
 (cd "$WT" && git add -A && git commit -q -m "tests: red for $ID")
+# The coverage gate checks that each mapped ref is a real test in a new test file, not what the test asserts; an
+# implementer that maps criterion 2 to the happy-path test passes it. Catching that is the verifier's job (below).
+printf 'Added tests/test_divide.py.\nIt fails: no divide.\n```json\n{"coverage": [{"criterion": 1, "ref": "tests/test_divide.py::test_divide"}, {"criterion": 2, "ref": "tests/test_divide.py::test_divide"}]}\n```\n' > "$OUT/live3-reply.txt"
+hook SubagentStop "$WT" agent_type=rehorse:rehorse-step agent_id=drive "last_assistant_message=@$OUT/live3-reply.txt" | python3 "$R/step_done.py"; echo
 python3 "$R/state.py" advance implement
 python3 "$R/progress.py" plan "add divide(a, b) to app.py"
 printf 'def add(a, b):\n    return a + b\n\n\ndef divide(a, b):\n    return a / b\n' > "$WT/app.py"   # weak: no ValueError branch
 hook PreToolUse "$WT" tool_name=Edit "tool_input={\"file_path\": \"$WT/app.py\"}" agent_id=drive | python3 "$R/guard_edit.py"
 run_tests                                             # green against the weak tests
 (cd "$WT" && git add -A && git commit -q -m "step 1: add divide(a, b) to app.py")
-hook SubagentStop "$WT" agent_type=rehorse:rehorse-step agent_id=drive "last_assistant_message=\"Added divide(a, b) to app.py.\\nTests: 3 passed, 0 failed; nothing left.\"" | python3 "$R/progress.py" --step-done; echo
+hook SubagentStop "$WT" agent_type=rehorse:rehorse-step agent_id=drive "last_assistant_message=\"Added divide(a, b) to app.py.\\nTests: 3 passed, 0 failed; nothing left.\"" | python3 "$R/step_done.py"; echo
 python3 "$R/state.py" advance verify
 echo "--- driven to:"; phase
 $CLAUDE --debug-file "$OUT/run3.log" --max-turns 80 -p '/rehorse:build' > "$OUT/run3.json" 2> "$OUT/run3.err"

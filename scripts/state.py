@@ -4,7 +4,6 @@ gates tests -> implement on a red run. CLI: --summary (SessionStart) | new "<tit
 import datetime
 import json
 import os
-import re
 import sys
 import tempfile
 
@@ -51,12 +50,6 @@ def save(root, state):
     os.replace(tmp, path)
 
 
-def task_id(title, date=None):
-    date = date or datetime.date.today().strftime("%Y%m%d")
-    words = re.sub(r"[^a-z0-9]+", " ", title.lower()).split()[:6]
-    return "t-%s-%s" % (date, "-".join(words) or "task")
-
-
 def new_task(state, tid):
     base, n = tid, 1
     while tid in state["tasks"]:  # re-rehearsal: t-...-r2, -r3
@@ -66,25 +59,29 @@ def new_task(state, tid):
             "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None, "test_cmd": None, "test_paths": [],
             "baseline": None, "red_check": None, "red_kind": None, "weak_tests": 0, "last_test_run": None, "tests_sha": None, "summary": None,
             "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "report_path": None, "linked_deps": [],
-            "verifier": None, "verify_round": 0, "verify_run": None, "verify_history": []}
+            "verifier": None, "verify_round": 0, "verify_run": None, "verify_history": [], "coverage": []}
     state["tasks"][tid] = task
     state["active_task"] = tid
     return task
 
 
-def gate(task, to):
-    """Evidence a transition needs, or None: red before implement (a failing new test, or a failed build); a verdict before report."""
+def gate(task, to, root=None):
+    """Evidence a transition needs, or None: red before implement (a failing new test, or a failed build) and, given a root to
+    read the spec from, every acceptance criterion mapped to a new test (coverage.py); a verdict before report."""
     r = task.get("red_check") or {"passed": 0, "failed": 0}
     if (task["phase"], to) == ("tests", "implement") and not (task.get("red_kind") == "build_failed" or r["failed"]):
-        if not task.get("red_check"):
-            return "no red run recorded; run the test command inside the worktree after the tests are written (at least one must fail)"
-        return ("the red run ran 0 tests; fix test discovery and run it again" if not r["passed"] else
+        return ("no red run recorded; run the test command inside the worktree after the tests are written (at least one must fail)"
+                if not task.get("red_check") else "the red run ran 0 tests; fix test discovery and run it again" if not r["passed"] else
                 "nothing failed in the red run: tests that pass before the feature exists test nothing; make at least one fail")
+    if (task["phase"], to) == ("tests", "implement") and root:
+        import coverage  # lazy: the SessionStart path must not pay for git
+        if coverage.uncovered(root, task):
+            return "acceptance criteria without a new test: %s" % "; ".join(coverage.uncovered(root, task))
     if (task["phase"], to) == ("verify", "report") and not task.get("verifier"):
         return "no verifier verdict recorded; run `verify.py brief` and spawn the rehorse-verifier subagent with its output"
 
 
-def advance(state, tid, to, reason=None):
+def advance(state, tid, to, reason=None, root=None):
     """The only legal phase transitions. Raises ValueError naming the allowed next phase(s) or the gate that objected."""
     task = state["tasks"][tid]
     cur = task["phase"]
@@ -92,8 +89,9 @@ def advance(state, tid, to, reason=None):
                PHASES[PHASES.index(cur) + 1:][:1] + ["discarded", ATTENTION] + {"report": ["merged"], "verify": ["implement"]}.get(cur, []))
     if to not in allowed:
         raise ValueError("cannot advance %s from %r to %r; allowed: %s" % (tid, cur, to, ", ".join(allowed) or "none"))
-    if gate(task, to):
-        raise ValueError("cannot advance %s to %s: %s" % (tid, to, gate(task, to)))
+    why = gate(task, to, root)
+    if why:
+        raise ValueError("cannot advance %s to %s: %s" % (tid, to, why))
     if (cur, to) == ("verify", "implement"):  # round-trip: the verdict is archived, the next round must earn a new one
         task["verify_history"] = task.get("verify_history", []) + [task["verifier"]]
         task["verifier"] = task["verify_run"] = None
@@ -128,13 +126,13 @@ def main(argv):
     tid = opts.get("task") or state["active_task"]
     if argv[0] == "new":
         import testcmd, worktree  # noqa: E401 (lazy: the SessionStart path must not pay for git)
-        task = new_task(state, task_id(argv[1], opts.get("date")))
+        task = new_task(state, worktree.task_id(argv[1], opts.get("date")))
         task.update(worktree.create(root, task["id"]), **{k: v for k, v in (testcmd.detect(root) or {}).items() if k != "runner"})
         task["phase"] = "spec" if task["test_cmd"] else "setup"  # no runnable suite: build the harness inside the rehearsal first
         json.dump(task, sys.stdout, indent=2)
     elif argv[0] == "advance":
         try:
-            advance(state, tid, argv[1], opts.get("reason"))
+            advance(state, tid, argv[1], opts.get("reason"), root)
         except (ValueError, KeyError) as e:
             sys.exit("state.py: %s" % e)
     elif argv[0] == "show":

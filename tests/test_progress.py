@@ -1,10 +1,9 @@
-"""progress.py: PROGRESS.md is regenerated from state, never free-formed; --step-done (SubagentStop) closes a plan step
-only when tests ran after the last edit and the worktree is committed."""
+"""progress.py: PROGRESS.md is regenerated from state, never free-formed; `plan` and `add` maintain the plan."""
 import json
 import os
 
 import pytest
-from conftest import commit_in, git, hook_input, hook_out, run_script, task_in, task_state
+from conftest import commit_in, git, run_script, task_in, task_state
 
 import progress
 import state
@@ -13,11 +12,6 @@ import state
 def plan_task(repo, phase="implement", **fields):
     wt = task_in(repo, phase, baseline={"passed": 1, "failed": 0}, red_check={"passed": 1, "failed": 1}, **fields)
     return wt
-
-
-def step_done(repo, message="Added sub() to app.py.\nTests: 2 passed, 0 failed.", agent_type="rehorse:rehorse-step"):
-    payload = dict(hook_input("subagentstop_step"), cwd=str(repo), agent_type=agent_type, last_assistant_message=message)
-    return hook_out(run_script("progress", ["--step-done"], stdin=payload, cwd=str(repo)))
 
 
 def progress_md(repo):
@@ -98,102 +92,3 @@ def test_add_appends_steps_for_a_split(repo):
     assert [p["title"] for p in task_state(repo)["plan"]] == ["A", "A part 2", "A part 3"]
 
 
-# ---- --step-done (SubagentStop) -------------------------------------------------
-
-def test_other_agents_and_other_phases_are_ignored(repo):
-    plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None}])
-    assert step_done(repo, agent_type="general-purpose") is None
-    assert step_done(repo, agent_type="") is None  # the compact summarizer
-    assert task_state(repo)["plan"][0]["done"] is False
-    for phase in ["spec", "verify", "report"]:
-        s = state.load(str(repo))
-        s["tasks"]["t-1"]["phase"] = phase
-        state.save(str(repo), s)
-        assert step_done(repo) is None, phase
-
-
-def test_step_with_untested_edits_is_blocked_with_the_test_command(repo):
-    wt = plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None}], edit_seq=3,
-                   last_test_run={"passed": 1, "failed": 0, "after_edit_seq": 2})
-    out = step_done(repo)
-    assert out["decision"] == "block" and "cd %s && python3 -m pytest -q" % wt in out["reason"]
-    assert task_state(repo)["stop_blocks"] == 1 and task_state(repo)["plan"][0]["done"] is False
-
-
-def test_step_with_a_dirty_worktree_is_blocked_with_the_exact_commit_command(repo):
-    wt = plan_task(repo, plan=[{"title": "Add sub()", "done": False, "summary": None, "commit": None}], edit_seq=1,
-                   last_test_run={"passed": 1, "failed": 0, "after_edit_seq": 1})
-    (repo / ".rehorse" / "worktrees" / "t-1" / "app.py").write_text("def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n")
-    out = step_done(repo)
-    assert out["decision"] == "block"
-    assert 'cd %s && git add -A && git commit -m "step 1: Add sub()"' % wt in out["reason"]
-    assert "app.py" in out["reason"]
-    assert task_state(repo)["plan"][0]["done"] is False
-
-
-def test_committed_and_tested_step_is_marked_done_with_summary_and_commit(repo):
-    wt = plan_task(repo, plan=[{"title": "Add sub()", "done": False, "summary": None, "commit": None},
-                               {"title": "B", "done": False, "summary": None, "commit": None}], edit_seq=1,
-                   last_test_run={"passed": 1, "failed": 0, "after_edit_seq": 1}, stop_blocks=2)
-    sha = commit_in(wt, "app.py", "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n", "step 1")
-    assert step_done(repo, "Added sub() to app.py.\nTests: 2 passed, 0 failed.\n\nextra prose the orchestrator never sees") is None
-    t = task_state(repo)
-    assert t["plan"][0] == {"title": "Add sub()", "done": True, "summary": "Added sub() to app.py.\nTests: 2 passed, 0 failed.", "commit": sha[:7]}
-    assert t["step"] == 1 and t["stop_blocks"] == 0
-    assert "- [x] 1. Add sub()" in progress_md(repo) and "- [ ] 2. B" in progress_md(repo)
-
-
-def test_step_done_after_the_last_step_leaves_the_pointer_at_the_end(repo):
-    wt = plan_task(repo, plan=[{"title": "A", "done": True, "summary": "x", "commit": "c"}], step=1, edit_seq=0)
-    assert step_done(repo) is None
-    assert task_state(repo)["step"] == 1
-
-
-def test_eighth_consecutive_block_moves_the_task_to_needs_attention(repo):
-    wt = plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None}], edit_seq=2, stop_blocks=7,
-                   last_test_run={"passed": 1, "failed": 0, "after_edit_seq": 1})
-    out = step_done(repo)
-    assert (out or {}).get("decision") != "block" and "needs-attention" in out["systemMessage"]
-    assert task_state(repo)["phase"] == "needs-attention"
-
-
-def test_tests_phase_agent_must_commit_but_no_plan_step_is_touched(repo):
-    wt = plan_task(repo, "tests", edit_seq=1, last_test_run={"passed": 1, "failed": 1, "after_edit_seq": 1})
-    (repo / ".rehorse" / "worktrees" / "t-1" / "tests" / "test_sub.py").write_text("def test_sub(): assert 0\n")
-    out = step_done(repo)
-    assert out["decision"] == "block" and 'git commit -m "tests: ' in out["reason"]
-    commit_in(wt, "tests/test_sub.py", "def test_sub(): assert 0\n", "tests: sub")
-    assert step_done(repo) is None
-    assert task_state(repo)["plan"] == [] and task_state(repo)["step"] == 0
-
-
-def test_setup_phase_next_action_and_step_done_require_a_commit_but_no_test_run(repo):
-    wt = plan_task(repo, "setup", test_cmd=None, edit_seq=3)
-    s = state.load(str(repo))
-    assert "harness" in progress.next_action(s["tasks"]["t-1"]) and "testcmd.py set" in progress.next_action(s["tasks"]["t-1"])
-    (repo / ".rehorse" / "worktrees" / "t-1" / "tests" / "test_harness.py").write_text("def test_smoke(): pass\n")
-    out = step_done(repo, "Added a pytest harness.\nRun: python3 -m pytest -q")
-    assert out["decision"] == "block" and 'git commit -m "setup: test harness for t-1"' in out["reason"]
-    commit_in(wt, "tests/test_harness.py", "def test_smoke(): pass\n", "setup: test harness for t-1")
-    assert step_done(repo, "Added a pytest harness.\nRun: python3 -m pytest -q") is None  # no test_cmd yet: no run required
-
-
-def test_verifier_stop_is_never_a_step_done(repo):
-    """The verifier fires the same SubagentStop event; its stop must not close a plan step (verify.py --verdict handles it)."""
-    plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None}])
-    for agent in ["rehorse:rehorse-verifier", "rehorse-verifier"]:
-        assert step_done(repo, agent_type=agent) is None
-    t = task_state(repo)
-    assert t["plan"][0]["done"] is False and t["step"] == 0 and t["stop_blocks"] == 0
-
-
-def test_contradicts_spec_line_in_a_step_summary_sets_needs_attention_instead_of_continuing(repo):
-    wt = plan_task(repo, plan=[{"title": "Fix (verifier round 1): reject strings", "done": False, "summary": None, "commit": None}],
-                   edit_seq=1, last_test_run={"passed": 3, "failed": 1, "after_edit_seq": 1, "output": ""})
-    line = "CONTRADICTS SPEC: tests/test_rehorse_verify_t-1.py::test_strings expects TypeError, acceptance criterion 2 says ValueError"
-    out = step_done(repo, "I could not make this pass without breaking the spec.\n" + line)
-    assert out and "decision" not in out and "needs-attention" in out["systemMessage"] and "TypeError" in out["systemMessage"]
-    t = task_state(repo)
-    assert t["phase"] == "needs-attention" and t["attention"] == {"reason": line, "prior_phase": "implement"}
-    assert t["plan"][0]["done"] is False and t["step"] == 0
-    assert line in progress_md(repo)

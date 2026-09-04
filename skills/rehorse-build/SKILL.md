@@ -75,13 +75,16 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    Write failing tests for every acceptance criterion, in test files only (implementation files are locked in this
    phase). Run: cd <worktree> && <test_cmd>   (failures are expected; that is the point).
    Commit: cd <worktree> && git add -A && git commit -m "tests: red for <id>"
-   Reply with exactly two lines: (1) which tests you added and where, (2) what fails and why.
+   Reply with two lines, (1) which tests you added and where, (2) what fails and why, then a ```json block
+   {"coverage": [{"criterion": "<criterion or its number>", "ref": "<test file>::<test name>"}]} with one entry per
+   acceptance criterion in REHORSE_SPEC.md. The hook records it and refuses the stop while a criterion has no test.
    ```
 
 2. Run `cd <worktree> && <test_cmd>` yourself; the hook records `red_check`. **At least one test must fail.** If nothing
    fails, the tests do not test the feature: spawn the subagent again saying which criteria are untested.
 3. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/state.py advance implement` (it refuses, and says why, until a red run with a
-   failure, or a failed build, is recorded).
+   failure, or a failed build, is recorded and every acceptance criterion maps to a new test; if it names uncovered
+   criteria, spawn the tests subagent again with that list).
 
 ## 3. implement (every step delegated)
 
