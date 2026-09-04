@@ -232,17 +232,9 @@ and the session transcripts. Allowed hooks print nothing and leave no log line (
   report its output, and do nothing else.`; the model ran it once and quoted
   `{"merged": ..., "into": "main", "sha": "e8f9a21...", "report": "rehorse-reports/2026-09-03-add-sub-function.md"}`.
   `main` is now the four commits above, fast-forwarded; worktree and branch gone; `~/.rehorse/` empty (grant consumed).
-- **Run 2a, two-step task with `--max-turns 30`**: finished the whole rehearsal in 14 turns (red `2 passed, 6 failed`;
-  step 1 `5 passed, 3 failed`; step 2 `8 passed, 0 failed`), so the cap did not cut it mid-implement. Report and
-  PROGRESS.md rendered as designed (banner `GREEN: 8 passed, 0 failed · unverified`, drift `none ... (4a3f4d8)`, both
-  steps `[x]` with the agents' two-line summaries and commit shas 3f68091 / 8d5b2cb).
-- **Run 2b, forced `/compact --resume`**: `.rehorse/handoff.json` written (`"phase": "report", "step": 2, "trigger":
-  "manual", "next_action": "done; the user decides ..."`), then `Hook SessionStart:compact ... REHORSE: active task
-  t-20260903-add-sub-and-mul, phase report, step 2/2, last tests 8 passed, 0 failed. Read rehorse-reports/PROGRESS.md
-  before acting.` **Run 2c** (resume of that session) and **Run 2d** (fresh session, `/rehorse:build` with no text) both
-  read PROGRESS.md, reported the task as finished with the merge/discard commands, and started no new task. Compaction
-  and resume are proven, but in the `report` phase, not mid-implement; `tests/e2e_live.sh` run 2 now drives the task to
-  `implement` with a two-step plan first and cuts with `--max-turns 3`, to be rerun with milestone 5's live check.
+- **Run 2 (first attempt), two-step task with `--max-turns 30`**: finished the whole rehearsal in 14 turns, so the cap
+  never cut it; compaction and resume were proven only in the `report` phase. The script was changed to drive the task
+  to `implement` with a two-step plan first (hook JSON piped through the scripts) and cut with `--max-turns 3`.
 - **Confirmed**: the orchestrator passed `subagent_type: "rehorse:rehorse-step"` (4 Agent calls in the live1 transcripts),
   SubagentStop carried `agent_type: "rehorse:rehorse-step"`, and every step was marked done by `progress.py --step-done`
   (no block was needed: each agent ran the tests and committed before stopping).
@@ -255,3 +247,27 @@ and the session transcripts. Allowed hooks print nothing and leave no log line (
   `touch`/`mkdir` stay allowed. 18 tests added before the fix (`test_file_writes_from_bash_are_denied_...`).
 - Debug logs are appended across invocations: the user ran the script twice, so `run2*.log` also hold lines from an
   earlier task (`...-to-app`, phase tests); only the later timestamps were used above.
+
+### Second live run, after the Bash-write rule (Claude Code 2.1.260, `tests/e2e_live.sh`, fresh `/tmp/rehorse-e2e`, 2026-09-03)
+
+Six sessions again, all exit 0 and empty stderr except run 2a, whose `is_error: true` is the intended `--max-turns` cut.
+
+- **The Bash-write rule works and the agents adapt.** Run 1 logged three denials, one per phase: the orchestrator's
+  `cat > REHORSE_SPEC.md` in spec, the tests-phase agent's write to `tests/test_sub.py`, the implement agent's write to
+  `app.py`, each answered `REHORSE: writing files from the shell bypasses the phase lock; use the Edit or Write tool on
+  <path> instead (redirects to /dev/null or outside the repo are fine).` After each denial the same agent used Write or
+  Edit (subagent transcripts: 1 Write, 1 Edit in live1; 2 Edit in live2), so `edit_seq` finally moved: hook lines read
+  `recorded test run: 2 passed, 0 failed (edit_seq 1)`, `3 passed, 5 failed (edit_seq 2)`, `8 passed, 0 failed (edit_seq 3)`.
+  Full build: 15 turns, 123 s, green, nothing merged. Run 1b: user-typed `/rehorse:merge` minted the grant, `merge.py`
+  fast-forwarded `main` to `b5cd8ce rehorse: report` / `2614ca0 step 1` / `ec3fe7d tests: red` / `b59e534 init`.
+- **Compaction mid-implement, proven.** Run 2a started at `phase implement, step 1/2` (SessionStart line), ran step 1
+  (`recorded test run: 3 passed, 1 failed (edit_seq 1)`, step marked done, commit 473ec86) and was cut by `--max-turns 3`
+  with step 2 open. `/compact --resume` then wrote `handoff.json` with `"phase": "implement", "step": 1, "plan": [done,
+  not done], "next_action": "run step 2 (add mul(a, b) to app.py) as a rehorse-step subagent."` and the compact-source
+  SessionStart injected `REHORSE: active task t-20260903-add-sub-and-mul, phase implement, step 2/2, last tests 3 passed,
+  1 failed. Read rehorse-reports/PROGRESS.md before acting.` Run 2c (the compacted session) reported "task was in the
+  implement phase at step 2 of 2", spawned a fresh rehorse-step agent, which was denied a shell write, used Edit,
+  ran the tests (`4 passed, 0 failed (edit_seq 2)`), committed 4e6fceb, and the orchestrator advanced to verify and
+  rendered the report (drift `none`, banner `GREEN: 4 passed, 0 failed · unverified`). Run 2d (fresh session,
+  `/rehorse:build` with no text) read `phase report` and started nothing. No SubagentStop block was needed in either run:
+  every agent tested and committed before stopping.
