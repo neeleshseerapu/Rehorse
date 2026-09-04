@@ -64,7 +64,8 @@ def test_committed_and_tested_step_is_marked_done_with_summary_and_commit(repo):
     sha = commit_in(wt, "app.py", "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n", "step 1")
     assert step_done(repo, "Added sub() to app.py.\nTests: 2 passed, 0 failed.\n\nextra prose the orchestrator never sees") is None
     t = task_state(repo)
-    assert t["plan"][0] == {"title": "Add sub()", "done": True, "summary": "Added sub() to app.py.\nTests: 2 passed, 0 failed.", "commit": sha[:7]}
+    assert t["plan"][0] == {"title": "Add sub()", "done": True, "summary": "Added sub() to app.py.\nTests: 2 passed, 0 failed.", "commit": sha[:7],
+                            "satisfied_by": None}
     assert t["step"] == 1 and t["stop_blocks"] == 0
     assert "- [x] 1. Add sub()" in progress_md(repo) and "- [ ] 2. B" in progress_md(repo)
 
@@ -175,3 +176,18 @@ def test_hooks_json_routes_step_stops_to_step_done():
     hooks = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks", "hooks.json")))["hooks"]
     entries = {h["hooks"][0]["args"][0].rsplit("/", 1)[-1]: h.get("matcher") for h in hooks["SubagentStop"]}
     assert entries == {"step_done.py": "^rehorse:rehorse-step$", "verify.py": "^rehorse:rehorse-verifier$"}
+
+
+# ---- a step closed with no edits is "already satisfied", not completed work ---------------------------------------------
+
+def test_step_closed_on_an_unchanged_head_is_marked_satisfied_by_the_step_that_did_the_work(repo):
+    wt = plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None},
+                               {"title": "B", "done": False, "summary": None, "commit": None}], edit_seq=1,
+                   last_test_run={"passed": 2, "failed": 0, "after_edit_seq": 1, "output": ""})
+    sha = commit_in(wt, "app.py", "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n", "step 1: A")[:7]
+    assert step_done(repo, "Added sub().\nGreen.") is None
+    assert step_done(repo, "No edits: sub() from step 1 already covers it.\nGreen.") is None
+    plan = task_state(repo)["plan"]
+    assert plan[0]["commit"] == sha and plan[0].get("satisfied_by") is None
+    assert plan[1]["done"] and plan[1]["commit"] == sha and plan[1]["satisfied_by"] == 1
+    assert "2. B — already satisfied by step 1" in progress_md(repo)

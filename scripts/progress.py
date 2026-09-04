@@ -54,7 +54,8 @@ def section(root, task):
     lines.append("- Tests: `%s`; baseline %s; red %s; last %s" % (task["test_cmd"], counts(task["baseline"]), counts(task["red_check"]), counts(task["last_test_run"])))
     lines += ["- Plan:"] if plan else []
     for n, p in enumerate(plan, 1):
-        done = " — %s (commit %s)" % (" ".join((p["summary"] or "").splitlines()), p["commit"]) if p["done"] else ""
+        done = ("" if not p["done"] else " — already satisfied by step %d (no edits; commit %s)" % (p["satisfied_by"], p["commit"])
+                if p.get("satisfied_by") else " — %s (commit %s)" % (" ".join((p["summary"] or "").splitlines()), p["commit"]))
         lines.append("  - [%s] %d. %s%s" % ("x" if p["done"] else " ", n, p["title"], done))
     for v in (task.get("verify_history") or []) + [task["verifier"]] * bool(task.get("verifier")):
         lines.append("- Verifier: round %d %s (%d finding(s); its run %s)" % (v["round"], v["verdict"].upper(), len(v["findings"]), counts(v.get("tests"))))

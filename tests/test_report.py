@@ -235,3 +235,12 @@ def test_many_tests_added_are_counted_not_listed(repo):
     s["tasks"]["t-1"]["verifier"]["tests_added"] = ids[:2]
     state.save(str(repo), s)
     assert "Tests added: tests/test_rehorse_verify_t-1.py::test_0, tests/test_rehorse_verify_t-1.py::test_1" in render(repo)
+
+
+def test_a_step_with_no_edits_renders_as_already_satisfied_not_as_work(repo):
+    verified_task(repo, plan=[{"title": "Add sub()", "done": True, "summary": "Added sub().\nGreen.", "commit": "abc"},
+                              {"title": "Make the verifier's tests pass", "done": True, "summary": "No edits: nothing to do.\nGreen.",
+                               "commit": "abc", "satisfied_by": 1}], step=2)
+    text = render(repo)
+    assert "- [x] 2. Make the verifier's tests pass — already satisfied by step 1 (no edits)" in text
+    assert "No edits: nothing to do." not in text

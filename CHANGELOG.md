@@ -17,3 +17,4 @@ All notable changes to Rehorse are recorded here. Format: [Keep a Changelog](htt
 - A failing verdict, or a failing verifier test, sends the task back to implementation with the findings as new plan steps, at most twice; a third failure stops the task for you with the findings. A step that finds a test contradicting the spec (`CONTRADICTS SPEC:`) stops the task instead of working around it.
 - While the verifier runs, Read, Grep and Glob outside its brief and the worktree are denied, so it never sees the implementer's summaries or earlier reports.
 - The tests phase cannot end until every acceptance criterion in the spec is mapped to a test in a new test file; the mapping comes from the tests subagent's reply and is checked against the files.
+- A plan step that needed no edits is reported as already satisfied by the step that did the work.

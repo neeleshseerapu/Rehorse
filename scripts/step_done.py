@@ -4,7 +4,8 @@
 In order: a reply line starting `CONTRADICTS SPEC:` -> needs-attention (the user decides); edits newer than the last test
 run -> block, naming the command; uncommitted worktree -> block, naming the commit; in the tests phase, no coverage block
 or an acceptance criterion with no new test -> block, naming them (the mapping is recorded as task["coverage"]); else the
-plan step is marked done with the reply's first two lines and the commit. The 8th consecutive block -> needs-attention.
+plan step is marked done with the reply's first two lines and the commit; when HEAD did not move since an earlier step,
+the step is recorded as satisfied_by that step (no edits) rather than as work. The 8th consecutive block -> needs-attention.
 """
 import json
 import sys
@@ -54,7 +55,9 @@ def main():
                                     "the test command, commit, and stop again with the updated coverage block." % "; ".join(un), "step-done")
     task["stop_blocks"] = 0
     if title:
-        plan[i].update(done=True, summary="\n".join(said[:2]), commit=worktree.git(wt, "rev-parse", "HEAD").strip()[:7])
+        head = worktree.git(wt, "rev-parse", "HEAD").strip()[:7]
+        by = next((n for n, p in enumerate(plan[:i], 1) if p["done"] and p["commit"] == head and not p.get("satisfied_by")), None)
+        plan[i].update(done=True, summary="\n".join(said[:2]), commit=head, satisfied_by=by)
         task["step"] = i + 1
     state.save(root, s)
     progress.render(root, s)

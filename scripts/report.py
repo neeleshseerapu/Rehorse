@@ -110,8 +110,9 @@ def render(root, task, name):
         drift_text = "**DRIFT**: test files changed after the tests phase: " + ", ".join(d)
     else:
         drift_text = "none: test files unchanged since the tests phase (`%s`)." % task["tests_sha"][:7]
-    plan = ["- [%s] %d. %s%s" % ("x" if p["done"] else " ", n, p["title"],
-                                 " — " + " ".join((p["summary"] or "").splitlines()) if p["done"] else "")
+    plan = ["- [%s] %d. %s%s" % ("x" if p["done"] else " ", n, p["title"], "" if not p["done"] else
+                                 " — already satisfied by step %d (no edits)" % p["satisfied_by"] if p.get("satisfied_by") else
+                                 " — " + " ".join((p["summary"] or "").splitlines()))
             for n, p in enumerate(task["plan"], 1)] or ["(no plan recorded)"]
     lines = [
         "# Rehearsal report: %s" % (worktree.spec_goal(wt) or tid), "",

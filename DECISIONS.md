@@ -483,3 +483,7 @@ and report.
   a real task. The SubagentStop hook for step agents moved from `progress.py --step-done` to `step_done.py`, matched on
   `^rehorse:rehorse-step$`, because the rule pushed `progress.py` past 150 lines and the hook and the renderer are two
   jobs; `task_id` moved to `worktree.py` for the same reason on `state.py`.
+- **A step closed with no edits is "already satisfied"**. `step_done.py` compares HEAD with earlier steps' commits; when an
+  earlier step's commit is HEAD, the step is recorded with `satisfied_by: <that step>` and PROGRESS.md and the report render
+  `already satisfied by step N (no edits)` instead of the reply's summary. The live run showed the case: the round-trip
+  appends both a `Fix ...` step and a `Make the verifier's tests pass` step, and the fix usually settles both.
