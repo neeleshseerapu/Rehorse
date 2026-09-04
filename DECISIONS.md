@@ -419,3 +419,27 @@ not used on an accepted stop); SubagentStop `matcher` filters on `agent_type`, i
   this rule, and the third verifier failure.
 - `progress.goal` moved to `worktree.spec_goal` (worktree.py has no line cap) to keep `progress.py` under 150 lines with
   the new rule; `state.py` gained the transition and its archive step at 150 lines exactly.
+
+### Live check (Claude Code 2.1.260, `tests/e2e_live.sh <dir> 3`, 2026-09-04)
+
+Run 3 drives a toy repo to `verify` without a model: the spec says `divide(1, 0)` raises `ValueError("division by
+zero")`, the tests-phase test covers only `divide(6, 3) == 2`, and the implementation is a bare `return a / b`. One
+`claude -p '/rehorse:build'` session then has to run the verifier, go back to implement on its findings, verify again
+and report.
+
+- **First attempt: the verifier caught it, the hook never ran.** The orchestrator resumed at `verify`, ran `verify.py
+  brief`, spawned `rehorse:rehorse-verifier` with the printed prompt. The verifier's shell write was denied by the
+  Bash-write rule, it used Write, added ten tests in `tests/test_rehorse_verify_<id>.py` (six fail: `ZeroDivisionError`
+  instead of `ValueError`, message, float and negative zero), ran the suite (`PostToolUseFailure ... recorded test run: 8
+  passed, 6 failed (edit_seq 2)`), committed `verify: round 1 tests for <id>`, and ended with a well-formed `fail` verdict
+  mapping both criteria to its tests. State stayed `verifier: null`; the orchestrator ran it a second time, same result,
+  then stopped and explained (correctly) that the hook had not fired and that it may not copy a verdict. Cause: the
+  SubagentStop entry used `"matcher": "rehorse-verifier"`; the docs' matcher table says a string of only letters, digits,
+  `-` and `_` is compared as an **exact string**, and a plugin agent's `agent_type` is the scoped `rehorse:rehorse-verifier`
+  (the debug log shows one hook-output line per verifier stop, the silent step hook, not two). The docs even say the colon
+  puts a scoped name on the regex path and to anchor it. Fixed to `^rehorse:rehorse-verifier$`; the `hooks.json` test now
+  asserts the matcher is a regex that matches the scoped verifier type and not the step type. Replaying the verifier's real
+  final message through `verify.py --verdict` recorded `FAIL, 2 findings; its run 8 passed, 6 failed` and returned the
+  task to implement with `Fix (verifier round 1): ...` and `Make the verifier's tests pass: ...` steps, so the script was
+  right and the wiring was wrong. This is what the live check is for: the summary of the docs I had read showed the
+  anchored example, and I chose a looser string that landed on the exact-match path.
