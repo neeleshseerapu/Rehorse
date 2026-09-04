@@ -146,7 +146,7 @@ System prompt principles: you are adversarial; you have not seen how this was bu
 
 ### Report format
 
-Markdown, one screen. Order: verdict banner (a task in `needs-attention` renders that, with its reason, as the banner instead of a verdict) → tests (baseline / red / green) → diff stat → verifier findings → test-file drift → merge and discard commands. Recruiters and users both read this; make it the best artifact in the project.
+Markdown, one screen. Order: verdict banner (a task in `needs-attention` renders that, with its reason, as the banner instead of a verdict) → optional **Summary**, the orchestrator's own words passed as `report.py --summary "..."` and labelled as written by the model, since everything else is generated from state (what the user gets on merge, what was verified, what was not) → tests (baseline / red / green) → diff stat → verifier findings → test-file drift → plan → **Try it yourself** (the worktree path, `cd` into it, the exact test command, and how to run the project when detectable: package.json `dev`/`start`, Makefile `run`, `build.sh`, `cargo run`, `go run .`, `swift run`, or the README's run line; otherwise say so and show the path) → merge and discard commands. Recruiters and users both read this; make it the best artifact in the project.
 
 ## Eval
 

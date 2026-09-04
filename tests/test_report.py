@@ -117,3 +117,31 @@ def test_report_warns_about_weak_tests_only_when_there_are_some(repo):
     s["tasks"]["t-1"]["weak_tests"] = 0
     state.save(str(repo), s)
     assert "passed before implementation" not in render(repo)
+
+
+def test_report_has_a_try_it_yourself_section_between_changes_and_next(repo):
+    wt = verified_task(repo)
+    (repo / ".rehorse" / "worktrees" / "t-1" / "Makefile").write_text("run:\n\tpython3 app.py\n")
+    text = render(repo)
+    i = text.index("## Try it yourself")
+    assert text.index("## Changes") < i < text.index("## Next")
+    section = text[i:text.index("## Next")]
+    assert "cd %s" % wt in section and "python3 -m pytest -q" in section and "make run" in section
+
+
+def test_try_it_yourself_says_so_when_no_run_command_is_detectable(repo):
+    wt = verified_task(repo)
+    section = render(repo).split("## Try it yourself")[1].split("## Next")[0]
+    assert "cd %s" % wt in section and "no run command detected" in section
+
+
+def test_summary_is_optional_and_labelled_as_written_by_the_model(repo):
+    verified_task(repo)
+    assert "## Summary" not in render(repo)
+    r = run_script("report", ["--summary", "On merge you get sub(). Verified: tests. Not verified: edge cases."], cwd=str(repo))
+    assert r.returncode == 0, r.stderr
+    text = open(r.stdout.strip()).read()
+    i = text.index("## Summary")
+    assert "written by the model" in text[i:i + 200].lower() and "On merge you get sub()." in text
+    assert text.index("## Summary") < text.index("## Tests")
+    assert task_state(repo)["summary"].startswith("On merge")

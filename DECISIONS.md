@@ -335,3 +335,11 @@ and the only part not generated from state.
   and `swift_tests_red.txt`. Swift joined the runners (`Package.swift` -> `swift test`, XCTest `Executed N tests, with
   M failures`), since a Swift project is what surfaced this; `Tests/` is now a test dir, matched by exact name because
   macOS's case-insensitive filesystem made `isdir("Tests")` true whenever `tests/` existed.
+- **"Try it yourself" and a labelled Summary.** The report now ends its evidence with the worktree path, `cd` into it,
+  the exact test command, and how to run the project when `testcmd.run_cmd()` can tell (package.json `dev`/`start`,
+  Makefile `run`, `build.sh`, `cargo run`, `go run .`, `swift run`, or the first run-looking line in a README code
+  block; otherwise it says so and shows the path), because Milo's report told the user what changed but not where to
+  go and what to type to see it. The orchestrator may pass `report.py --summary "..."`; it renders right after the
+  banner under a line saying it was written by the model at report time. Milo's most useful paragraphs ("The UI was
+  type-checked and built, not clicked") were exactly this kind of text, and they were indistinguishable from the
+  generated parts; now the reader knows which sentences came from state and which from the model.

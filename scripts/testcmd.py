@@ -143,6 +143,35 @@ def affected_tests(root, changed_files, test_dirs):
     return sorted(hits)
 
 
+RUN_LINE_RE = re.compile(r"^\$?\s*((?:npm|yarn|pnpm|npx|bun|node|python3?|uv|make|cargo|go|swift|dotnet|java|\./)\S*\b.*)$")
+
+
+def run_cmd(root):
+    """How a person runs the project, for the report's 'Try it yourself' section. None when nothing is detectable."""
+    pkg = os.path.join(root, "package.json")
+    if os.path.exists(pkg):
+        scripts = json.load(open(pkg)).get("scripts") or {}
+        if "dev" in scripts:
+            return "npm run dev"
+        if "start" in scripts:
+            return "npm start"
+    mk = os.path.join(root, "Makefile")
+    if os.path.exists(mk) and re.search(r"^run\s*:", open(mk, errors="ignore").read(), re.M):
+        return "make run"
+    for name, cmd in (("build.sh", "./build.sh"), ("Cargo.toml", "cargo run"), ("go.mod", "go run ."), ("Package.swift", "swift run")):
+        if os.path.exists(os.path.join(root, name)):
+            return cmd
+    for readme in ("README.md", "README.rst", "README"):
+        if os.path.exists(os.path.join(root, readme)):
+            fenced = False
+            for line in open(os.path.join(root, readme), errors="ignore"):
+                fenced = not fenced if line.startswith("```") else fenced
+                m = fenced and RUN_LINE_RE.match(line.strip())
+                if m and not re.search(r"\b(install|test|lint|build|add|upgrade)\b", line):
+                    return m.group(1)
+    return None
+
+
 def main(argv):
     if argv[:1] == ["detect"]:
         json.dump(detect(os.getcwd()), sys.stdout)

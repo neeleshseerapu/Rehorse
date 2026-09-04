@@ -58,6 +58,24 @@ def test_detect_nothing_returns_none(tmp_path):
     assert testcmd.detect(str(tmp_path)) is None
 
 
+@pytest.mark.parametrize("files,expected", [
+    ({"package.json": '{"scripts": {"dev": "vite", "test": "vitest"}}'}, "npm run dev"),
+    ({"package.json": '{"scripts": {"start": "node server.js"}}'}, "npm start"),
+    ({"Makefile": "test:\n\tpytest\n\nrun:\n\tpython3 app.py\n"}, "make run"),
+    ({"build.sh": "#!/bin/sh\n"}, "./build.sh"),
+    ({"Cargo.toml": "[package]\n"}, "cargo run"),
+    ({"go.mod": "module x\n"}, "go run ."),
+    ({"Package.swift": "// swift\n"}, "swift run"),
+    ({"README.md": "# App\n\nInstall it, then:\n\n```\npip install -e .\npython3 -m milo --help\n```\n"}, "python3 -m milo --help"),
+    ({"README.md": "# App\n\nno instructions\n"}, None),
+    ({}, None),
+])
+def test_run_cmd_detects_how_to_run_the_project(tmp_path, files, expected):
+    for name, content in files.items():
+        (tmp_path / name).write_text(content)
+    assert testcmd.run_cmd(str(tmp_path)) == expected
+
+
 # ---- is this Bash command a test run? --------------------------------------
 
 def test_is_test_command_matches_real_spike_commands():

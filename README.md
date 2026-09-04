@@ -70,7 +70,9 @@ none: test files unchanged since the tests phase.
 /rehorse:discard t-20260903-add-sub-function    drop the worktree and the branch
 ```
 
-Read it, then decide:
+Below the numbers the report has a "Try it yourself" section with the worktree path, the test command and, when
+detectable, how to run the project, and an optional summary in the model's own words, labelled as such. Read it, then
+decide:
 
 ```
 /rehorse:merge      # fast-forward (or merge) the rehearsal into your current branch, remove the worktree

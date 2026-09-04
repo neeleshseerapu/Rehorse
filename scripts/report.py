@@ -5,7 +5,7 @@
 Runs after verify (advances verify -> report itself) or on a task in needs-attention (renders the reason as the banner,
 phase unchanged). Writes the report and PROGRESS.md in the main checkout, where the user looks, then commits copies of
 both on the rehearsal branch so /rehorse:merge carries the evidence into the real branch. Prints the report path.
-CLI: report.py [--task ID]
+CLI: report.py [--task ID] [--summary "<text>"]   (the summary is the orchestrator's own words; it is labelled as such)
 """
 import os
 import re
@@ -83,6 +83,9 @@ def render(root, task):
         "## Verifier", "", "not run (the verifier arrives in milestone 5).", "",
         "## Test-file drift", "", drift_text, "",
         "## Plan", "", *plan, "",
+        "## Try it yourself", "", "```", "cd %s" % wt, task["test_cmd"] or "# no test command recorded",
+        (testcmd.run_cmd(wt) if os.path.isdir(wt) else None) or "# no run command detected (no package.json dev/start, Makefile run target, build.sh, cargo/go/swift project, or README run line)",
+        "```", "",
         "## Next", "", "```",
         "/rehorse:merge %s      merge %s into your branch and remove the worktree" % (tid, task["branch"]),
         "/rehorse:discard %s    drop the worktree and the branch" % tid, "```", "",
@@ -111,6 +114,8 @@ def main(argv):
         task = s["tasks"].get(argv[argv.index("--task") + 1])
     if not task:
         sys.exit("report.py: no active task")
+    if "--summary" in argv:
+        task["summary"] = argv[argv.index("--summary") + 1].strip()
     if task["phase"] == "verify":
         state.advance(s, task["id"], "report")
     elif task["phase"] not in ("report", state.ATTENTION):

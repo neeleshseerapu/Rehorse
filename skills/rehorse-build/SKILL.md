@@ -113,7 +113,11 @@ The independent verifier is not wired yet (it arrives with milestone 5). Go stra
 
 ## 5. report, then stop
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/report.py`. It moves the task to `report`, writes
-`rehorse-reports/<date>-<slug>.md`, refreshes PROGRESS.md, and commits copies of both on the rehearsal branch. Print the
-report to the user (`cat` the path it printed) and **end your turn**. Do not merge, do not run `git merge`, do not run
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/report.py --summary "<summary>"`. The summary is the one part of the report
+in your own words, and the report labels it as written by the model: three to five sentences on what the user gets on
+merge, what was verified (which tests, which behaviour) and what was not (anything only type-checked, built, or
+eyeballed), and anything they should know before merging. The script moves the task to `report`, writes
+`rehorse-reports/<date>-<slug>.md` (with a "Try it yourself" section: the worktree path, the test command and how to
+run the project), refreshes PROGRESS.md, and commits copies of both on the rehearsal branch. Print the report to the
+user (`cat` the path it printed) and **end your turn**. Do not merge, do not run `git merge`, do not run
 `merge.py`. The user decides with `/rehorse:merge <id>` or `/rehorse:discard <id>`.
