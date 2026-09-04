@@ -492,3 +492,20 @@ and report.
   `verifier_tests` and `verifier_files`; the merge skill reports them in one line, because those tests join the user's
   suite for good. The verifier's prompt now asks for the fewest tests that demonstrate each finding and none that restate a
   test in the diff (the live run added 25 tests for a two-criterion spec).
+
+## Milestone 6: eval harness (2026-09-04)
+
+Docs re-fetched before writing (CLI reference): `claude -p --output-format json` returns `session_id`, `num_turns`,
+`duration_ms`, `total_cost_usd`, `usage`, `is_error`, `result`; `--plugin-dir` loads a plugin for one session;
+`--bare` skips plugins and hooks, so the eval never passes it.
+
+- **`find_tasks.py` uses GraphQL `closedByPullRequestsReferences`**, not the REST timeline, because it returns the
+  linked PRs of an issue with `merged`, `changedFiles`, `files` and `mergeCommit` in one query (50 issues a page). A
+  candidate is a closed issue whose first merged PR touches 1-5 files, at least one a test path (`testcmd.is_test_path`)
+  and at least one not: a PR that only edits tests leaves nothing to implement. `base_sha` is the merge commit's first
+  parent, which is the base branch the moment before the fix landed for both true merges and squashes (`rich` uses both);
+  the PR's `baseRefOid` is the fallback, and can be months stale (`rich#3180`: baseRefOid `e76f3c3`, merge parent
+  `b32e42b`). Records are written in the `tasks.json` schema to `eval/candidates-<repo>.json` so picking ten is a
+  copy; the eval task id is `<repo>-<issue>`. Per-repo `setup_cmd`/`test_cmd` defaults create the target's own venv
+  (`python3 -m venv .venv && .venv/bin/pip install -e . pytest`), so `testcmd.detect()` finds that interpreter and
+  never Rehorse's.
