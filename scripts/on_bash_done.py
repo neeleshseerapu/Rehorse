@@ -4,7 +4,8 @@
 A run counts only if the command runs the task's test runner (not --collect-only/--version/--help), it ran inside
 the task's worktree, and the output parses to the runner's own summary line (grep hits never do). A passing run
 arrives as PostToolUse (tool_response.stdout/stderr); a failing one as PostToolUseFailure (error). By phase:
-spec -> baseline (0 tests => needs-attention), tests -> red_check, always -> last_test_run.
+spec -> baseline (0 tests => needs-attention), tests -> red_check plus weak_tests (new tests that already pass, a
+warning, not a gate), always -> last_test_run.
 """
 import datetime
 import json
@@ -47,6 +48,12 @@ def main():
                    "then resume via /rehorse:status." % task["id"])
     elif task["phase"] == "tests":
         task["red_check"] = dict(counts)
+        base = task.get("baseline") or {"passed": 0, "failed": 0}
+        added = counts["passed"] + counts["failed"] - base["passed"] - base["failed"]
+        task["weak_tests"] = max(0, min(added, counts["passed"] - base["passed"]))
+        if task["weak_tests"]:
+            msg += (" WARNING: %d new test(s) passed before implementation and may not test anything; make them fail "
+                    "first or say why they cannot." % task["weak_tests"])
     state.save(root, s)
     return note(hook, msg)
 

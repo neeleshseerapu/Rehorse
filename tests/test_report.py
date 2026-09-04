@@ -100,3 +100,13 @@ def test_report_names_the_dependency_dirs_linked_into_the_worktree(repo):
     s["tasks"]["t-1"]["phase"] = "report"
     state.save(str(repo), s)
     assert "Worktree setup: nothing linked" in render(repo)
+
+
+def test_report_warns_about_weak_tests_only_when_there_are_some(repo):
+    verified_task(repo, weak_tests=1)
+    assert "1 new test(s) passed before implementation and may not test anything." in render(repo)
+    import state
+    s = state.load(str(repo))
+    s["tasks"]["t-1"]["weak_tests"] = 0
+    state.save(str(repo), s)
+    assert "passed before implementation" not in render(repo)

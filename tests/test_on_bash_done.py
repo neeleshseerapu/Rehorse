@@ -99,3 +99,29 @@ def test_zero_test_run_in_implement_is_recorded_but_changes_no_phase(repo):
     done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 5\n\nno tests ran in 0.00s")
     t = task_state(repo)
     assert t["last_test_run"]["passed"] == 0 and t["phase"] == "implement"
+
+
+# ---- weak-test flag: new tests that already pass before implementation ----------------------------------------
+
+def test_red_check_with_no_weak_tests_records_zero(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 2, "failed": 0})
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt)  # real fixture: 2 passed, 1 failed -> 1 added, 0 weak
+    assert "WARNING" not in context(out, "PostToolUseFailure")
+    t = task_state(repo)
+    assert t["red_check"] == {"passed": 2, "failed": 1} and t["weak_tests"] == 0
+
+
+def test_red_check_with_one_weak_test_records_it_and_warns_but_still_counts_as_red(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 2, "failed": 0})
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 1\n\n1 failed, 3 passed in 0.01s")
+    assert "1 new test(s) passed before implementation" in context(out, "PostToolUseFailure")
+    t = task_state(repo)
+    assert t["red_check"] == {"passed": 3, "failed": 1} and t["weak_tests"] == 1 and t["phase"] == "tests"
+
+
+def test_weak_tests_never_goes_negative_or_above_the_number_added(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 2, "failed": 0})
+    done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 2\n\n1 error in 0.01s")  # collection error
+    assert task_state(repo)["weak_tests"] == 0
+    done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 1\n\n1 failed, 4 passed in 0.01s")
+    assert task_state(repo)["weak_tests"] == 2

@@ -71,6 +71,8 @@ def render(root, task):
         "## Tests", "", "| stage | passed | failed |", "|---|---|---|", row("baseline", task["baseline"]),
         row("red (tests written, no implementation)", task["red_check"]), row("green (last run)", task["last_test_run"]), "",
         "Command: `%s`" % task["test_cmd"], "",
+        *(["**Warning:** %d new test(s) passed before implementation and may not test anything." % task["weak_tests"], ""]
+          if task.get("weak_tests") else []),
         "## Changes (base..HEAD)", "", "```", stat or "(no commits)", "```", "",
         "## Verifier", "", "not run (the verifier arrives in milestone 5).", "",
         "## Test-file drift", "", drift_text, "",

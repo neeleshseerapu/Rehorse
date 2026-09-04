@@ -282,3 +282,9 @@ Six sessions again, all exit 0 and empty stderr except run 2a, whose `is_error: 
   matches directories only, and a symlink is a file, so without that `worktree.dirty()` listed the links and the
   step-done refusal would have fired on them. Proven with `tests/fixtures/repo_with_venv/` plus a real venv: the
   worktree's `.venv/bin/python` reports the main checkout's venv as `sys.prefix`.
+- **Weak-test flag.** In `red_check`, `on_bash_done.py` computes tests added in the tests phase (red total minus
+  baseline total) and how many of those already pass (red passed minus baseline passed, clamped to 0..added), stores
+  `weak_tests: N`, and the report renders "N new test(s) passed before implementation and may not test anything."
+  The gate itself is unchanged (one failing test still advances), because a step that adds one real test and one
+  guard test (say, "add is unchanged") is legitimate; the warning tells the reader which reports to distrust. A
+  collection error (`1 error`, nothing else runs) clamps to 0 rather than going negative.
