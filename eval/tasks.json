@@ -1,0 +1,16 @@
+[
+  {
+    "id": "rich-2942",
+    "repo": "Textualize/rich",
+    "base_sha": "610fd75c433c3dfcd9c296e8b91363979127b9fa",
+    "issue_url": "https://github.com/Textualize/rich/issues/2942",
+    "issue_title": "[BUG] Style.clear_meta_and_links should reset hash",
+    "issue_body": "The hash of a `Style` instance depends on `_meta` and `_link`:\r\n\r\nhttps://github.com/Textualize/rich/blob/6d30ad0f30028210124c149811cbbe2b183711f9/rich/style.py#L432-L445\r\n\r\nSo, when the link and meta are cleared with the method `Style.clear_meta_and_links`, the cached hash should be cleared:\r\n\r\nhttps://github.com/Textualize/rich/blob/6d30ad0f30028210124c149811cbbe2b183711f9/rich/style.py#L664-L668",
+    "pr_url": "https://github.com/Textualize/rich/pull/2943",
+    "pr_test_files": [
+      "tests/test_style.py"
+    ],
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
+  }
+]

@@ -509,3 +509,20 @@ Docs re-fetched before writing (CLI reference): `claude -p --output-format json`
   copy; the eval task id is `<repo>-<issue>`. Per-repo `setup_cmd`/`test_cmd` defaults create the target's own venv
   (`python3 -m venv .venv && .venv/bin/pip install -e . pytest`), so `testcmd.detect()` finds that interpreter and
   never Rehorse's.
+- **`run_eval.py` grades in the rehearsal worktree with the PR's own test files**, fetched from `refs/pull/N/head` (so
+  `tasks.json` needs no merge-commit field beyond `pr_url`) and checked out whole, overwriting whatever Rehorse wrote in
+  the same files; `upstream_pass` is that run green with at least one test. The fetch runs inside the worktree because
+  `FETCH_HEAD` is per worktree (the first draft fetched in the clone and the checkout failed). A task that never made a
+  worktree is graded in the clone at `base_sha`, which fails, and the result says where it ran.
+- **Rehorse's own outcome is read from `.rehorse/state.json`**, never from the report's prose: `merged_green` is phase
+  `report` with a last run of 0 failed and >0 passed; the verdict and round count are the state's `verifier` and
+  `verify_round`. The report is copied to `eval/results/<id>.report.md` so it survives the work dir.
+- **Resumable by result files**: one `eval/results/<id>.json` per task, skipped on the next run unless `--rerun`;
+  `results.md` is re-rendered from all of them after every task; any exception in a task becomes its `error` column and
+  the loop continues. Clones and logs live in `/tmp/rehorse-eval/` (`--work`), outside this repo, because Claude Code
+  reads `CLAUDE.md` from parent directories and a clone under `eval/` would inherit Rehorse's own development
+  instructions. Runs pass `< /dev/null` (spike 1), `--dangerously-skip-permissions`, `--debug-file` for the hook lines,
+  `--max-turns 150` and a wall-clock timeout so a runaway session is a row, not a hang; never `--bare` (it drops plugins).
+- **The first task is `rich-2942`** (`Style.clear_meta_and_links` should reset the cached hash: one source file, one
+  test file, a precise issue body) so the harness is checked on the smallest possible rehearsal; the other nine are the
+  user's pick from `eval/candidates-rich.json`.
