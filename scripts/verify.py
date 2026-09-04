@@ -4,7 +4,9 @@ and for round 2+ the verifier's own earlier findings; never the implementer's tr
 prompt for the rehorse-verifier subagent, so what the verifier sees is decided here, not by the orchestrator.
 `verify.py --verdict` is the SubagentStop hook for that agent: it blocks the stop until the verifier ran the test command
 after its last edit, committed its test file, and ended its reply with the JSON verdict block; then it records the verdict
-in state. The orchestrator never copies a verdict by hand, so it cannot soften one.
+in state. The orchestrator never copies a verdict by hand, so it cannot soften one. A `fail` verdict, or a failing verifier
+test, sends the task back to implement with the findings appended as plan steps (the verifier's file is then locked like every
+test); the third failing round sets needs-attention instead. The report shows the round count and earlier rounds' findings.
 """
 import datetime
 import json
@@ -81,6 +83,16 @@ def parse(text):
             "tests_added": [str(t) for t in v.get("tests_added") or []]}
 
 
+def round_trip_steps(v, run, vfile, n):
+    """Plan steps for the implementer: one per high finding (every finding when the verdict is fail and none is high), one to
+    make the verifier's failing tests pass, and a generic step when a fail verdict came with nothing else."""
+    found = [f for f in v["findings"] if f["severity"] == "high"] or (v["findings"] if v["verdict"] == "fail" else [])
+    steps = ["Fix (verifier round %d): %s (%s:%s)" % (n, f["description"], f["file"], "?" if f["line"] is None else f["line"]) for f in found]
+    if run["failed"]:
+        steps.append("Make the verifier's tests pass: %s (%d failing)" % (vfile, run["failed"]))
+    return steps or ["Address the verifier's FAIL verdict from round %d (no findings listed: re-read REHORSE_SPEC.md against the diff)" % n]
+
+
 def verdict(hook):
     root, s, task = state.active(hook.get("cwd"))
     if not task or task["phase"] != "verify" or (hook.get("agent_type") or "").split(":")[-1] != AGENT:
@@ -98,12 +110,24 @@ def verdict(hook):
     if not v:
         return guard_stop.block(root, s, task, "no verdict found. End your reply with exactly one ```json block of this shape "
                                 "(verdict must be pass|concerns|fail): %s" % SHAPE, "verify")
-    task.update(verify_round=n, stop_blocks=0,
-                verifier=dict(v, round=n, tests=task["verify_run"], at=datetime.datetime.now().isoformat(timespec="seconds")))
+    run = task["verify_run"]
+    task.update(verify_round=n, stop_blocks=0, verifier=dict(v, round=n, tests=run, at=datetime.datetime.now().isoformat(timespec="seconds")))
+    msg = "REHORSE: verifier round %d: %s, %d finding(s); its run: %d passed, %d failed." % (n, v["verdict"].upper(), len(v["findings"]),
+                                                                                             run["passed"], run["failed"])
+    failing = v["verdict"] == "fail" or run["failed"] > 0
+    if failing and n >= MAX_ROUNDS:
+        why = "verifier failed %d rounds; round %d found: %s" % (n, n, "; ".join(f["description"] for f in v["findings"][:3]) or "its tests fail")
+        guard_stop.attention(root, s, task, why)  # prints the systemMessage; the verdict stays recorded for the report
+        progress.render(root, s)
+        return 0
+    if failing:
+        steps = round_trip_steps(v, run, testcmd.verify_file(task, wt), n)
+        state.advance(s, tid, "implement")  # archives the verdict into verify_history and clears verify_run
+        task["plan"] += [{"title": t, "done": False, "summary": None, "commit": None} for t in steps]
+        msg += " Back to implement with %d new step(s); round %d of %d follows once they are green." % (len(steps), n + 1, MAX_ROUNDS)
     state.save(root, s)
     progress.render(root, s)
-    json.dump({"systemMessage": "REHORSE: verifier round %d: %s, %d finding(s); its run: %d passed, %d failed." % (
-        n, v["verdict"].upper(), len(v["findings"]), task["verify_run"]["passed"], task["verify_run"]["failed"])}, sys.stdout)
+    json.dump({"systemMessage": msg}, sys.stdout)
     return 0
 
 

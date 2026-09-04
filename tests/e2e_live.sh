@@ -1,16 +1,20 @@
 #!/bin/bash
-# Live end-to-end check of Rehorse with real Claude Code sessions (milestone 4 acceptance).
+# Live end-to-end check of Rehorse with real Claude Code sessions (milestone 4 and 5 acceptance).
 #
-#   bash tests/e2e_live.sh [output-dir]      (default output dir: /tmp/rehorse-e2e)
+#   bash tests/e2e_live.sh [output-dir] [runs]      (defaults: /tmp/rehorse-e2e, "1 2 3")
 #
-# Needs `claude` on PATH. Creates two toy repos with their own venv + pytest and runs:
+# Needs `claude` on PATH. Creates toy repos with their own venv + pytest and runs:
 #   run1   full /rehorse:build in a fresh toy repo, then /rehorse:merge typed as the user (new session)
 #   run2   a build cut mid-implement by --max-turns, a forced /compact on that session, a resume of the
 #          compacted session, and a resume from a fresh session
-# Everything lands in the output dir: live1/ live2/ (toy repos), run*.log (Claude Code debug logs with every
+#   run3   verifier round-trip: a task driven to `verify` with a deliberately weak implementation (the spec's
+#          error branch is neither tested nor implemented), then one session that must run the verifier, go back to
+#          implement on its findings, verify again, and report
+# Everything lands in the output dir: live*/ (toy repos), run*.log (Claude Code debug logs with every
 # hook decision), run*.json (result envelopes). Sessions run with permissions bypassed, as the eval will.
 set -u
 OUT=${1:-/tmp/rehorse-e2e}
+RUNS=${2:-"1 2 3"}
 P=$(cd "$(dirname "$0")/.." && pwd)
 R=$P/scripts
 CLAUDE="claude --plugin-dir $P --dangerously-skip-permissions --output-format json"
@@ -29,6 +33,29 @@ result() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print('t
 phase() { python3 "$R/state.py" show | python3 -c "import json,sys; t=json.load(sys.stdin); print('phase', t.get('phase'), 'step', t.get('step'), 'plan', [p['done'] for p in t.get('plan',[])]) if 'phase' in t else print('no active task')"; }
 hooks() { grep -E "Hook (PreToolUse|Stop|SubagentStop|UserPromptSubmit|PreCompact|SessionStart|PostToolUse)" "$1" | sed -E 's/^.*Hook /Hook /' | cut -c1-260; }
 
+hook() { python3 - "$@" <<'PY'
+import json, sys
+event, cwd = sys.argv[1], sys.argv[2]
+d = {"session_id": "drive", "transcript_path": "/dev/null", "cwd": cwd, "hook_event_name": event, "permission_mode": "default"}
+for kv in sys.argv[3:]:
+    k, v = kv.split("=", 1)
+    d[k] = json.loads(v) if v[:1] in "{[\"" else v
+print(json.dumps(d))
+PY
+}
+run_tests() { local out; out=$(cd "$WT" && $CMD 2>&1); local ev=PostToolUse; local field=tool_response; local val
+  if echo "$out" | tail -1 | grep -q failed; then ev=PostToolUseFailure; fi
+  val=$(python3 -c 'import json,sys; print(json.dumps({"stdout": sys.argv[1], "stderr": ""}))' "$out")
+  if [ $ev = PostToolUseFailure ]; then field=error; val=$(python3 -c 'import json,sys; print(json.dumps("Exit code 1\n"+sys.argv[1]))' "$out"); fi
+  hook $ev "$WT" tool_name=Bash "tool_input={\"command\": \"cd $WT && $CMD\"}" "$field=$val" | python3 "$R/on_bash_done.py"; echo; }
+new_task() {  # state.py new "<title>" in the current toy repo; sets ID, CMD, WT
+  local task; task=$(python3 "$R/state.py" new "$1")
+  ID=$(echo "$task" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+  CMD=$(echo "$task" | python3 -c "import json,sys; print(json.load(sys.stdin)['test_cmd'])")
+  WT=$PWD/.rehorse/worktrees/$ID
+}
+
+run1() {
 echo "=== RUN 1: full /rehorse:build in a fresh toy repo ==="
 mk_toy "$OUT/live1"; cd "$OUT/live1"
 $CLAUDE --debug-file "$OUT/run1.log" -p '/rehorse:build "add a subtract function sub(a, b) to app.py, returning a - b"' > "$OUT/run1.json" 2> "$OUT/run1.err"
@@ -41,30 +68,15 @@ echo; echo "=== RUN 1b: /rehorse:merge typed by the user (new session) ==="
 $CLAUDE --debug-file "$OUT/run1b.log" -p '/rehorse:merge' > "$OUT/run1b.json" 2> "$OUT/run1b.err"
 echo "exit $?"; result "$OUT/run1b.json"; git log --oneline | head -5; git status --short; hooks "$OUT/run1b.log" | grep UserPromptSubmit | head -3
 
+}
+
+run2() {
 echo; echo "=== RUN 2: compaction mid-implement, then resume in the same and in a fresh session ==="
 # Drive the task to implement with a two-step plan without a model (real hook JSON piped through the scripts), so the
 # --max-turns cut below lands deterministically after step 1: show state, render progress, spawn step 1, and stop.
 mk_toy "$OUT/live2"; cd "$OUT/live2"
-hook() { python3 - "$@" <<'PY'
-import json, sys
-event, cwd = sys.argv[1], sys.argv[2]
-d = {"session_id": "drive", "transcript_path": "/dev/null", "cwd": cwd, "hook_event_name": event, "permission_mode": "default"}
-for kv in sys.argv[3:]:
-    k, v = kv.split("=", 1)
-    d[k] = json.loads(v) if v[:1] in "{[\"" else v
-print(json.dumps(d))
-PY
-}
-TASK=$(python3 "$R/state.py" new "add sub and mul")
-ID=$(echo "$TASK" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-CMD=$(echo "$TASK" | python3 -c "import json,sys; print(json.load(sys.stdin)['test_cmd'])")
-WT="$OUT/live2/.rehorse/worktrees/$ID"
+new_task "add sub and mul"
 printf 'Add sub(a, b) returning a - b and mul(a, b) returning a * b to app.py.\n\n## Acceptance criteria\n1. sub(5, 3) == 2\n2. mul(2, 3) == 6\n' > "$WT/REHORSE_SPEC.md"
-run_tests() { local out; out=$(cd "$WT" && $CMD 2>&1); local ev=PostToolUse; local field=tool_response; local val
-  if echo "$out" | tail -1 | grep -q failed; then ev=PostToolUseFailure; fi
-  val=$(python3 -c 'import json,sys; print(json.dumps({"stdout": sys.argv[1], "stderr": ""}))' "$out")
-  if [ $ev = PostToolUseFailure ]; then field=error; val=$(python3 -c 'import json,sys; print(json.dumps("Exit code 1\n"+sys.argv[1]))' "$out"); fi
-  hook $ev "$WT" tool_name=Bash "tool_input={\"command\": \"cd $WT && $CMD\"}" "$field=$val" | python3 "$R/on_bash_done.py"; echo; }
 run_tests                                             # baseline
 python3 "$R/state.py" advance tests
 printf 'import app\n\n\ndef test_sub():\n    assert app.sub(5, 3) == 2\n\n\ndef test_mul():\n    assert app.mul(2, 3) == 6\n' > "$WT/tests/test_new.py"
@@ -87,4 +99,37 @@ $CLAUDE --debug-file "$OUT/run2d.log" -p '/rehorse:build' > "$OUT/run2d.json" 2>
 echo "exit $?"; result "$OUT/run2d.json"; phase
 echo "--- PROGRESS.md:"; cat rehorse-reports/PROGRESS.md
 echo "--- report:"; cat rehorse-reports/2026-*.md 2>/dev/null | head -60
+}
+
+run3() {
+echo; echo "=== RUN 3: verifier round-trip on a deliberately weak implementation ==="
+# Driven to `verify` without a model: the spec has an error branch (divide by zero -> ValueError), the tests-phase
+# tests cover only the happy path, and the implementation has no such branch. The verifier must catch it.
+mk_toy "$OUT/live3"; cd "$OUT/live3"
+new_task "add divide"
+printf 'Add divide(a, b) to app.py, returning a / b.\n\n## Acceptance criteria\n1. divide(6, 3) == 2\n2. divide(1, 0) raises ValueError with the message "division by zero"\n\n## Files likely involved\n- app.py\n' > "$WT/REHORSE_SPEC.md"
+run_tests                                             # baseline
+python3 "$R/state.py" advance tests
+printf 'import app\n\n\ndef test_divide():\n    assert app.divide(6, 3) == 2\n' > "$WT/tests/test_divide.py"   # happy path only, on purpose
+run_tests                                             # red
+(cd "$WT" && git add -A && git commit -q -m "tests: red for $ID")
+python3 "$R/state.py" advance implement
+python3 "$R/progress.py" plan "add divide(a, b) to app.py"
+printf 'def add(a, b):\n    return a + b\n\n\ndef divide(a, b):\n    return a / b\n' > "$WT/app.py"   # weak: no ValueError branch
+hook PreToolUse "$WT" tool_name=Edit "tool_input={\"file_path\": \"$WT/app.py\"}" agent_id=drive | python3 "$R/guard_edit.py"
+run_tests                                             # green against the weak tests
+(cd "$WT" && git add -A && git commit -q -m "step 1: add divide(a, b) to app.py")
+hook SubagentStop "$WT" agent_type=rehorse:rehorse-step agent_id=drive "last_assistant_message=\"Added divide(a, b) to app.py.\\nTests: 3 passed, 0 failed; nothing left.\"" | python3 "$R/progress.py" --step-done; echo
+python3 "$R/state.py" advance verify
+echo "--- driven to:"; phase
+$CLAUDE --debug-file "$OUT/run3.log" --max-turns 80 -p '/rehorse:build' > "$OUT/run3.json" 2> "$OUT/run3.err"
+echo "exit $?"; result "$OUT/run3.json"; phase
+echo "--- hook lines (run3):"; hooks "$OUT/run3.log" | grep -v SessionStart | head -60
+echo "--- verifier state:"; python3 "$R/state.py" show | python3 -c "import json,sys; t=json.load(sys.stdin); print(json.dumps({k: t.get(k) for k in ('phase','verify_round','verifier','verify_history','plan')}, indent=1))"
+echo "--- PROGRESS.md:"; cat rehorse-reports/PROGRESS.md
+echo "--- report:"; cat rehorse-reports/2026-*.md 2>/dev/null
+echo "--- rehearsal branch log:"; git -C "$WT" log --oneline
+}
+
+for r in $RUNS; do "run$r"; done
 echo "DONE. Logs: $OUT/run*.log  results: $OUT/run*.json"

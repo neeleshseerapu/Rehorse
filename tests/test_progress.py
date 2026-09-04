@@ -185,3 +185,15 @@ def test_verifier_stop_is_never_a_step_done(repo):
         assert step_done(repo, agent_type=agent) is None
     t = task_state(repo)
     assert t["plan"][0]["done"] is False and t["step"] == 0 and t["stop_blocks"] == 0
+
+
+def test_contradicts_spec_line_in_a_step_summary_sets_needs_attention_instead_of_continuing(repo):
+    wt = plan_task(repo, plan=[{"title": "Fix (verifier round 1): reject strings", "done": False, "summary": None, "commit": None}],
+                   edit_seq=1, last_test_run={"passed": 3, "failed": 1, "after_edit_seq": 1, "output": ""})
+    line = "CONTRADICTS SPEC: tests/test_rehorse_verify_t-1.py::test_strings expects TypeError, acceptance criterion 2 says ValueError"
+    out = step_done(repo, "I could not make this pass without breaking the spec.\n" + line)
+    assert out and "decision" not in out and "needs-attention" in out["systemMessage"] and "TypeError" in out["systemMessage"]
+    t = task_state(repo)
+    assert t["phase"] == "needs-attention" and t["attention"] == {"reason": line, "prior_phase": "implement"}
+    assert t["plan"][0]["done"] is False and t["step"] == 0
+    assert line in progress_md(repo)

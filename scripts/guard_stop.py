@@ -15,14 +15,18 @@ import state
 CAP = 8
 
 
+def attention(root, s, task, why):
+    """Drop the task to needs-attention and let the stop through, with a systemMessage the walk-away user will see."""
+    state.advance(s, task["id"], state.ATTENTION, reason=why)
+    state.save(root, s)
+    json.dump({"systemMessage": "REHORSE: task %s moved to needs-attention: %s. Run /rehorse:status." % (task["id"], why)}, sys.stdout)
+    return 0
+
+
 def block(root, s, task, reason, event="Stop"):
     """Block once more; on the CAP-th consecutive block, drop the task to needs-attention and let it stop, visibly."""
     if task["stop_blocks"] + 1 >= CAP:
-        why = "%d consecutive %s blocks: %s" % (CAP, event, reason)
-        state.advance(s, task["id"], state.ATTENTION, reason=why)
-        state.save(root, s)
-        json.dump({"systemMessage": "REHORSE: task %s moved to needs-attention: %s. Run /rehorse:status." % (task["id"], why)}, sys.stdout)
-        return 0
+        return attention(root, s, task, "%d consecutive %s blocks: %s" % (CAP, event, reason))
     task["stop_blocks"] += 1
     state.save(root, s)
     json.dump({"decision": "block", "reason": "REHORSE: %s (block %d of %d)" % (reason, task["stop_blocks"], CAP - 1)}, sys.stdout)

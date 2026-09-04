@@ -115,3 +115,9 @@ def test_verify_phase_allows_only_the_verifiers_own_test_file(repo):
         assert "phase verify" in reason and "tests/test_rehorse_verify_t-1.py" in reason and "fixes nothing" in reason
     assert edit(repo, wt + "/rehorse-reports/PROGRESS.md") is None
     assert task_state(repo)["edit_seq"] == 2
+
+
+def test_after_a_round_trip_the_verifiers_file_is_locked_like_every_test(repo):
+    wt = task_in(repo, "implement")
+    reason = denied(edit(repo, wt + "/tests/test_rehorse_verify_t-1.py", subagent=True))
+    assert "locked" in reason and "step summary" in reason

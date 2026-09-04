@@ -176,3 +176,67 @@ def test_hooks_json_routes_subagent_stop_by_agent_name():
     entries = {h["hooks"][0]["args"][0].rsplit("/", 1)[-1]: h.get("matcher") for h in hooks["SubagentStop"]}
     assert entries == {"progress.py": None, "verify.py": "rehorse-verifier"}
     assert [h["hooks"][0]["args"][1:] for h in hooks["SubagentStop"]] == [["--step-done"], ["--verdict"]]
+
+
+# ---- round-trip: a failing verdict (or failing verifier tests) sends the task back to implement, at most twice ------------
+
+FAIL = ('```json\n{"verdict": "fail", "findings": [{"severity": "high", "file": "app.py", "line": 5, "description": "strings are '
+        'concatenated, not rejected"}, {"severity": "low", "file": "app.py", "line": 1, "description": "no docstring"}], '
+        '"tests_added": ["tests/test_rehorse_verify_t-1.py::test_strings"], "coverage": []}\n```')
+
+
+def test_fail_verdict_returns_the_task_to_implement_with_the_findings_as_new_steps(repo):
+    wt = verify_task(repo)
+    ran(repo, passed=3, failed=1)
+    out = stop(repo, FAIL)
+    assert out and "decision" not in out and "implement" in out["systemMessage"]
+    t = task_state(repo)
+    assert t["phase"] == "implement" and t["verifier"] is None and t["verify_run"] is None and t["verify_round"] == 1
+    assert t["verify_history"][0]["round"] == 1 and t["verify_history"][0]["verdict"] == "fail"
+    titles = [p["title"] for p in t["plan"]]
+    assert titles == ["Add sub()", "Fix (verifier round 1): strings are concatenated, not rejected (app.py:5)",
+                      "Make the verifier's tests pass: tests/test_rehorse_verify_t-1.py (1 failing)"]
+    assert t["step"] == 1 and all(not p["done"] for p in t["plan"][1:])
+    md = (repo / "rehorse-reports" / "PROGRESS.md").read_text()
+    assert "run step 2 (Fix (verifier round 1)" in md.split("Next:")[1] and "Verifier: round 1 FAIL" in md
+
+
+def test_failing_verifier_tests_return_the_task_even_on_a_concerns_verdict(repo):
+    verify_task(repo)
+    ran(repo, passed=3, failed=2)
+    stop(repo)  # GOOD: verdict concerns, one medium finding
+    t = task_state(repo)
+    assert t["phase"] == "implement"
+    assert [p["title"] for p in t["plan"]][1:] == ["Make the verifier's tests pass: tests/test_rehorse_verify_t-1.py (2 failing)"]
+
+
+def test_fail_verdict_without_findings_still_returns_with_a_generic_step(repo):
+    verify_task(repo)
+    ran(repo)
+    stop(repo, '```json\n{"verdict": "fail"}\n```')
+    t = task_state(repo)
+    assert t["phase"] == "implement" and len(t["plan"]) == 2 and "FAIL verdict" in t["plan"][1]["title"] and "round 1" in t["plan"][1]["title"]
+
+
+def test_pass_or_concerns_with_green_verifier_tests_stays_in_verify(repo):
+    verify_task(repo)
+    ran(repo)
+    stop(repo)
+    t = task_state(repo)
+    assert t["phase"] == "verify" and t["verifier"]["verdict"] == "concerns" and len(t["plan"]) == 1
+
+
+def test_third_failed_round_sets_needs_attention_and_keeps_the_verdict_for_the_report(repo):
+    history = [{"round": n, "verdict": "fail", "findings": [], "tests_added": [], "coverage": [], "tests": {"passed": 3, "failed": 1}} for n in (1, 2)]
+    verify_task(repo, verify_round=2, verify_history=history)
+    ran(repo, passed=3, failed=1)
+    out = stop(repo, FAIL)
+    assert out and "needs-attention" in out["systemMessage"]
+    t = task_state(repo)
+    assert t["phase"] == "needs-attention" and t["attention"]["prior_phase"] == "verify"
+    assert "3 rounds" in t["attention"]["reason"] and "strings are concatenated" in t["attention"]["reason"]
+    assert t["verifier"]["round"] == 3 and t["verify_round"] == 3 and len(t["verify_history"]) == 2 and len(t["plan"]) == 1
+    r = run_script("report", cwd=str(repo))
+    assert r.returncode == 0, r.stderr
+    text = open(r.stdout.strip()).read()
+    assert "NEEDS ATTENTION" in text[:400] and "## Verifier: FAIL (round 3 of 3)" in text and "Round 1: FAIL" in text

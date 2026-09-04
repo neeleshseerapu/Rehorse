@@ -264,3 +264,18 @@ def test_advance_to_report_refuses_without_a_verdict_and_names_the_brief():
     t["verifier"] = {"round": 1, "verdict": "fail", "findings": [], "tests_added": [], "coverage": []}
     state.advance(s, "t-1", "report")  # any verdict, even fail: the user decides at merge time
     assert t["phase"] == "report"
+
+
+def test_verify_can_return_to_implement_and_archives_the_verdict():
+    s = state.empty()
+    t = state.new_task(s, "t-1")
+    t["red_check"] = {"passed": 1, "failed": 1}
+    for phase in ["tests", "implement", "verify"]:
+        state.advance(s, "t-1", phase)
+    t["verifier"], t["verify_run"] = {"round": 1, "verdict": "fail", "findings": []}, {"passed": 1, "failed": 1}
+    state.advance(s, "t-1", "implement")
+    assert t["phase"] == "implement" and t["verifier"] is None and t["verify_run"] is None
+    assert t["verify_history"] == [{"round": 1, "verdict": "fail", "findings": []}]
+    state.advance(s, "t-1", "verify")
+    with pytest.raises(ValueError):
+        state.advance(s, "t-1", "report")  # the archived verdict does not count for the new round

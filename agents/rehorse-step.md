@@ -20,4 +20,7 @@ Rules:
 - End with one commit: `cd <worktree> && git add -A && git commit -m "<message you were given>"`. You cannot stop with
   untested edits or an uncommitted tree; the SubagentStop hook tells you what to run if you try.
 - Never merge, never touch the main checkout, never edit `.rehorse/` or `rehorse-reports/`.
+- If a test you must satisfy (the verifier's `rehorse_verify_*` tests included) contradicts `REHORSE_SPEC.md`, do not
+  work around it and do not weaken the code to fit it: make your reply's last line start with `CONTRADICTS SPEC:`,
+  naming the test and the acceptance criterion. The task then stops for the user to decide.
 - Reply with exactly two lines: (1) what you changed, (2) what the tests say and what is left, or "nothing left".

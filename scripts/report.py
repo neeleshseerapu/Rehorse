@@ -107,7 +107,7 @@ def render(root, task, name):
                                  " — " + " ".join((p["summary"] or "").splitlines()) if p["done"] else "")
             for n, p in enumerate(task["plan"], 1)] or ["(no plan recorded)"]
     lines = [
-        "# Rehearsal report: %s" % (progress.goal(root, task) or tid), "",
+        "# Rehearsal report: %s" % (worktree.spec_goal(wt) or tid), "",
         "Task `%s` · branch `%s` · base `%s` · %s" % (tid, task["branch"], (task["base_sha"] or "")[:7], task["created"][:10]), "",
         "Worktree setup: " + ("linked " + ", ".join(task["linked_deps"]) + " from the main checkout" if task.get("linked_deps")
                               else "nothing linked (no .venv, node_modules, target or .tox in the main checkout)"), "",

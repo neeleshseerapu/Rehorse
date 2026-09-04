@@ -73,8 +73,7 @@ def new_task(state, tid):
 
 
 def gate(task, to):
-    """Evidence a transition needs, or None: tests -> implement wants a red run with a failing new test (a failed build
-    counts); verify -> report wants a recorded verifier verdict (any verdict: a fail is reported, and the user decides)."""
+    """Evidence a transition needs, or None: red before implement (a failing new test, or a failed build); a verdict before report."""
     r = task.get("red_check") or {"passed": 0, "failed": 0}
     if (task["phase"], to) == ("tests", "implement") and not (task.get("red_kind") == "build_failed" or r["failed"]):
         if not task.get("red_check"):
@@ -90,16 +89,17 @@ def advance(state, tid, to, reason=None):
     task = state["tasks"][tid]
     cur = task["phase"]
     allowed = ([] if cur in TERMINAL else [task["attention"]["prior_phase"], "discarded"] if cur == ATTENTION else
-               PHASES[PHASES.index(cur) + 1:][:1] + ["discarded", ATTENTION] + (["merged"] if cur == "report" else []))
+               PHASES[PHASES.index(cur) + 1:][:1] + ["discarded", ATTENTION] + {"report": ["merged"], "verify": ["implement"]}.get(cur, []))
     if to not in allowed:
         raise ValueError("cannot advance %s from %r to %r; allowed: %s" % (tid, cur, to, ", ".join(allowed) or "none"))
     if gate(task, to):
         raise ValueError("cannot advance %s to %s: %s" % (tid, to, gate(task, to)))
+    if (cur, to) == ("verify", "implement"):  # round-trip: the verdict is archived, the next round must earn a new one
+        task["verify_history"] = task.get("verify_history", []) + [task["verifier"]]
+        task["verifier"] = task["verify_run"] = None
     task["attention"] = {"reason": reason or "unspecified", "prior_phase": cur} if to == ATTENTION else None
-    task["stop_blocks"] = 0 if cur == ATTENTION else task["stop_blocks"]  # a resumed task starts its block count over
-    task["phase"] = to
-    if to in TERMINAL and state["active_task"] == tid:
-        state["active_task"] = None
+    task["stop_blocks"], task["phase"] = (0 if cur == ATTENTION else task["stop_blocks"]), to  # a resumed task restarts its block count
+    state["active_task"] = None if to in TERMINAL and state["active_task"] == tid else state["active_task"]
     return task
 
 

@@ -105,6 +105,13 @@ def remove(root, tid):
     git(root, "branch", "-D", "rehorse/" + tid, check=False)
 
 
+def spec_goal(wt):
+    """First prose line of the worktree's REHORSE_SPEC.md (the task's one-sentence goal), or empty."""
+    path = os.path.join(wt, "REHORSE_SPEC.md")
+    lines = open(path).read().splitlines() if os.path.exists(path) else []
+    return next((l.strip() for l in lines if l.strip() and l[0] != "#"), "")
+
+
 def contains(worktree_path, file_path):
     """True if file_path is inside worktree_path after resolving symlinks (macOS: /tmp -> /private/tmp)."""
     wt, fp = os.path.realpath(worktree_path), os.path.realpath(file_path)

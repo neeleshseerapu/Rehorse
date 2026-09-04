@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """rehorse-reports/PROGRESS.md, regenerated from state (never free-formed), plus the SubagentStop hook that closes a step.
 CLI: progress.py render | plan "<step>" ... (phase implement, clean worktree; records tests_sha) | add "<step>" ...
-Hook: --step-done (SubagentStop, rehorse-step agents in setup/tests/implement): block the stop while edits are newer than the
-last test run or the worktree is uncommitted (the reason names the command; 8th block -> needs-attention); else mark the step done."""
+Hook: --step-done (SubagentStop, rehorse-step agents in setup/tests/implement): a reply line starting `CONTRADICTS SPEC:` sends
+the task to needs-attention; else block the stop while edits are newer than the last test run or the worktree is uncommitted
+(the reason names the command; 8th block -> needs-attention); else mark the step done with the reply's first two lines."""
 import json
 import os
 import sys
@@ -46,13 +47,6 @@ def next_action(task):
             "all steps done: `state.py advance verify`.")
 
 
-def goal(root, task):
-    """First prose line of REHORSE_SPEC.md, or empty."""
-    path = os.path.join(wt_path(root, task), "REHORSE_SPEC.md")
-    lines = open(path).read().splitlines() if os.path.exists(path) else []
-    return next((l.strip() for l in lines if l.strip() and l[0] != "#"), "")
-
-
 def section(root, task):
     tid, phase, plan = task["id"], task["phase"], task["plan"]
     if phase in state.TERMINAL:
@@ -60,7 +54,7 @@ def section(root, task):
     lines = ["## %s (phase: %s%s)" % (tid, phase, ", step %d/%d" % (min(task["step"] + 1, len(plan)), len(plan)) if plan else "")]
     if phase == state.ATTENTION:
         lines.append("**NEEDS ATTENTION** (was in %s): %s" % (task["attention"]["prior_phase"], task["attention"]["reason"]))
-    lines.append("- Spec: %s/REHORSE_SPEC.md %s" % (task["worktree"], goal(root, task)))
+    lines.append("- Spec: %s/REHORSE_SPEC.md %s" % (task["worktree"], worktree.spec_goal(wt_path(root, task))))
     lines.append("- Tests: `%s`; baseline %s; red %s; last %s" % (task["test_cmd"], counts(task["baseline"]), counts(task["red_check"]), counts(task["last_test_run"])))
     lines += ["- Plan:"] if plan else []
     for n, p in enumerate(plan, 1):
@@ -103,6 +97,12 @@ def step_done(hook):
     if not task or task["phase"] not in ("setup", "tests", "implement") or (hook.get("agent_type") or "").split(":")[-1] != STEP_AGENT:
         return 0
     wt, plan, i = wt_path(root, task), task["plan"], task["step"]
+    said = [l.strip() for l in (hook.get("last_assistant_message") or "").splitlines() if l.strip()]
+    contra = next((l for l in said if l.startswith("CONTRADICTS SPEC:")), None)
+    if contra:  # a test (the verifier's included) disagrees with the spec: the user decides, the implementer does not work around it
+        guard_stop.attention(root, s, task, contra)
+        render(root, s)
+        return 0
     title = plan[i]["title"] if task["phase"] == "implement" and i < len(plan) else None
     pending = task["edit_seq"] - (task.get("last_test_run") or {}).get("after_edit_seq", 0)
     if pending > 0 and task["test_cmd"]:
@@ -114,8 +114,7 @@ def step_done(hook):
                      % (", ".join(dirty[:5]), wt, msg), "step-done")
     task["stop_blocks"] = 0
     if title:
-        summary = [l.strip() for l in (hook.get("last_assistant_message") or "").splitlines() if l.strip()][:2]
-        plan[i].update(done=True, summary="\n".join(summary), commit=worktree.git(wt, "rev-parse", "HEAD").strip()[:7])
+        plan[i].update(done=True, summary="\n".join(said[:2]), commit=worktree.git(wt, "rev-parse", "HEAD").strip()[:7])
         task["step"] = i + 1
     state.save(root, s)
     render(root, s)

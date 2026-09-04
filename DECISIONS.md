@@ -397,3 +397,25 @@ not used on an accepted stop); SubagentStop `matcher` filters on `agent_type`, i
   SubagentStop matcher here, so the live check must show it firing) and the same name check inside the script. Both hooks
   run on every SubagentStop and each answers only for its own agent, so a verifier stop can never close a plan step and a
   step stop can never record a verdict.
+- **Verify round-trip** (chunk 5). In `verify.py --verdict`, a `fail` verdict or a failing verifier run (`verify_run.failed > 0`)
+  sends the task back to `implement`: `state.advance(verify -> implement)`, now a legal edge, archives the verdict into
+  `verify_history` and clears `verifier`/`verify_run` (so the next round must earn a new verdict and `report.py` cannot
+  reuse the old one), and the hook appends plan steps: one `Fix (verifier round N): <description> (<file>:<line>)` per
+  `high` finding (every finding when the verdict is `fail` and none is high), one `Make the verifier's tests pass: <file>
+  (<k> failing)` when its run failed, and a generic step when a `fail` came with nothing else. The step pointer already
+  sits at the end of the old plan, so `Next:` names the first new step. The verifier's file is under a test path, so
+  `guard_edit.py` locks it in `implement` with no new rule. `verify_round` counts recorded verdicts; the report shows
+  `round N of 3` and, from round 2, what each earlier round found; the brief carries the earlier findings so the verifier
+  checks them.
+- **Two round-trips, then the user.** "Maximum two rounds; a third failure sets needs-attention" is read as: failures in
+  rounds 1 and 2 return to implement, a failing round 3 sets `needs-attention` with the reason `verifier failed 3 rounds;
+  round 3 found: ...`, the verdict kept (not archived) so `report.py` renders the findings under the NEEDS ATTENTION
+  banner. `/rehorse:build resume` then puts the task back in `verify` where the recorded verdict makes `Next:` say
+  `report.py`, which renders the FAIL banner and offers merge/discard: a fail never blocks the user, it stops the model.
+- **`CONTRADICTS SPEC:`** in a step reply (any line starting with it) makes `progress.py --step-done` move the task to
+  `needs-attention` with that line as the reason, before the test-run and commit checks, leaving the step open. This is
+  the implementer's only honest exit when a locked test (the verifier's included) disagrees with the spec; without it the
+  round-trip could loop on a wrong verifier test. `guard_stop.attention()` is the shared exit used by the 8-block cap,
+  this rule, and the third verifier failure.
+- `progress.goal` moved to `worktree.spec_goal` (worktree.py has no line cap) to keep `progress.py` under 150 lines with
+  the new rule; `state.py` gained the transition and its archive step at 150 lines exactly.

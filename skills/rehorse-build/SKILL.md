@@ -97,8 +97,14 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    Previous step: <its two lines, or "none">
    Test command: cd <worktree> && <test_cmd>   (run it after your edits)
    Commit: cd <worktree> && git add -A && git commit -m "step <n>: <title>"
-   Reply with exactly two lines: (1) what you changed, (2) what the tests say and what is left.
+   Reply with exactly two lines: (1) what you changed, (2) what the tests say and what is left. If a test you must
+   satisfy contradicts REHORSE_SPEC.md, reply instead with a last line starting "CONTRADICTS SPEC:" naming the test
+   and the criterion.
    ```
+
+   Steps titled `Fix (verifier round N): ...` and `Make the verifier's tests pass: ...` come from the verifier (§4); the
+   verifier's own test file is locked like every other test. A `CONTRADICTS SPEC:` reply moves the task to
+   `needs-attention` (the hook does it): quote the line to the user and stop.
 
    The SubagentStop hook marks the step done in PROGRESS.md only when tests ran after the last edit and the worktree is
    committed; otherwise it tells the subagent what to run. Do not read the subagent's transcript.
@@ -119,8 +125,14 @@ Record its command and move on: `testcmd.py set "<command>"`, then
 2. Its SubagentStop hook records the verdict only after it ran the tests and committed; you never copy a verdict.
    Run `progress.py render` and read this task's section: the **Verifier** line and the **Next:** line. If no verdict
    was recorded, spawn it again with the hook's reason.
-3. Do what **Next:** says: `report.py` when a verdict is recorded (any verdict: a `fail` is rendered as FAIL in the
-   report and the user decides at merge time).
+3. Do what **Next:** says. Three outcomes:
+   - phase still `verify`, verdict recorded (`pass`, or `concerns`, or a `fail` the user must judge): `report.py` (§5).
+   - phase `implement` again: the verdict was `fail` or the verifier's tests fail. The hook appended the findings as new
+     plan steps and archived the verdict. Continue at §3.2 with the new steps, then `state.py advance verify` and run
+     this section again (round 2, then 3 at most; the brief carries the earlier findings).
+   - phase `needs-attention`: three rounds failed. Run `report.py --summary "..."` (it renders the reason and the
+     findings), print the report, quote the reason to the user, and stop. The user resumes with `/rehorse:build resume`
+     (which renders the FAIL report for a merge/discard decision) or discards.
 
 ## 5. report, then stop
 
