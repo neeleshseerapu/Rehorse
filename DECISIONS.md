@@ -290,3 +290,7 @@ Six sessions again, all exit 0 and empty stderr except run 2a, whose `is_error: 
   collection error (`1 error`, nothing else runs) clamps to 0 rather than going negative.
 - **MIT license**, copyright 2026 Neelesh Seerapu, referenced at the bottom of README.md, so the repo is usable and
   forkable before the marketplace listing (milestone 8) makes that question unavoidable.
+- **README says a test suite is required for now** and names the planned no-tests path (a characterization test first;
+  IDEAS.md), instead of implying Rehorse works on any repo. A "Testing Rehorse on your own project" note under
+  Contributing asks early users for one small task and an issue with the report attached, because the eval
+  (milestones 6 and 7) covers three repos and real projects will find what a toy repo cannot.

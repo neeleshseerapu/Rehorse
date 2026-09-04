@@ -21,8 +21,10 @@ untested edits, and cannot merge. Those hold even with permissions bypassed.
 
 ## Install
 
-You need Claude Code, git, and Python 3. Your project needs a test suite Rehorse can run: pytest, vitest, jest,
-`npm test`, `cargo test`, `go test`, or a `make test` target.
+You need Claude Code, git, and Python 3. For now your project also needs a test suite Rehorse can run: pytest,
+vitest, jest, `npm test`, `cargo test`, `go test`, or a `make test` target. Red-then-green needs something to go red.
+A no-tests path, where the first step writes a characterization test of the current behaviour before anything
+changes, is planned but not built.
 
 Until the marketplace listing exists, load the plugin from a clone:
 
@@ -163,6 +165,15 @@ bash tests/e2e_live.sh /tmp/rehorse-e2e                  # real sessions on toy 
 ```
 
 Hook scripts are written test-first, stay under 150 lines, and import only the standard library.
+
+### Testing Rehorse on your own project
+
+The most useful thing you can do right now is run it on a real repo. Clone this repository, start Claude Code in
+your project with `claude --plugin-dir /path/to/Rehorse`, and give `/rehorse:build` one small, well-tested task, the
+kind you would hand a new teammate on their first day. Read the report in `rehorse-reports/` before deciding to merge
+or discard. If anything looked wrong, the test command it detected, a hook that denied something it should not have,
+a report that misrepresents what happened, open an issue with the report attached and, if you can, the lines from
+`claude --debug-file` that mention `Hook`. Nothing you run touches your branch until you type `/rehorse:merge`.
 
 ## License
 

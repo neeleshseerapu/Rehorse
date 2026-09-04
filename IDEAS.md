@@ -17,3 +17,4 @@ Out-of-scope ideas noticed while building. Not to be built without a decision.
 - `worktree.create` appends `.rehorse/` to the user's `.gitignore` and leaves that change uncommitted; `merge.py` could include it in the merge commit.
 - `handoff.py` could block a *manual* `/compact` (never `auto`, which may be recovering from a context-limit error) while a step subagent is mid-flight, with a reason to compact after it reports. Cosmetic: state is consistent at any moment, so compaction is already safe.
 - Compaction inside a step subagent's own context (auto-compact of a long step) is untested; the main session's PreCompact is what the live check exercised.
+- No-tests path: when the target repo has no test suite (or `testcmd.detect()` finds nothing), a first step could write a characterization test of the current behaviour so red-then-green has something to go red against; v1 requires an existing suite and says so in README.
