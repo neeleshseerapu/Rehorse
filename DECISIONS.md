@@ -391,3 +391,9 @@ not used on an accepted stop); SubagentStop `matcher` filters on `agent_type`, i
   committed with it (the spec's "when they exceed one screen"). "Try it yourself" ends with the criteria whose evidence is
   `none` or `build_only`, labelled as what to try by hand. The drift check ignores `rehorse_verify_*` files, which are the
   verifier's and always land after `tests_sha`. `PROGRESS.md` carries one `Verifier:` line per round.
+- **The verifier's SubagentStop is never a step-done** (chunk 4). `progress.py --step-done` acts only on `agent_type` ending
+  in `rehorse-step` (unchanged, now tested against `rehorse:rehorse-verifier`), and `verify.py --verdict` is the second
+  SubagentStop entry in `hooks.json`, with matcher `rehorse-verifier` (the docs' agent-name matching; first use of a
+  SubagentStop matcher here, so the live check must show it firing) and the same name check inside the script. Both hooks
+  run on every SubagentStop and each answers only for its own agent, so a verifier stop can never close a plan step and a
+  step stop can never record a verdict.

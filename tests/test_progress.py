@@ -176,3 +176,12 @@ def test_setup_phase_next_action_and_step_done_require_a_commit_but_no_test_run(
     assert out["decision"] == "block" and 'git commit -m "setup: test harness for t-1"' in out["reason"]
     commit_in(wt, "tests/test_harness.py", "def test_smoke(): pass\n", "setup: test harness for t-1")
     assert step_done(repo, "Added a pytest harness.\nRun: python3 -m pytest -q") is None  # no test_cmd yet: no run required
+
+
+def test_verifier_stop_is_never_a_step_done(repo):
+    """The verifier fires the same SubagentStop event; its stop must not close a plan step (verify.py --verdict handles it)."""
+    plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None}])
+    for agent in ["rehorse:rehorse-verifier", "rehorse-verifier"]:
+        assert step_done(repo, agent_type=agent) is None
+    t = task_state(repo)
+    assert t["plan"][0]["done"] is False and t["step"] == 0 and t["stop_blocks"] == 0

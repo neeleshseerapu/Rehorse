@@ -167,3 +167,12 @@ def test_next_action_in_verify_names_the_brief_before_and_the_report_after_a_ver
     stop(repo)
     r = run_script("progress", ["render"], cwd=str(repo))
     assert "report.py" in r.stdout.split("Next:")[1]
+
+
+def test_hooks_json_routes_subagent_stop_by_agent_name():
+    """progress.py --step-done keeps no matcher (it filters on rehorse-step itself); verify.py --verdict is matched on the
+    verifier's name in hooks.json and filters again in the script."""
+    hooks = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks", "hooks.json")))["hooks"]
+    entries = {h["hooks"][0]["args"][0].rsplit("/", 1)[-1]: h.get("matcher") for h in hooks["SubagentStop"]}
+    assert entries == {"progress.py": None, "verify.py": "rehorse-verifier"}
+    assert [h["hooks"][0]["args"][1:] for h in hooks["SubagentStop"]] == [["--step-done"], ["--verdict"]]
