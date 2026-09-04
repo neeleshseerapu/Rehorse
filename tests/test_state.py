@@ -47,7 +47,7 @@ def test_load_missing_file_returns_empty_state(tmp_path):
 def test_advance_walks_the_phase_order_only():
     s = state.empty()
     t = state.new_task(s, "t-1")
-    t["red_check"], t["verifier"] = {"passed": 1, "failed": 1}, {"verdict": "pass"}  # the gates want red before implement, a verdict before report
+    t["red_check"], t["verifier"] = {"passed": 1, "failed": 1, "new_failed": 1}, {"verdict": "pass"}  # the gates want red before implement, a verdict before report
     for phase in ["tests", "implement", "verify", "report", "merged"]:
         state.advance(s, "t-1", phase)
         assert s["tasks"]["t-1"]["phase"] == phase
@@ -76,7 +76,7 @@ def test_merged_only_from_report_but_discarded_from_anywhere():
 
 def test_needs_attention_records_reason_and_resumes_to_prior_phase():
     s = state.empty()
-    state.new_task(s, "t-1")["red_check"] = {"passed": 1, "failed": 1}
+    state.new_task(s, "t-1")["red_check"] = {"passed": 1, "failed": 1, "new_failed": 1}
     state.advance(s, "t-1", "tests")
     state.advance(s, "t-1", "implement")
     s["tasks"]["t-1"]["stop_blocks"] = 8
@@ -106,7 +106,7 @@ def test_summary_line_for_no_task_active_and_attention():
     s = state.empty()
     assert state.summary(s) == "REHORSE: no active task."
     t = state.new_task(s, "t-20260903-dark-mode")
-    t["red_check"] = {"passed": 1, "failed": 1}
+    t["red_check"] = {"passed": 1, "failed": 1, "new_failed": 1}
     state.advance(s, "t-20260903-dark-mode", "tests")
     state.advance(s, "t-20260903-dark-mode", "implement")
     t["plan"] = ["a", "b", "c"]
@@ -147,7 +147,7 @@ def test_cli_new_creates_the_worktree_detects_the_test_command_and_prints_the_ta
     t = json.loads(r.stdout)
     assert t["id"] == "t-20260903-dark-mode-toggle" and t["phase"] == "spec"
     assert os.path.isdir(repo / ".rehorse" / "worktrees" / t["id"]) and t["base_sha"] == git(repo, "rev-parse", "HEAD").strip()
-    assert t["test_cmd"] == "python3 -m pytest -q --tb=short" and t["test_paths"] == ["tests/"]  # from the target repo
+    assert t["test_cmd"] == "python3 -m pytest -q --tb=short -rfE" and t["test_paths"] == ["tests/"]  # from the target repo
     assert state.load(str(repo))["tasks"][t["id"]] == t
     assert t["tests_sha"] is None and t["plan"] == [] and t["step"] == 0
     assert t["linked_deps"] == []  # the plain repo fixture has no .venv/node_modules to link
@@ -222,6 +222,7 @@ def red_task(**fields):
     ({}, "no red run"),
     ({"red_check": {"passed": 3, "failed": 0}}, "nothing failed"),
     ({"red_check": {"passed": 0, "failed": 0}}, "0 tests"),
+    ({"red_check": {"passed": 3, "failed": 1, "new_failed": 0, "preexisting": 1}}, "also fail at baseline"),
 ])
 def test_advance_to_implement_refuses_without_a_failing_red_run(fields, why):
     s = red_task(**fields)
@@ -231,7 +232,7 @@ def test_advance_to_implement_refuses_without_a_failing_red_run(fields, why):
 
 
 def test_advance_to_implement_accepts_a_failing_test_or_a_build_failure():
-    s = red_task(red_check={"passed": 2, "failed": 1}, red_kind="tests")
+    s = red_task(red_check={"passed": 2, "failed": 1, "new_failed": 1}, red_kind="tests")
     state.advance(s, "t-1", "implement")
     s = red_task(red_check={"passed": 0, "failed": 0}, red_kind="build_failed")
     state.advance(s, "t-1", "implement")
@@ -256,7 +257,7 @@ def test_new_task_starts_with_no_verifier_state():
 def test_advance_to_report_refuses_without_a_verdict_and_names_the_brief():
     s = state.empty()
     t = state.new_task(s, "t-1")
-    t["red_check"] = {"passed": 1, "failed": 1}
+    t["red_check"] = {"passed": 1, "failed": 1, "new_failed": 1}
     for phase in ["tests", "implement", "verify"]:
         state.advance(s, "t-1", phase)
     with pytest.raises(ValueError) as e:
@@ -270,7 +271,7 @@ def test_advance_to_report_refuses_without_a_verdict_and_names_the_brief():
 def test_verify_can_return_to_implement_and_archives_the_verdict():
     s = state.empty()
     t = state.new_task(s, "t-1")
-    t["red_check"] = {"passed": 1, "failed": 1}
+    t["red_check"] = {"passed": 1, "failed": 1, "new_failed": 1}
     for phase in ["tests", "implement", "verify"]:
         state.advance(s, "t-1", phase)
     t["verifier"], t["verify_run"] = {"round": 1, "verdict": "fail", "findings": []}, {"passed": 1, "failed": 1}
@@ -286,7 +287,7 @@ def test_verify_can_return_to_implement_and_archives_the_verdict():
 
 def test_cli_advance_implement_names_the_uncovered_criteria(repo):
     from conftest import commit_in, run_script, task_in
-    wt = task_in(repo, "tests", red_check={"passed": 1, "failed": 1},
+    wt = task_in(repo, "tests", red_check={"passed": 1, "failed": 1, "new_failed": 1},
                  coverage=[{"criterion": 1, "ref": "tests/test_new.py::test_sub"}])
     open(os.path.join(wt, "REHORSE_SPEC.md"), "w").write("Add sub and mul.\n\n## Acceptance criteria\n1. sub(5, 3) == 2\n2. mul(2, 3) == 6\n")
     commit_in(wt, "tests/test_new.py", "def test_sub():\n    assert 0\n", "tests: red")
@@ -305,7 +306,7 @@ def test_cli_advance_implement_names_the_uncovered_criteria(repo):
 def test_in_process_advance_without_a_root_skips_the_coverage_gate():
     s = state.empty()
     t = state.new_task(s, "t-1")
-    t["red_check"] = {"passed": 1, "failed": 1}
+    t["red_check"] = {"passed": 1, "failed": 1, "new_failed": 1}
     state.advance(s, "t-1", "tests")
     state.advance(s, "t-1", "implement")  # no root: nothing to read the spec from; the CLI always passes one
     assert t["phase"] == "implement" and t["coverage"] == []

@@ -12,7 +12,7 @@ import state
 
 
 def plan_task(repo, phase="implement", **fields):
-    wt = task_in(repo, phase, baseline={"passed": 1, "failed": 0}, red_check={"passed": 1, "failed": 1}, **fields)
+    wt = task_in(repo, phase, baseline={"passed": 1, "failed": 0}, red_check={"passed": 1, "failed": 1, "new_failed": 1}, **fields)
     return wt
 
 

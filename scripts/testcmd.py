@@ -7,6 +7,8 @@
   is_test_path(rel_path, dirs)      -> is this file a test file (locked/unlocked by phase)?
   parse_counts(text)                -> {"passed", "failed"} from pytest / vitest / jest / cargo output, or None
                                        (0-test runs like `no tests ran` are {0, 0}; --collect-only, --version, grep hits are None)
+  failing_ids(text)                 -> sorted ids of the failing tests (pytest FAILED/ERROR lines, jest ●, go --- FAIL, cargo,
+                                       XCTest, vitest FAIL/× lines); [] when nothing failed; None when the runner gave counts but no ids
   effective_cwd(cmd, cwd)           -> where a Bash command really runs after a leading `cd <dir> &&`
   build_failed(text)                -> did the runner output show a compiler/build error (swift, cargo, go, tsc, xcodebuild)?
   verify_file(task, wt)             -> the one file the verifier may write, named so the runner discovers it
@@ -58,7 +60,7 @@ def _python(root):
 def detect(root):
     dirs = _test_dirs(root)
     if _has_pytest_config(root):
-        return {"test_cmd": _python(root) + " -m pytest -q --tb=short", "runner": "pytest", "test_paths": dirs}
+        return {"test_cmd": _python(root) + " -m pytest -q --tb=short -rfE", "runner": "pytest", "test_paths": dirs}  # -rfE: failing ids
     pkg = os.path.join(root, "package.json")
     if os.path.exists(pkg):
         script = (json.load(open(pkg)).get("scripts") or {}).get("test", "")
@@ -126,6 +128,29 @@ def parse_counts(text):
                 return {"passed": found.get("passed", 0),
                         "failed": found.get("failed", 0) + found.get("error", 0) + found.get("errors", 0)}
     return None
+
+
+ID_FAMILIES = [  # one family per runner, tried in order; the first that matches anything wins
+    re.compile(r"^(?:FAILED|ERROR) (\S+)", re.M),                       # pytest -rfE (an ERROR is a collection failure)
+    re.compile(r"^\s*● (\S.*?)\s*$", re.M),                             # jest
+    re.compile(r"^--- FAIL: (\S+)", re.M),                               # go test
+    re.compile(r"^test (\S+) \.\.\. FAILED", re.M),                      # cargo test
+    re.compile(r"Test Case '-\[(.+?)\]' failed", re.M),                  # XCTest
+    re.compile(r"^\s*FAIL\s+(\S.*?)\s*$", re.M),                         # vitest: FAIL  file > name
+    re.compile(r"^\s*[×✗✕]\s+(\S.*?)(?:\s+\d+ms)?\s*$", re.M),           # vitest per-test lines (name only)
+]
+
+
+def failing_ids(text):
+    """Ids of the failing tests, so red can mean 'fails now and did not at baseline' rather than a count. None when the
+    output has failures but no ids the families above recognise (the caller falls back to counts and says so)."""
+    clean = ANSI_RE.sub("", text or "")
+    for fam in ID_FAMILIES:
+        found = sorted(set(fam.findall(clean)))
+        if found:
+            return found
+    counts = parse_counts(clean)
+    return [] if counts and not counts["failed"] else None
 
 
 def verify_file(task, wt):

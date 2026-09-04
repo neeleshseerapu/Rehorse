@@ -13,7 +13,6 @@ Out-of-scope ideas noticed while building. Not to be built without a decision.
 - `testcmd.detect()` could prefer `uv run pytest` / `poetry run pytest` when `uv.lock` / `poetry.lock` exist and no venv does.
 - Src-layout packages installed editable in the main checkout's venv resolve imports to the main checkout, not the worktree; `python -m pytest` from the worktree wins only for flat layouts. A `PYTHONPATH=<worktree>/src` prefix or a per-worktree `pip install -e` would fix it (matters for `rich`/`fastapi` in milestone 6).
 - JS worktrees have no `node_modules`; `npx vitest` there needs an install or a symlink to the main checkout's `node_modules` (matters for `zod` in milestone 7).
-- The red gate could compare failing test ids against the baseline instead of counts, so a collection error in a new test file (pytest reports `1 error`, runs nothing else) is distinguished from a real red run (milestone 5).
 - `worktree.create` appends `.rehorse/` to the user's `.gitignore` and leaves that change uncommitted; `merge.py` could include it in the merge commit.
 - `handoff.py` could block a *manual* `/compact` (never `auto`, which may be recovering from a context-limit error) while a step subagent is mid-flight, with a reason to compact after it reports. Cosmetic: state is consistent at any moment, so compaction is already safe.
 - Compaction inside a step subagent's own context (auto-compact of a long step) is untested; the main session's PreCompact is what the live check exercised.

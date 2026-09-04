@@ -560,3 +560,18 @@ pygments 2.19.2 from the lock. Results row: merged-green yes, upstream-tests-pas
 - Seen: the orchestrator ran the test command as `... 2>&1 | tail -6`; `on_bash_done.py` still parsed the summary line.
   The model's Summary named a behavioural consequence the changelog line omits (unescaped brackets in a user's
   `InvalidResponse` are now parsed on `markup=False` consoles), which the verifier had turned into a test.
+
+## Three fixes before the rich run (2026-09-04)
+
+- **Red by test ids, not counts** (fix 1). `testcmd.failing_ids()` reads the runner's per-test failure lines (pytest
+  `FAILED`/`ERROR` from `-rfE`, now appended by `detect()`; jest `●`; go `--- FAIL:`; cargo `test x ... FAILED`; XCTest
+  `Test Case ... failed`; vitest `FAIL file > name`, else its `×` lines), one family per runner, first match wins.
+  `on_bash_done.py` stores them as `baseline.failing` and, in the tests phase, `red_check.new_failing` / `new_failed`
+  (ids not failing at baseline) and `preexisting`; a green baseline needs no ids. `state.gate` requires `new_failed > 0`
+  (or a failed build) and says "the N failing test(s) also fail at baseline" when that is why. When a runner printed
+  counts but no ids (`failing_ids` returns None), the count difference is used, `ids_unavailable` is set, and both the
+  hook message and the report warn "judged by counts". The report lists "N failing at baseline (ignored): ids" and the
+  new failures at red whenever the baseline had failures. Fixture `tests/fixtures/repo_with_preexisting_failure/` is
+  driven with real pytest through the hook: the old failure alone is refused by the gate, a new failing test passes it.
+  An `ERROR` collection line is an id too (pytest counts it as a failure); a new test file that fails to import still
+  shows fewer tests than baseline and stays `build_failed`. IDEAS.md entry removed.

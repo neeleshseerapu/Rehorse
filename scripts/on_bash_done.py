@@ -4,9 +4,10 @@
 A run counts only if the command runs the task's test runner (not --collect-only/--version/--help), it ran inside
 the task's worktree, and the output parses to the runner's own summary line (grep hits never do). A passing run
 arrives as PostToolUse (tool_response.stdout/stderr); a failing one as PostToolUseFailure (error). By phase:
-spec -> baseline (0 tests => needs-attention), tests -> red_check plus red_kind ("build_failed" when the output shows a
-compiler error or fewer tests ran than at baseline: the new tests reference symbols that do not exist yet) and
-weak_tests (new tests that already pass; a warning, not a gate), verify -> verify_run (the verifier's own run), always -> last_test_run.
+spec -> baseline with the failing test ids (0 tests => needs-attention), tests -> red_check with new_failed (failing ids that
+were not failing at baseline; counts with ids_unavailable when the runner printed none), red_kind ("build_failed" when the
+output shows a compiler error or fewer tests ran than at baseline: the new tests reference symbols that do not exist yet)
+and weak_tests (new tests that already pass; a warning, not a gate), verify -> verify_run, always -> last_test_run.
 """
 import datetime
 import json
@@ -24,6 +25,21 @@ def note(hook, text):
     return 0
 
 
+def red_by_ids(red, ids, base):
+    """Fill red['new_failed'] (and new_failing / preexisting / ids_unavailable): red means a failure the baseline did not have."""
+    base_ids = base.get("failing") if base.get("failed") else []  # a green baseline needs no ids
+    if ids is not None and base_ids is not None:
+        new = sorted(set(ids) - set(base_ids))
+        red.update(new_failing=new, new_failed=len(new), preexisting=len(set(ids) & set(base_ids)))
+        note = ""
+    else:
+        red.update(new_failed=max(0, red["failed"] - base["failed"]), preexisting=min(base["failed"], red["failed"]), ids_unavailable=True)
+        note = "; WARNING: no test ids in the runner output, judged by counts"
+    return "%d new failing test(s)%s%s%s." % (
+        red["new_failed"], "; %d failing at baseline (ignored)" % red["preexisting"] if red["preexisting"] else "",
+        " (the failures also fail at baseline; write a test that fails because the feature is missing)" if red["failed"] and not red["new_failed"] else "", note)
+
+
 def main():
     hook = json.load(sys.stdin)
     root, s, task = state.active(hook.get("cwd"))
@@ -35,7 +51,7 @@ def main():
         return note(hook, "test run ignored: it did not run inside the worktree. Run `cd %s && %s`." % (wt, task["test_cmd"]))
     resp = hook.get("tool_response") or {}
     text = hook.get("error") or "\n".join(filter(None, [resp.get("stdout"), resp.get("stderr")]))  # jest reports on stderr
-    counts, broken = testcmd.parse_counts(text), testcmd.build_failed(text)
+    counts, broken, ids = testcmd.parse_counts(text), testcmd.build_failed(text), testcmd.failing_ids(text)
     if counts is None:
         if not broken:
             return 0
@@ -45,7 +61,9 @@ def main():
     msg = "recorded test run: %d passed, %d failed%s (edit_seq %d)." % (
         counts["passed"], counts["failed"], ", build failed" if broken else "", task["edit_seq"])
     if task["phase"] == "spec":
-        task["baseline"] = dict(counts)
+        task["baseline"] = dict(counts, failing=ids)
+        if counts["failed"]:
+            msg += " %d failing at baseline (ignored in the red check)." % counts["failed"]
         if counts["passed"] + counts["failed"] == 0:
             state.advance(s, task["id"], state.ATTENTION, reason="baseline ran 0 tests with `%s`" % command)
             msg = ("baseline ran 0 tests, so task %s moved to needs-attention. Fix the test command or test discovery, "
@@ -54,12 +72,14 @@ def main():
         task["red_check"] = dict(counts)
         base = task.get("baseline") or {"passed": 0, "failed": 0}
         added = counts["passed"] + counts["failed"] - base["passed"] - base["failed"]
+        red_note = red_by_ids(task["red_check"], ids, base)
         if broken or added < 0:
             task["red_kind"], task["weak_tests"] = "build_failed", 0
             msg += " red: build failed (new tests reference symbols that don't exist yet); that counts as red."
         else:
             task["red_kind"] = "tests"
             task["weak_tests"] = max(0, min(added, counts["passed"] - base["passed"]))
+            msg += " red: " + red_note
         if task["weak_tests"]:
             msg += (" WARNING: %d new test(s) passed before implementation and may not test anything; make them fail "
                     "first or say why they cannot." % task["weak_tests"])

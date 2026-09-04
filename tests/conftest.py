@@ -58,7 +58,7 @@ def task_in(repo, phase, **fields):
     t.update(worktree.create(str(repo), "t-1"))
     t.update({"test_cmd": "python3 -m pytest -q", "test_paths": ["tests/"]}, **fields)
     if state.PHASES.index(phase) > state.PHASES.index("tests") and t["red_check"] is None:
-        t["red_check"] = {"passed": 1, "failed": 1}  # the red gate must let the walk past tests
+        t["red_check"] = {"passed": 1, "failed": 1, "new_failed": 1}  # the red gate must let the walk past tests
     if state.PHASES.index(phase) > state.PHASES.index("verify") and t["verifier"] is None:
         t["verifier"] = VERDICT  # and the verifier gate past verify
     t["phase"] = "setup"  # walk the whole machine so every transition is a legal one

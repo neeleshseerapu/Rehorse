@@ -19,3 +19,4 @@ All notable changes to Rehorse are recorded here. Format: [Keep a Changelog](htt
 - The tests phase cannot end until every acceptance criterion in the spec is mapped to a test in a new test file; the mapping comes from the tests subagent's reply and is checked against the files.
 - A plan step that needed no edits is reported as already satisfied by the step that did the work.
 - `/rehorse:merge` reports how many verifier tests are merged with the change; the verifier is asked for the fewest tests that demonstrate each finding.
+- Red is judged by failing test ids, not counts: the baseline's failing tests are recorded (pytest runs with `-rfE`) and the tests phase ends only when a test fails that was not failing at baseline. Pre-existing failures are listed in the report as ignored; runners that print no ids fall back to counts with a warning.

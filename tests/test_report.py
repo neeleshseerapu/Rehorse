@@ -12,7 +12,7 @@ def verified_task(repo, **fields):
     tests_sha = commit_in(wt, "tests/test_sub.py", "from app import sub\n\ndef test_sub():\n    assert sub(3, 1) == 2\n", "tests: sub")
     s = state.load(str(repo))
     t = s["tasks"]["t-1"]
-    t.update(red_check={"passed": 1, "failed": 1}, tests_sha=tests_sha, edit_seq=1,
+    t.update(red_check={"passed": 1, "failed": 1, "new_failed": 1}, tests_sha=tests_sha, edit_seq=1,
              last_test_run={"passed": 2, "failed": 0, "after_edit_seq": 1, "output": "2 passed in 0.01s"},
              plan=[{"title": "Add sub()", "done": True, "summary": "Added sub() to app.py.\nTests: 2 passed.", "commit": "abc"}], step=1,
              verifier=dict(VERDICT), verify_round=1)
@@ -244,3 +244,16 @@ def test_a_step_with_no_edits_renders_as_already_satisfied_not_as_work(repo):
     text = render(repo)
     assert "- [x] 2. Make the verifier's tests pass — already satisfied by step 1 (no edits)" in text
     assert "No edits: nothing to do." not in text
+
+
+def test_report_lists_preexisting_failures_separately_and_ignores_them(repo):
+    verified_task(repo, baseline={"passed": 1, "failed": 2, "failing": ["tests/test_a.py::test_x", "tests/test_a.py::test_y"]},
+                  red_check={"passed": 1, "failed": 3, "new_failed": 1, "new_failing": ["tests/test_new.py::test_z"], "preexisting": 2})
+    text = render(repo)
+    assert "2 failing at baseline (ignored): tests/test_a.py::test_x, tests/test_a.py::test_y" in text
+    assert "1 new failing test(s) at red: tests/test_new.py::test_z" in text
+
+
+def test_report_warns_when_red_was_judged_by_counts(repo):
+    verified_task(repo, red_check={"passed": 1, "failed": 1, "new_failed": 1, "ids_unavailable": True})
+    assert "no test ids in the runner output; red was judged by counts" in render(repo)

@@ -1,4 +1,6 @@
 """on_bash_done.py (PostToolUse + PostToolUseFailure Bash): record real test runs against the current edit_seq."""
+import os
+import pathlib
 import pytest
 from conftest import hook_input, hook_out, run_script, task_in, task_state
 
@@ -12,6 +14,11 @@ def done(repo, fixture="posttooluse_bash_pytest_pass", cwd=None, command=None, s
     if error is not None:
         payload["error"] = error
     return hook_out(run_script("on_bash_done", stdin=payload, cwd=cwd or str(repo)))
+
+
+def pf(d):
+    """passed/failed only: the id fields are asserted by their own tests."""
+    return {k: d[k] for k in ("passed", "failed")}
 
 
 def context(out, event="PostToolUse"):
@@ -74,7 +81,7 @@ def test_spec_phase_records_the_baseline(repo):
     wt = task_in(repo, "spec")
     done(repo, cwd=wt)
     t = task_state(repo)
-    assert t["baseline"] == {"passed": 2, "failed": 0} and t["phase"] == "spec"
+    assert pf(t["baseline"]) == {"passed": 2, "failed": 0} and t["phase"] == "spec"
 
 
 def test_zero_test_baseline_sends_the_task_to_needs_attention(repo):
@@ -82,7 +89,7 @@ def test_zero_test_baseline_sends_the_task_to_needs_attention(repo):
     out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 5\n\nno tests ran in 0.00s")
     assert "needs-attention" in context(out, "PostToolUseFailure")
     t = task_state(repo)
-    assert t["baseline"] == {"passed": 0, "failed": 0}
+    assert pf(t["baseline"]) == {"passed": 0, "failed": 0}
     assert t["phase"] == "needs-attention" and t["attention"]["prior_phase"] == "spec"
     assert "0 tests" in t["attention"]["reason"]
 
@@ -91,7 +98,7 @@ def test_tests_phase_records_red_check(repo):
     wt = task_in(repo, "tests", edit_seq=2)
     done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt)
     t = task_state(repo)
-    assert t["red_check"] == {"passed": 2, "failed": 1}
+    assert pf(t["red_check"]) == {"passed": 2, "failed": 1}
     assert t["last_test_run"]["after_edit_seq"] == 2 and t["baseline"] is None
 
 
@@ -109,7 +116,7 @@ def test_red_check_with_no_weak_tests_records_zero(repo):
     out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt)  # real fixture: 2 passed, 1 failed -> 1 added, 0 weak
     assert "WARNING" not in context(out, "PostToolUseFailure")
     t = task_state(repo)
-    assert t["red_check"] == {"passed": 2, "failed": 1} and t["weak_tests"] == 0
+    assert pf(t["red_check"]) == {"passed": 2, "failed": 1} and t["weak_tests"] == 0
 
 
 def test_red_check_with_one_weak_test_records_it_and_warns_but_still_counts_as_red(repo):
@@ -117,7 +124,7 @@ def test_red_check_with_one_weak_test_records_it_and_warns_but_still_counts_as_r
     out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 1\n\n1 failed, 3 passed in 0.01s")
     assert "1 new test(s) passed before implementation" in context(out, "PostToolUseFailure")
     t = task_state(repo)
-    assert t["red_check"] == {"passed": 3, "failed": 1} and t["weak_tests"] == 1 and t["phase"] == "tests"
+    assert pf(t["red_check"]) == {"passed": 3, "failed": 1} and t["weak_tests"] == 1 and t["phase"] == "tests"
 
 
 def test_weak_tests_never_goes_negative_or_above_the_number_added(repo):
@@ -140,7 +147,7 @@ def test_red_run_with_fewer_tests_than_baseline_is_a_build_failure_and_skips_wea
     out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 2\n\n1 error in 0.01s")
     assert "build failed" in context(out, "PostToolUseFailure")
     t = task_state(repo)
-    assert t["red_kind"] == "build_failed" and t["red_check"] == {"passed": 0, "failed": 1} and t["weak_tests"] == 0
+    assert t["red_kind"] == "build_failed" and pf(t["red_check"]) == {"passed": 0, "failed": 1} and t["weak_tests"] == 0
 
 
 @pytest.mark.parametrize("name,cmd", [("swift_build_failed.txt", "swift test"), ("cargo_build_failed.txt", "cargo test")])
@@ -150,7 +157,7 @@ def test_red_run_whose_output_is_a_compiler_error_is_recorded_as_build_failed(re
                error="Exit code 1\n" + fixture_output(name))
     assert "build failed" in context(out, "PostToolUseFailure")
     t = task_state(repo)
-    assert t["red_kind"] == "build_failed" and t["red_check"] == {"passed": 0, "failed": 0} and t["weak_tests"] == 0
+    assert t["red_kind"] == "build_failed" and pf(t["red_check"]) == {"passed": 0, "failed": 0} and t["weak_tests"] == 0
     assert t["last_test_run"]["after_edit_seq"] == 1  # the attempt counts as a run: the Stop guard must not loop on it
 
 
@@ -166,7 +173,7 @@ def test_swift_red_run_with_failing_tests_is_an_ordinary_red_not_a_build_failure
                error="Exit code 1\n" + fixture_output("swift_tests_red.txt"))
     assert "2 passed, 1 failed" in context(out, "PostToolUseFailure")
     t = task_state(repo)
-    assert t["red_kind"] == "tests" and t["red_check"] == {"passed": 2, "failed": 1} and t["weak_tests"] == 0
+    assert t["red_kind"] == "tests" and pf(t["red_check"]) == {"passed": 2, "failed": 1} and t["weak_tests"] == 0
 
 
 def test_verify_phase_records_the_verifiers_run_separately(repo):
@@ -174,4 +181,87 @@ def test_verify_phase_records_the_verifiers_run_separately(repo):
     context(done(repo, cwd=wt))
     t = task_state(repo)
     assert t["verify_run"] == {"passed": 2, "failed": 0} and t["last_test_run"]["after_edit_seq"] == 3
-    assert t["baseline"] is None and t["red_check"] == {"passed": 1, "failed": 1}
+    assert t["baseline"] is None and pf(t["red_check"]) == {"passed": 1, "failed": 1}
+
+
+# ---- red by test ids: a failure that also fails at baseline is not red ---------------------------------------------
+
+RED_TWO = ("Exit code 1\n..FF\n=========================== short test summary info ============================\n"
+           "FAILED tests/test_app.py::test_broken_before_rehorse - assert 2 == 3\n"
+           "FAILED tests/test_new.py::test_sub - ImportError\n2 failed, 2 passed in 0.01s\n")
+RED_OLD_ONLY = ("Exit code 1\n..F.\n=========================== short test summary info ============================\n"
+                "FAILED tests/test_app.py::test_broken_before_rehorse - assert 2 == 3\n1 failed, 3 passed in 0.01s\n")
+BASE = ("Exit code 1\n.F\n=========================== short test summary info ============================\n"
+        "FAILED tests/test_app.py::test_broken_before_rehorse - assert 2 == 3\n1 failed, 1 passed in 0.01s\n")
+
+
+def test_baseline_records_the_failing_ids(repo):
+    wt = task_in(repo, "spec")
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error=BASE)
+    t = task_state(repo)
+    assert t["baseline"] == {"passed": 1, "failed": 1, "failing": ["tests/test_app.py::test_broken_before_rehorse"]}
+    assert "1 failing at baseline" in context(out, "PostToolUseFailure")
+
+
+def test_red_counts_only_failures_that_were_not_failing_at_baseline(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 1, "failed": 1, "failing": ["tests/test_app.py::test_broken_before_rehorse"]})
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error=RED_TWO)
+    r = task_state(repo)["red_check"]
+    assert r["failed"] == 2 and r["new_failed"] == 1 and r["new_failing"] == ["tests/test_new.py::test_sub"] and r["preexisting"] == 1
+    assert "1 new failing test(s)" in context(out, "PostToolUseFailure") and "1 failing at baseline (ignored)" in context(out, "PostToolUseFailure")
+
+
+def test_red_run_where_only_the_baseline_failure_fails_is_not_red(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 1, "failed": 1, "failing": ["tests/test_app.py::test_broken_before_rehorse"]})
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error=RED_OLD_ONLY)
+    r = task_state(repo)["red_check"]
+    assert r["failed"] == 1 and r["new_failed"] == 0 and r["new_failing"] == []
+    assert "0 new failing test(s)" in context(out, "PostToolUseFailure") and "also fail at baseline" in context(out, "PostToolUseFailure")
+
+
+def test_red_falls_back_to_counts_with_a_warning_when_ids_are_unavailable(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 2, "failed": 1, "failing": None})
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 1\n3 failed, 2 passed in 0.01s\n")
+    r = task_state(repo)["red_check"]
+    assert r["new_failed"] == 2 and r["ids_unavailable"] is True and r["preexisting"] == 1
+    assert "WARNING: no test ids" in context(out, "PostToolUseFailure")
+
+
+def test_weak_tests_are_unchanged_by_a_preexisting_failure(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 1, "failed": 1, "failing": ["tests/test_app.py::test_broken_before_rehorse"]})
+    done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error=RED_TWO)  # 2 added: one fails, one passes
+    assert task_state(repo)["weak_tests"] == 1
+
+
+def test_real_pytest_in_a_repo_with_a_preexisting_failure_goes_red_only_on_a_new_failure(tmp_path):
+    """The fixture repo has one test that fails before Rehorse touches it; baseline, a red run that adds a failing test,
+    and the gate are driven with real pytest output through the hook."""
+    import shutil
+    import subprocess
+    import sys
+    import state
+    repo = tmp_path / "pre"
+    shutil.copytree(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "repo_with_preexisting_failure"), repo)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=t", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+    cmd = "%s -m pytest -q --tb=short -rfE -p no:cacheprovider" % sys.executable
+    wt = task_in(repo, "spec", test_cmd=cmd)
+
+    def run():
+        p = subprocess.run(cmd, shell=True, cwd=wt, capture_output=True, text=True)
+        return done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, command=cmd, error="Exit code %d\n%s" % (p.returncode, p.stdout))
+    run()  # baseline
+    assert task_state(repo)["baseline"] == {"passed": 1, "failed": 1, "failing": ["tests/test_app.py::test_broken_before_rehorse"]}
+    s = state.load(str(repo))
+    state.advance(s, "t-1", "tests")
+    state.save(str(repo), s)
+    run()  # nothing new written: the old failure alone is not red
+    assert task_state(repo)["red_check"]["new_failed"] == 0
+    with pytest.raises(ValueError, match="also fail at baseline"):
+        state.advance(state.load(str(repo)), "t-1", "implement")
+    pathlib.Path(wt, "tests", "test_new.py").write_text("def test_sub():\n    from app import sub\n    assert sub(3, 1) == 2\n")
+    run()  # now a new failure next to the old one
+    r = task_state(repo)["red_check"]
+    assert r["new_failed"] == 1 and r["new_failing"] == ["tests/test_new.py::test_sub"] and r["preexisting"] == 1
+    state.advance(state.load(str(repo)), "t-1", "implement")  # the gate lets it through now

@@ -16,7 +16,7 @@ GOOD = ('Looked hard.\n```json\n{"verdict": "concerns", "findings": [{"severity"
 
 def verify_task(repo, **fields):
     """A task that finished implement: spec, red tests committed, one implementing commit, green run recorded, phase verify."""
-    wt = task_in(repo, "implement", baseline={"passed": 1, "failed": 0}, red_check={"passed": 1, "failed": 1})
+    wt = task_in(repo, "implement", baseline={"passed": 1, "failed": 0}, red_check={"passed": 1, "failed": 1, "new_failed": 1})
     with open(os.path.join(wt, "REHORSE_SPEC.md"), "w") as f:
         f.write(SPEC)
     tests_sha = commit_in(wt, "tests/test_sub.py", "from app import sub\n\ndef test_sub():\n    assert sub(3, 1) == 2\n", "tests: red")

@@ -80,8 +80,9 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    acceptance criterion in REHORSE_SPEC.md. The hook records it and refuses the stop while a criterion has no test.
    ```
 
-2. Run `cd <worktree> && <test_cmd>` yourself; the hook records `red_check`. **At least one test must fail.** If nothing
-   fails, the tests do not test the feature: spawn the subagent again saying which criteria are untested.
+2. Run `cd <worktree> && <test_cmd>` yourself; the hook records `red_check`. **At least one test that was not failing at
+   baseline must fail** (the hook says how many new failures it saw; failures that also fail at baseline do not count).
+   If nothing new fails, the tests do not test the feature: spawn the subagent again saying which criteria are untested.
 3. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/state.py advance implement` (it refuses, and says why, until a red run with a
    failure, or a failed build, is recorded and every acceptance criterion maps to a new test; if it names uncovered
    criteria, spawn the tests subagent again with that list).

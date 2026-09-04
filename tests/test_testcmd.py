@@ -9,13 +9,15 @@ from conftest import hook_input, run_script
 
 import testcmd
 
+FIXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+
 
 # ---- detection -------------------------------------------------------------
 
 def test_detect_pytest_from_pyproject(tmp_path):
     (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths = ['tests']\n")
     (tmp_path / "tests").mkdir()
-    assert testcmd.detect(str(tmp_path)) == {"test_cmd": "python3 -m pytest -q --tb=short", "runner": "pytest", "test_paths": ["tests/"]}
+    assert testcmd.detect(str(tmp_path)) == {"test_cmd": "python3 -m pytest -q --tb=short -rfE", "runner": "pytest", "test_paths": ["tests/"]}
 
 
 def test_detect_pytest_from_tests_dir_alone(tmp_path):
@@ -216,7 +218,7 @@ def test_effective_cwd_follows_a_leading_cd(command, cwd, expected):
 def test_detect_uses_the_target_repos_own_venv_by_absolute_path(venv_repo):
     got = testcmd.detect(str(venv_repo))
     python = os.path.join(str(venv_repo), ".venv", "bin", "python")
-    assert got["test_cmd"] == python + " -m pytest -q --tb=short"
+    assert got["test_cmd"] == python + " -m pytest -q --tb=short -rfE"
     assert got["runner"] == "pytest" and got["test_paths"] == ["tests/"]
     # the interpreter named in the command really is the fixture's, not the one running this test suite
     prefix = subprocess.run([python, "-c", "import sys; print(sys.prefix)"], capture_output=True, text=True).stdout.strip()
@@ -296,3 +298,40 @@ def test_verify_file_per_runner(tmp_path, test_cmd, test_paths, files, expected)
         (tmp_path / f).write_text("")
     task = {"id": "t-1", "test_cmd": test_cmd, "test_paths": test_paths}
     assert testcmd.verify_file(task, str(tmp_path)) == expected
+
+
+# ---- failing test ids: the red gate compares them against the baseline instead of counting -----------------------
+
+def test_failing_ids_pytest_from_the_captured_failure():
+    err = hook_input("posttoolusefailure_bash_pytest_fail")["error"]
+    assert testcmd.failing_ids(err) == ["tests/test_red.py::test_sub_missing"]
+
+
+def test_failing_ids_pytest_collection_error_and_parametrized_ids():
+    out = ("=========================== short test summary info ============================\n"
+           "ERROR tests/test_pretty.py - ModuleNotFoundError: No module named 'attr'\n"
+           "FAILED tests/test_x.py::test_p[a-b] - assert 1 == 2\n"
+           "FAILED tests/test_x.py::TestK::test_m\n"
+           "2 failed, 1 error in 0.10s\n")
+    assert testcmd.failing_ids(out) == ["tests/test_pretty.py", "tests/test_x.py::TestK::test_m", "tests/test_x.py::test_p[a-b]"]
+
+
+def test_failing_ids_vitest_from_the_captured_failure():
+    err = hook_input("posttoolusefailure_bash_vitest_fail")["error"]
+    assert testcmd.failing_ids(err) == ["sum.test.js > fails on purpose"]
+
+
+@pytest.mark.parametrize("text,expected", [
+    (" FAIL  src/sum.test.js\n  ● sum › adds\n\nTests:       1 failed, 1 passed, 2 total\n", ["sum › adds"]),  # jest
+    ("test parse::empty ... FAILED\ntest parse::ok ... ok\ntest result: FAILED. 1 passed; 1 failed; 0 ignored\n", ["parse::empty"]),  # cargo
+    ("--- FAIL: TestOpen (0.00s)\nFAIL\nFAIL\tpkg\t0.01s\n", ["TestOpen"]),  # go
+    (open(os.path.join(FIXTURES_DIR, "runner_output", "swift_tests_red.txt")).read(), ["MiloTests.ParserTests testOpen"]),  # swift
+    ("..\n2 passed in 0.01s\n", []),  # nothing failed: an empty list, not None
+])
+def test_failing_ids_other_runners(text, expected):
+    assert testcmd.failing_ids(text) == expected
+
+
+def test_failing_ids_is_none_when_the_runner_printed_failures_but_no_ids():
+    assert testcmd.failing_ids("1 failed, 2 passed in 0.01s\n") is None
+    assert testcmd.failing_ids("Tests  1 failed | 1 passed (2)\n") is None

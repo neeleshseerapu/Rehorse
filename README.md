@@ -159,7 +159,8 @@ While a task is active, regardless of permission mode:
   test files cannot change at all. The report flags any drift in test files after the tests phase.
 - **Red before green, with evidence.** A test run counts only if it ran inside the worktree and printed the runner's
   own summary line. A baseline that runs zero tests stops the task. The task cannot leave the tests phase until a red
-  run with a failing test is recorded. A red run that does not even compile because the new tests name symbols that do
+  run is recorded with a failing test that was not failing at baseline (by test id; pre-existing failures are listed
+  in the report and ignored). A red run that does not even compile because the new tests name symbols that do
   not exist yet counts as red, and the report says so instead of showing counts.
 - **Verified by someone else, before the report.** The verifier's stop is held until it ran the tests, committed, and
   returned a JSON verdict; that verdict is written to state by the hook, and the report cannot be rendered without
@@ -176,7 +177,8 @@ Every denial tells the model what it may do instead.
 ### How red-then-green works
 
 Rehorse never edits your existing tests. Red comes from new tests written from the spec before any implementation
-exists, run against your unchanged code; if they cannot fail, the task does not move on. Green comes from
+exists, run against your unchanged code; if they cannot fail, the task does not move on. Red is judged by test ids,
+not counts: a test that already failed before Rehorse started does not make a run red. Green comes from
 implementation code that satisfies them, written while every test file is locked, so the only way to green is to
 change the code. A new test that passes before the implementation exists is flagged in the report as possibly
 testing nothing. Bug fixes follow the same flow: the new test reproduces the bug first, then the fix makes it pass.

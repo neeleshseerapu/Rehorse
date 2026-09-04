@@ -69,10 +69,11 @@ def gate(task, to, root=None):
     """Evidence a transition needs, or None: red before implement (a failing new test, or a failed build) and, given a root to
     read the spec from, every acceptance criterion mapped to a new test (coverage.py); a verdict before report."""
     r = task.get("red_check") or {"passed": 0, "failed": 0}
-    if (task["phase"], to) == ("tests", "implement") and not (task.get("red_kind") == "build_failed" or r["failed"]):
+    if (task["phase"], to) == ("tests", "implement") and not (task.get("red_kind") == "build_failed" or r.get("new_failed", 0)):
         return ("no red run recorded; run the test command inside the worktree after the tests are written (at least one must fail)"
-                if not task.get("red_check") else "the red run ran 0 tests; fix test discovery and run it again" if not r["passed"] else
-                "nothing failed in the red run: tests that pass before the feature exists test nothing; make at least one fail")
+                if not task.get("red_check") else "the red run ran 0 tests; fix test discovery and run it again" if not r["passed"] + r["failed"] else
+                "nothing failed in the red run: tests that pass before the feature exists test nothing; make at least one fail" if not r["failed"] else
+                "no new failure: the %d failing test(s) also fail at baseline; write a test that fails because the feature is missing" % r["failed"])
     if (task["phase"], to) == ("tests", "implement") and root:
         import coverage  # lazy: the SessionStart path must not pay for git
         if coverage.uncovered(root, task):

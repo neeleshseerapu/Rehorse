@@ -57,6 +57,22 @@ def banner(task):
     return "## GREEN: %d passed, 0 failed · %s" % (last["passed"], tag)
 
 
+def ids(names, cap=5):
+    names = names or []
+    return ", ".join(names[:cap]) + (" (+%d more)" % (len(names) - cap) if len(names) > cap else "")
+
+
+def red_lines(task):
+    """Pre-existing failures are reported apart from red; red is judged by ids that were not failing at baseline."""
+    base, red, out = task.get("baseline") or {}, task.get("red_check") or {}, []
+    if base.get("failed"):
+        out.append("**Pre-existing:** %d failing at baseline (ignored): %s" % (base["failed"], ids(base.get("failing")) or "ids unavailable"))
+        out.append("Red: %d new failing test(s) at red: %s" % (red.get("new_failed", 0), ids(red.get("new_failing")) or "ids unavailable"))
+    if red.get("ids_unavailable"):
+        out.append("**Warning:** no test ids in the runner output; red was judged by counts.")
+    return out + [""] if out else []
+
+
 def coverage_table(cov):
     if not cov:
         return ["(no coverage map returned)"]
@@ -126,6 +142,7 @@ def render(root, task, name):
         BUILD_FAILED_ROW if task.get("red_kind") == "build_failed" else row("red (tests written, no implementation)", task["red_check"]),
         row("green (last run)", task["last_test_run"]), "",
         "Command: `%s`" % task["test_cmd"], "",
+        *red_lines(task),
         *(["**Warning:** %d new test(s) passed before implementation and may not test anything." % task["weak_tests"], ""]
           if task.get("weak_tests") else []),
         "## Changes (base..HEAD)", "", "```", stat or "(no commits)", "```", "",
