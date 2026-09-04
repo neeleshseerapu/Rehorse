@@ -49,6 +49,9 @@ def banner(task):
     return "## GREEN: %d passed, 0 failed · unverified" % last["passed"]
 
 
+BUILD_FAILED_ROW = "| red (tests written, no implementation) | build failed (new tests reference symbols that don't exist yet) | |"
+
+
 def render(root, task):
     wt, tid = progress.wt_path(root, task), task["id"]
     stat = worktree.diff(root, tid, task["base_sha"], stat=True).strip() if task["base_sha"] else ""
@@ -68,8 +71,11 @@ def render(root, task):
         "Worktree setup: " + ("linked " + ", ".join(task["linked_deps"]) + " from the main checkout" if task.get("linked_deps")
                               else "nothing linked (no .venv, node_modules, target or .tox in the main checkout)"), "",
         banner(task), "",
+        *(["## Summary", "", "_Written by the model at report time; everything else in this report is generated from recorded "
+           "state._", "", task["summary"], ""] if task.get("summary") else []),
         "## Tests", "", "| stage | passed | failed |", "|---|---|---|", row("baseline", task["baseline"]),
-        row("red (tests written, no implementation)", task["red_check"]), row("green (last run)", task["last_test_run"]), "",
+        BUILD_FAILED_ROW if task.get("red_kind") == "build_failed" else row("red (tests written, no implementation)", task["red_check"]),
+        row("green (last run)", task["last_test_run"]), "",
         "Command: `%s`" % task["test_cmd"], "",
         *(["**Warning:** %d new test(s) passed before implementation and may not test anything." % task["weak_tests"], ""]
           if task.get("weak_tests") else []),

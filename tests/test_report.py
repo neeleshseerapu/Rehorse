@@ -67,6 +67,13 @@ def test_red_last_run_renders_a_red_banner(repo):
     assert "RED" in text.splitlines()[2] or "RED" in text[:300]
 
 
+def test_report_renders_a_build_failed_red_instead_of_counts(repo):
+    verified_task(repo, red_check={"passed": 0, "failed": 0}, red_kind="build_failed")
+    text = render(repo)
+    assert "| red (tests written, no implementation) | build failed (new tests reference symbols that don't exist yet) | |" in text
+    assert "| red (tests written, no implementation) | 0 | 0 |" not in text
+
+
 def test_needs_attention_renders_the_reason_as_the_banner_without_changing_phase(repo):
     verified_task(repo)
     s = state.load(str(repo))

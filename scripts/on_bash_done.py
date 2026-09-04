@@ -4,8 +4,9 @@
 A run counts only if the command runs the task's test runner (not --collect-only/--version/--help), it ran inside
 the task's worktree, and the output parses to the runner's own summary line (grep hits never do). A passing run
 arrives as PostToolUse (tool_response.stdout/stderr); a failing one as PostToolUseFailure (error). By phase:
-spec -> baseline (0 tests => needs-attention), tests -> red_check plus weak_tests (new tests that already pass, a
-warning, not a gate), always -> last_test_run.
+spec -> baseline (0 tests => needs-attention), tests -> red_check plus red_kind ("build_failed" when the output shows a
+compiler error or fewer tests ran than at baseline: the new tests reference symbols that do not exist yet) and
+weak_tests (new tests that already pass; a warning, not a gate), always -> last_test_run.
 """
 import datetime
 import json
@@ -34,12 +35,15 @@ def main():
         return note(hook, "test run ignored: it did not run inside the worktree. Run `cd %s && %s`." % (wt, task["test_cmd"]))
     resp = hook.get("tool_response") or {}
     text = hook.get("error") or "\n".join(filter(None, [resp.get("stdout"), resp.get("stderr")]))  # jest reports on stderr
-    counts = testcmd.parse_counts(text)
+    counts, broken = testcmd.parse_counts(text), testcmd.build_failed(text)
     if counts is None:
-        return 0
-    task["last_test_run"] = dict(counts, at=datetime.datetime.now().isoformat(timespec="seconds"),
+        if not broken:
+            return 0
+        counts = {"passed": 0, "failed": 0}  # the build failed before any test ran; the attempt still counts as a run
+    task["last_test_run"] = dict(counts, at=datetime.datetime.now().isoformat(timespec="seconds"), build_failed=broken,
                                  after_edit_seq=task["edit_seq"], command=command, output=text[-4000:])  # tail: verifier + report
-    msg = "recorded test run: %d passed, %d failed (edit_seq %d)." % (counts["passed"], counts["failed"], task["edit_seq"])
+    msg = "recorded test run: %d passed, %d failed%s (edit_seq %d)." % (
+        counts["passed"], counts["failed"], ", build failed" if broken else "", task["edit_seq"])
     if task["phase"] == "spec":
         task["baseline"] = dict(counts)
         if counts["passed"] + counts["failed"] == 0:
@@ -50,7 +54,12 @@ def main():
         task["red_check"] = dict(counts)
         base = task.get("baseline") or {"passed": 0, "failed": 0}
         added = counts["passed"] + counts["failed"] - base["passed"] - base["failed"]
-        task["weak_tests"] = max(0, min(added, counts["passed"] - base["passed"]))
+        if broken or added < 0:
+            task["red_kind"], task["weak_tests"] = "build_failed", 0
+            msg += " red: build failed (new tests reference symbols that don't exist yet); that counts as red."
+        else:
+            task["red_kind"] = "tests"
+            task["weak_tests"] = max(0, min(added, counts["passed"] - base["passed"]))
         if task["weak_tests"]:
             msg += (" WARNING: %d new test(s) passed before implementation and may not test anything; make them fail "
                     "first or say why they cannot." % task["weak_tests"])

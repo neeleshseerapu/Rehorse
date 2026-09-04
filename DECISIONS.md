@@ -324,3 +324,14 @@ and the only part not generated from state.
   and `state.py advance spec` continues to the baseline. Isolation is the only rule in `setup`; the step-done hook
   requires the commit (`setup: test harness for <id>`) but no test run, since no command exists yet. The user can now
   discard the harness and the refactor along with the task, which was impossible when they lived in the initial commit.
+- **Red by compile failure.** In `red_check`, `on_bash_done.py` records `red_kind: "build_failed"` when the runner output
+  matches a compiler/build error (`file:line:col: error:`, `error[E0425]:`, `could not compile`, `[build failed]`,
+  `** BUILD FAILED **`, `error TS1234:`) or when fewer tests ran than at baseline (pytest's `1 error` collection failure).
+  It still counts as red (the new tests cannot pass before the symbols exist), the weak-test computation is skipped
+  (nothing ran, so nothing "passed early"), and the report's red row says "build failed (new tests reference symbols
+  that don't exist yet)" instead of misleading counts. A build failure with no summary line at all is now recorded as a
+  run of 0/0 with `build_failed: true`, so the Stop guard does not loop on a step whose build is broken. Fixtures:
+  `tests/fixtures/runner_output/{swift,cargo}_build_failed.txt` (compiler output shapes, not captured hook payloads)
+  and `swift_tests_red.txt`. Swift joined the runners (`Package.swift` -> `swift test`, XCTest `Executed N tests, with
+  M failures`), since a Swift project is what surfaced this; `Tests/` is now a test dir, matched by exact name because
+  macOS's case-insensitive filesystem made `isdir("Tests")` true whenever `tests/` existed.

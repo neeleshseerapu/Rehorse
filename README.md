@@ -22,7 +22,7 @@ untested edits, and cannot merge. Those hold even with permissions bypassed.
 ## Install
 
 You need Claude Code, git, and Python 3. For now your project also needs a test suite Rehorse can run: pytest,
-vitest, jest, `npm test`, `cargo test`, `go test`, or a `make test` target. Red-then-green needs something to go red.
+vitest, jest, `npm test`, `cargo test`, `go test`, `swift test`, or a `make test` target. Red-then-green needs something to go red.
 A no-tests path, where the first step writes a characterization test of the current behaviour before anything
 changes, is planned but not built.
 
@@ -128,7 +128,8 @@ While a task is active, regardless of permission mode:
 - **Tests are locked when it implements.** In the tests phase only test files can change; in the implement phase
   test files cannot change at all. The report flags any drift in test files after the tests phase.
 - **Red before green, with evidence.** A test run counts only if it ran inside the worktree and printed the runner's
-  own summary line. A baseline that runs zero tests stops the task.
+  own summary line. A baseline that runs zero tests stops the task. A red run that does not even compile because the
+  new tests name symbols that do not exist yet counts as red, and the report says so instead of showing counts.
 - **No stopping with untested edits.** The turn cannot end, and a step cannot close, until the tests ran after the
   last edit and the work is committed.
 - **No merge.** `git merge/rebase/push/checkout/reset --hard` and friends are denied, along with `rm -rf` on your repo

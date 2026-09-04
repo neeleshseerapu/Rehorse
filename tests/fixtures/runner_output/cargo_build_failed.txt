@@ -1,0 +1,9 @@
+   Compiling milo v0.1.0 (/Users/dev/milo)
+error[E0425]: cannot find function `sub` in this scope
+  --> src/lib.rs:14:20
+   |
+14 |         assert_eq!(sub(5, 3), 2);
+   |                    ^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `milo` (lib test) due to 1 previous error

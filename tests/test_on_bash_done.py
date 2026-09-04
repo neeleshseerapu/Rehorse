@@ -1,4 +1,5 @@
 """on_bash_done.py (PostToolUse + PostToolUseFailure Bash): record real test runs against the current edit_seq."""
+import pytest
 from conftest import hook_input, hook_out, run_script, task_in, task_state
 
 
@@ -125,3 +126,35 @@ def test_weak_tests_never_goes_negative_or_above_the_number_added(repo):
     assert task_state(repo)["weak_tests"] == 0
     done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 1\n\n1 failed, 4 passed in 0.01s")
     assert task_state(repo)["weak_tests"] == 2
+
+
+# ---- red by compile failure (the Milo run): fewer tests than baseline, or a build error in the output ------------
+
+def fixture_output(name):
+    import os
+    return open(os.path.join(os.path.dirname(__file__), "fixtures", "runner_output", name)).read()
+
+
+def test_red_run_with_fewer_tests_than_baseline_is_a_build_failure_and_skips_weak_tests(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 2, "failed": 0})
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 2\n\n1 error in 0.01s")
+    assert "build failed" in context(out, "PostToolUseFailure")
+    t = task_state(repo)
+    assert t["red_kind"] == "build_failed" and t["red_check"] == {"passed": 0, "failed": 1} and t["weak_tests"] == 0
+
+
+@pytest.mark.parametrize("name,cmd", [("swift_build_failed.txt", "swift test"), ("cargo_build_failed.txt", "cargo test")])
+def test_red_run_whose_output_is_a_compiler_error_is_recorded_as_build_failed(repo, name, cmd):
+    wt = task_in(repo, "tests", test_cmd=cmd, baseline={"passed": 2, "failed": 0}, edit_seq=1)
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, command="cd %s && %s" % (wt, cmd),
+               error="Exit code 1\n" + fixture_output(name))
+    assert "build failed" in context(out, "PostToolUseFailure")
+    t = task_state(repo)
+    assert t["red_kind"] == "build_failed" and t["red_check"] == {"passed": 0, "failed": 0} and t["weak_tests"] == 0
+    assert t["last_test_run"]["after_edit_seq"] == 1  # the attempt counts as a run: the Stop guard must not loop on it
+
+
+def test_ordinary_red_run_has_red_kind_tests(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 2, "failed": 0})
+    done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt)
+    assert task_state(repo)["red_kind"] == "tests"

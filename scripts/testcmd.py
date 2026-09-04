@@ -8,6 +8,8 @@
   parse_counts(text)                -> {"passed", "failed"} from pytest / vitest / jest / cargo output, or None
                                        (0-test runs like `no tests ran` are {0, 0}; --collect-only, --version, grep hits are None)
   effective_cwd(cmd, cwd)           -> where a Bash command really runs after a leading `cd <dir> &&`
+  build_failed(text)                -> did the runner output show a compiler/build error (swift, cargo, go, tsc, xcodebuild)?
+  run_cmd(root)                     -> how to run the project (package.json dev/start, make run, build.sh, cargo/go/swift, README) or None
   affected_tests(root, changed, dirs) -> existing test files that look like they cover the changed files
 CLI: testcmd.py detect | testcmd.py set "<cmd>" (record a user-supplied command in the active task) | testcmd.py parse
 """
@@ -16,18 +18,21 @@ import os
 import re
 import sys
 
-TEST_DIRS = ["tests", "test", "__tests__", "spec"]
+TEST_DIRS = ["tests", "test", "Tests", "__tests__", "spec"]
 TEST_FILE_RE = re.compile(r"^(test_.*\.py|.*_test\.py|conftest\.py|.*\.(test|spec)\.[cm]?[jt]sx?|.*_test\.go)$")
 RUNNER_TOKENS = {"pytest": ["pytest"], "vitest": ["vitest"], "jest": ["jest"], "npm": ["npm test", "npm t "],
-                 "make": ["make test"], "cargo": ["cargo test"], "go": ["go test"]}
+                 "make": ["make test"], "cargo": ["cargo test"], "go": ["go test"], "swift": ["swift test"]}
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 NOT_A_RUN_RE = re.compile(r"(?:^|\s)(?:--collect-only|--co|--version|--help|-h)(?:\s|$)")
 PYTEST_SUMMARY_RE = re.compile(r"^=*\s*(?:no tests ran|\d+ [a-z]+(?:, \d+ [a-z]+)*) in \d+(?:\.\d+)?s(?: \(.*\))?\s*=*$")
 NO_TESTS_RE = re.compile(r"^No tests? (?:files )?found")
+XCTEST_RE = re.compile(r"Executed (\d+) tests?, with (\d+) failures?")
+BUILD_ERROR_RE = re.compile(r"(?m)^(?:\S+:\d+:\d+: )?(?:fatal )?error(?:\[E\d+\])?: |error TS\d+: |\[build failed\]|\*\* BUILD FAILED \*\*|could not compile")
 
 
 def _test_dirs(root):
-    return [d + "/" for d in TEST_DIRS if os.path.isdir(os.path.join(root, d))]
+    names = set(os.listdir(root)) if os.path.isdir(root) else set()  # exact names: macOS says isdir("Tests") when tests/ exists
+    return [d + "/" for d in TEST_DIRS if d in names and os.path.isdir(os.path.join(root, d))]
 
 
 def _has_pytest_config(root):
@@ -67,7 +72,14 @@ def detect(root):
         return {"test_cmd": "cargo test", "runner": "cargo", "test_paths": dirs}
     if os.path.exists(os.path.join(root, "go.mod")):
         return {"test_cmd": "go test ./...", "runner": "go", "test_paths": dirs}
+    if os.path.exists(os.path.join(root, "Package.swift")):
+        return {"test_cmd": "swift test", "runner": "swift", "test_paths": dirs}
     return None
+
+
+def build_failed(text):
+    """Compiler/build errors in runner output: the tests never ran, so no summary line exists (or fewer tests ran)."""
+    return bool(BUILD_ERROR_RE.search(ANSI_RE.sub("", text or "")))
 
 
 def runner_of(test_cmd):
@@ -103,6 +115,9 @@ def parse_counts(text):
         line = line.strip()
         if NO_TESTS_RE.match(line):
             return {"passed": 0, "failed": 0}
+        m = XCTEST_RE.search(line)  # swift test / XCTest
+        if m:
+            return {"passed": int(m.group(1)) - int(m.group(2)), "failed": int(m.group(2))}
         pytest_line = bool(PYTEST_SUMMARY_RE.match(line)) and "collected" not in line
         if pytest_line or re.match(r"Tests:?\s", line) or line.startswith("test result:"):
             found = {k: int(n) for n, k in re.findall(r"(\d+) (passed|failed|errors?)", line)}

@@ -1,0 +1,10 @@
+Building for debugging...
+[1/3] Compiling Milo Parser.swift
+[2/3] Compiling MiloTests ParserTests.swift
+/Users/dev/Milo/Tests/MiloTests/ParserTests.swift:12:22: error: cannot find 'parseCommand' in scope
+        let result = parseCommand("open notes")
+                     ^~~~~~~~~~~~
+/Users/dev/Milo/Tests/MiloTests/ParserTests.swift:18:32: error: cannot find 'Command' in scope
+        XCTAssertEqual(result, Command.open("notes"))
+                               ^~~~~~~
+error: fatalError

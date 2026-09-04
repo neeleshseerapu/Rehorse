@@ -226,3 +226,35 @@ def test_set_records_a_user_supplied_command_in_the_active_task(repo):
     assert r.returncode == 0, r.stderr
     assert task_state(repo)["test_cmd"] == "make check"
     assert task_state(repo)["test_paths"] == ["tests/"]
+
+
+# ---- swift, build failures, run command (from the Milo run) ----------------------------------------------------
+
+def test_detect_swift_package(tmp_path):
+    (tmp_path / "Package.swift").write_text("// swift-tools-version:5.9\n")
+    (tmp_path / "Tests").mkdir()
+    got = testcmd.detect(str(tmp_path))
+    assert got["test_cmd"] == "swift test" and got["runner"] == "swift" and got["test_paths"] == ["Tests/"]
+    assert testcmd.is_test_command("swift test --filter Parser", "swift test")
+
+
+def test_parse_counts_swift_xctest_summary():
+    out = open(os.path.join(os.path.dirname(__file__), "fixtures", "runner_output", "swift_tests_red.txt")).read()
+    assert testcmd.parse_counts(out) == {"passed": 2, "failed": 1}
+    assert testcmd.parse_counts("\t Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds") == {"passed": 0, "failed": 0}
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("swift_build_failed.txt", True),
+    ("cargo_build_failed.txt", True),
+    ("swift_tests_red.txt", False),
+])
+def test_build_failed_recognises_compiler_errors_but_not_test_failures(name, expected):
+    out = open(os.path.join(os.path.dirname(__file__), "fixtures", "runner_output", name)).read()
+    assert testcmd.build_failed(out) is expected
+    assert testcmd.parse_counts(out) is None if expected else testcmd.parse_counts(out) is not None
+
+
+def test_build_failed_also_matches_go_and_pytest_import_errors():
+    assert testcmd.build_failed("./app_test.go:5:2: undefined: sub\nFAIL\tmilo [build failed]\n")
+    assert not testcmd.build_failed("FAILED tests/test_app.py::test_sub - assert 1 == 2\n1 failed, 2 passed in 0.01s")
