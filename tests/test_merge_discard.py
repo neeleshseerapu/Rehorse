@@ -101,3 +101,25 @@ def test_id_defaults_to_the_active_task(repo, home):
     ready(repo)
     grant.mint("merge", "t-1", "s")
     assert run_script("merge", cwd=str(repo)).returncode == 0
+
+
+def test_merge_reports_how_many_verifier_tests_come_along(repo, home):
+    wt = ready(repo)
+    commit_in(wt, "tests/test_rehorse_verify_t-1.py", "def test_a():\n    assert 1\n\n\ndef test_b():\n    assert 1\n\n\ndef helper():\n    pass\n", "verify: round 1")
+    grant.mint("merge", "t-1", "s")
+    r = run_script("merge", ["t-1"], cwd=str(repo))
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["verifier_tests"] == 2 and out["verifier_files"] == ["tests/test_rehorse_verify_t-1.py"]
+
+
+def test_merge_without_verifier_tests_says_zero(repo, home):
+    ready(repo)
+    grant.mint("merge", "t-1", "s")
+    out = json.loads(run_script("merge", ["t-1"], cwd=str(repo)).stdout)
+    assert out["verifier_tests"] == 0 and out["verifier_files"] == []
+
+
+def test_verifier_prompt_asks_for_the_fewest_tests_per_finding():
+    text = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "agents", "rehorse-verifier.md")).read()
+    assert "fewest tests" in text

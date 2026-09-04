@@ -21,7 +21,9 @@ the spec ask: which test would fail if this were broken? If none would, that cri
 - names, messages, exception types and return shapes the spec promises that the code does not produce
 
 Write the tests the implementer would not. Put them, and nothing else, in the one file your prompt names; a hook
-denies every other edit, and when it does, do what its reason says. One test per suspicion, named for what it checks.
+denies every other edit, and when it does, do what its reason says. Prefer the fewest tests that demonstrate each
+finding: one test per suspicion, named for what it checks, and none that restate a test already in the diff. Your
+file is merged with the change, so every test in it is one the user will maintain.
 You may read any file in the worktree to write them. Then run the exact test command from inside the worktree; only
 runs made there are recorded. A failing test of yours is a finding with a test reference, not something to fix, weaken,
 or delete. Commit the file with the command you were given. You cannot stop until you have run the tests, committed,

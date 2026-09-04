@@ -487,3 +487,8 @@ and report.
   earlier step's commit is HEAD, the step is recorded with `satisfied_by: <that step>` and PROGRESS.md and the report render
   `already satisfied by step N (no edits)` instead of the reply's summary. The live run showed the case: the round-trip
   appends both a `Fix ...` step and a `Make the verifier's tests pass` step, and the fix usually settles both.
+- **Verifier tests are counted at merge, and asked to be few.** `merge.py` counts the tests in the branch's `rehorse_verify_*`
+  files (pytest `def test_`, go/swift `func Test|test`, rust `#[test]`, vitest/jest `it(`/`test(`) and prints
+  `verifier_tests` and `verifier_files`; the merge skill reports them in one line, because those tests join the user's
+  suite for good. The verifier's prompt now asks for the fewest tests that demonstrate each finding and none that restate a
+  test in the diff (the live run added 25 tests for a two-criterion spec).
