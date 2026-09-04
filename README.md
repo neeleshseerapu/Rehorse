@@ -164,8 +164,8 @@ While a task is active, regardless of permission mode:
 - **Verified by someone else, before the report.** The verifier's stop is held until it ran the tests, committed, and
   returned a JSON verdict; that verdict is written to state by the hook, and the report cannot be rendered without
   one. During verification the only writable file is the verifier's own test file; afterwards it is locked like every
-  test. What the verifier reads is prose-guided (there is no hook on Read), what it may write and what counts as its
-  verdict are not.
+  test. The verifier's inputs are enforced too: while it runs, Read, Grep and Glob are denied outside its brief and the
+  worktree, so it never sees `rehorse-reports/`, `PROGRESS.md` or the step summaries.
 - **No stopping with untested edits.** The turn cannot end, and a step cannot close, until the tests ran after the
   last edit and the work is committed.
 - **No merge.** `git merge/rebase/push/checkout/reset --hard` and friends are denied, along with `rm -rf` on your repo

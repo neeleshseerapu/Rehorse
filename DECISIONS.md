@@ -462,3 +462,13 @@ and report.
   paragraph, so as step titles they swamped PROGRESS.md (now capped at 180 characters, keeping `(file:line)`; the agent is
   asked for one sentence; the full text stays in `verify_history` and the report), and "Tests added" listed twelve test ids
   on one line (more than three are now counted per file, the ids stay in state).
+
+## After milestone 5: four items before the first tag (2026-09-04)
+
+- **The verifier's inputs are hook-enforced** (`guard_read.py`, PreToolUse on `Read|Grep|Glob`). When `agent_type` is the
+  verifier, only two places are readable: the briefs under `.rehorse/verify/` and the worktree minus its `rehorse-reports/`
+  copy; everything else (`rehorse-reports/`, `state.json`, `handoff.json`, the main checkout) is denied with a reason that
+  names the worktree. A Grep or Glob with no `path` searches the tool's cwd, which is the main checkout unless the verifier
+  moved into the worktree, so it is judged by that cwd and the reason says so. `.rehorse/` cannot be denied wholesale
+  because the worktree lives under it. Other agents and the orchestrator are untouched, and the hook writes nothing. The
+  README's "prose-guided" caveat for the verifier is gone, and so is the IDEAS.md entry.
