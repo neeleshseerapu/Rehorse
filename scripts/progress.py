@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """rehorse-reports/PROGRESS.md, regenerated from state (never free-formed), plus the SubagentStop hook that closes a step.
 CLI: progress.py render | plan "<step>" ... (phase implement, clean worktree; records tests_sha) | add "<step>" ...
-Hook: --step-done (SubagentStop). For a rehorse-step agent in tests/implement: block the stop while edits are newer than the
-last test run or the worktree is uncommitted (reason names the command; 8th block -> needs-attention); else mark the step done.
-"""
+Hook: --step-done (SubagentStop, rehorse-step agents in setup/tests/implement): block the stop while edits are newer than the
+last test run or the worktree is uncommitted (the reason names the command; 8th block -> needs-attention); else mark the step done."""
 import json
 import os
 import sys
@@ -12,21 +11,21 @@ import guard_stop
 import state
 import worktree
 
-STEP_AGENT = "rehorse-step"
-MAX_STEPS = 6
+STEP_AGENT, MAX_STEPS = "rehorse-step", 6
 
 
 def wt_path(root, task):
     return os.path.realpath(os.path.join(root, task["worktree"]))
 
 
-NEXT = {"setup": "no test command was detected: delegate to a rehorse-step subagent the minimal test harness (and any refactor "
-                 "needed to make the code testable), inside the worktree, committed; then `testcmd.py set \"<cmd>\"` and `state.py advance spec`.",
+NEXT = {"setup": "no test command was detected: delegate the minimal test harness (and any refactor needed to make the code testable) "
+                 "to a rehorse-step subagent, in the worktree, committed; then `testcmd.py set \"<cmd>\"` and `state.py advance spec`.",
         "spec": "write REHORSE_SPEC.md in the worktree, run the test command there once (baseline), then `state.py advance tests`.",
         "tests": "delegate the failing tests to a rehorse-step subagent (test paths only), run the test command in the worktree "
                  "(red_check: at least one failure), then `state.py advance implement` and `progress.py plan \"...\"`.",
-        "verify": "run the verifier, then `report.py`.",
         "report": "done; the user decides: /rehorse:merge %(id)s or /rehorse:discard %(id)s."}
+VERIFY_NEXT = ("run `verify.py brief` and spawn a rehorse-verifier subagent (subagent_type rehorse:rehorse-verifier) with its "
+               "output as the whole prompt.", "verdict %(verdict)s (round %(round)d): `report.py --summary \"...\"`.")
 
 
 def counts(c):
@@ -34,24 +33,24 @@ def counts(c):
 
 
 def next_action(task):
-    plan, i = task["plan"], task["step"]
+    plan, i, v = task["plan"], task["step"], task.get("verifier")
     if task["phase"] == state.ATTENTION:
         return "needs attention: %s. When resolved, `state.py advance %s` resumes it; or /rehorse:discard %s." % (
             task["attention"]["reason"], task["attention"]["prior_phase"], task["id"])
+    if task["phase"] == "verify":
+        return VERIFY_NEXT[1] % v if v else VERIFY_NEXT[0]
     if task["phase"] != "implement":
         return NEXT.get(task["phase"], task["phase"]) % task
-    if not plan:
-        return "split the spec into 1-%d steps: `progress.py plan \"step\" ...`." % MAX_STEPS
-    return ("run step %d (%s) as a rehorse-step subagent." % (i + 1, plan[i]["title"]) if i < len(plan)
-            else "all steps done: `state.py advance verify`.")
+    return ("split the spec into 1-%d steps: `progress.py plan \"step\" ...`." % MAX_STEPS if not plan else
+            "run step %d (%s) as a rehorse-step subagent." % (i + 1, plan[i]["title"]) if i < len(plan) else
+            "all steps done: `state.py advance verify`.")
 
 
 def goal(root, task):
     """First prose line of REHORSE_SPEC.md, or empty."""
-    try:
-        return next(l.strip() for l in open(os.path.join(wt_path(root, task), "REHORSE_SPEC.md")) if l.strip() and l[0] != "#")
-    except (OSError, StopIteration):
-        return ""
+    path = os.path.join(wt_path(root, task), "REHORSE_SPEC.md")
+    lines = open(path).read().splitlines() if os.path.exists(path) else []
+    return next((l.strip() for l in lines if l.strip() and l[0] != "#"), "")
 
 
 def section(root, task):
@@ -62,12 +61,13 @@ def section(root, task):
     if phase == state.ATTENTION:
         lines.append("**NEEDS ATTENTION** (was in %s): %s" % (task["attention"]["prior_phase"], task["attention"]["reason"]))
     lines.append("- Spec: %s/REHORSE_SPEC.md %s" % (task["worktree"], goal(root, task)))
-    lines.append("- Tests: `%s`; baseline %s; red %s; last %s" % (task["test_cmd"], counts(task["baseline"]),
-                                                                  counts(task["red_check"]), counts(task["last_test_run"])))
+    lines.append("- Tests: `%s`; baseline %s; red %s; last %s" % (task["test_cmd"], counts(task["baseline"]), counts(task["red_check"]), counts(task["last_test_run"])))
     lines += ["- Plan:"] if plan else []
     for n, p in enumerate(plan, 1):
         done = " — %s (commit %s)" % (" ".join((p["summary"] or "").splitlines()), p["commit"]) if p["done"] else ""
         lines.append("  - [%s] %d. %s%s" % ("x" if p["done"] else " ", n, p["title"], done))
+    for v in (task.get("verify_history") or []) + [task["verifier"]] * bool(task.get("verifier")):
+        lines.append("- Verifier: round %d %s (%d finding(s); its run %s)" % (v["round"], v["verdict"].upper(), len(v["findings"]), counts(v.get("tests"))))
     lines.append("- Next: " + next_action(task))
     return "\n".join(lines) + "\n"
 

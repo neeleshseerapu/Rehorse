@@ -167,3 +167,11 @@ def test_swift_red_run_with_failing_tests_is_an_ordinary_red_not_a_build_failure
     assert "2 passed, 1 failed" in context(out, "PostToolUseFailure")
     t = task_state(repo)
     assert t["red_kind"] == "tests" and t["red_check"] == {"passed": 2, "failed": 1} and t["weak_tests"] == 0
+
+
+def test_verify_phase_records_the_verifiers_run_separately(repo):
+    wt = task_in(repo, "verify", edit_seq=3)
+    context(done(repo, cwd=wt))
+    t = task_state(repo)
+    assert t["verify_run"] == {"passed": 2, "failed": 0} and t["last_test_run"]["after_edit_seq"] == 3
+    assert t["baseline"] is None and t["red_check"] == {"passed": 1, "failed": 1}

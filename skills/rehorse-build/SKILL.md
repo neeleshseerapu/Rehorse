@@ -9,8 +9,9 @@ disable-model-invocation: true
 
 You are the **orchestrator** of a Rehorse rehearsal. Keep your context small: the spec, this task's section of
 `rehorse-reports/PROGRESS.md`, and the state summary. Delegate every phase and every implementation step to a fresh
-`rehorse-step` subagent and read only its two-line reply. Hooks enforce the guarantees (worktree isolation, test-path
-lock, tests-before-stop, commit-per-step, no merge); this text gives the order of work. When a hook denies something,
+`rehorse-step` subagent and read only its two-line reply; the verification to a `rehorse-verifier` subagent whose
+verdict a hook records. Hooks enforce the guarantees (worktree isolation, test-path lock, tests-before-stop,
+commit-per-step, red before implement, a verdict before the report, no merge); this text gives the order of work. When a hook denies something,
 do what its reason says. Never work around a hook.
 
 Scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/` and run as `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/<name>.py ...`
@@ -108,9 +109,18 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    hook asks for it. That is the only thing you do inside the worktree: no reading source, no editing, no committing.
 5. When every step is `[x]`: `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/state.py advance verify`
 
-## 4. verify
+## 4. verify (delegated to the independent verifier)
 
-The independent verifier is not wired yet (it arrives with milestone 5). Go straight to the report.
+1. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/verify.py brief` writes the verifier's brief (the spec, the diff and the last
+   test output; never a step summary or a transcript) and prints the prompt. Spawn one `rehorse-verifier` subagent
+   (`subagent_type: "rehorse:rehorse-verifier"`) with that output as its **whole prompt, verbatim**. Add nothing: not
+   the step summaries, not your view of the code. It writes its own tests into one file, runs the test command, and
+   ends with a JSON verdict.
+2. Its SubagentStop hook records the verdict only after it ran the tests and committed; you never copy a verdict.
+   Run `progress.py render` and read this task's section: the **Verifier** line and the **Next:** line. If no verdict
+   was recorded, spawn it again with the hook's reason.
+3. Do what **Next:** says: `report.py` when a verdict is recorded (any verdict: a `fail` is rendered as FAIL in the
+   report and the user decides at merge time).
 
 ## 5. report, then stop
 

@@ -88,7 +88,7 @@ def test_implement_phase_denies_the_orchestrator_but_not_its_reports(repo):
     assert task_state(repo)["edit_seq"] == 0
 
 
-@pytest.mark.parametrize("phase", ["setup", "spec", "verify", "report"])
+@pytest.mark.parametrize("phase", ["setup", "spec", "report"])
 def test_other_phases_enforce_isolation_only(repo, phase):
     wt = task_in(repo, phase)
     assert edit(repo, wt + "/app.py") is None
@@ -104,3 +104,14 @@ def test_needs_attention_still_isolates(repo):
     state.save(str(repo), s)
     denied(edit(repo, str(repo / "app.py")))
     assert edit(repo, wt + "/app.py") is None
+
+
+def test_verify_phase_allows_only_the_verifiers_own_test_file(repo):
+    wt = task_in(repo, "verify")
+    assert edit(repo, wt + "/tests/test_rehorse_verify_t-1.py", subagent=True) is None
+    assert edit(repo, wt + "/tests/rehorse_verify_t-1.test.ts", subagent=True) is None  # any runner's naming, same stem
+    for path in ["/app.py", "/tests/test_app.py", "/rehorse_verify_t-1.py", "/tests/test_rehorse_verify_t-2.py"]:
+        reason = denied(edit(repo, wt + path, subagent=True))
+        assert "phase verify" in reason and "tests/test_rehorse_verify_t-1.py" in reason and "fixes nothing" in reason
+    assert edit(repo, wt + "/rehorse-reports/PROGRESS.md") is None
+    assert task_state(repo)["edit_seq"] == 2

@@ -6,7 +6,7 @@ the task's worktree, and the output parses to the runner's own summary line (gre
 arrives as PostToolUse (tool_response.stdout/stderr); a failing one as PostToolUseFailure (error). By phase:
 spec -> baseline (0 tests => needs-attention), tests -> red_check plus red_kind ("build_failed" when the output shows a
 compiler error or fewer tests ran than at baseline: the new tests reference symbols that do not exist yet) and
-weak_tests (new tests that already pass; a warning, not a gate), always -> last_test_run.
+weak_tests (new tests that already pass; a warning, not a gate), verify -> verify_run (the verifier's own run), always -> last_test_run.
 """
 import datetime
 import json
@@ -63,6 +63,8 @@ def main():
         if task["weak_tests"]:
             msg += (" WARNING: %d new test(s) passed before implementation and may not test anything; make them fail "
                     "first or say why they cannot." % task["weak_tests"])
+    elif task["phase"] == "verify":
+        task["verify_run"] = dict(counts)
     state.save(root, s)
     return note(hook, msg)
 

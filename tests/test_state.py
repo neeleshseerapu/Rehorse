@@ -45,7 +45,8 @@ def test_load_missing_file_returns_empty_state(tmp_path):
 
 def test_advance_walks_the_phase_order_only():
     s = state.empty()
-    state.new_task(s, "t-1")["red_check"] = {"passed": 1, "failed": 1}  # the red gate wants a failing run before implement
+    t = state.new_task(s, "t-1")
+    t["red_check"], t["verifier"] = {"passed": 1, "failed": 1}, {"verdict": "pass"}  # the gates want red before implement, a verdict before report
     for phase in ["tests", "implement", "verify", "report", "merged"]:
         state.advance(s, "t-1", phase)
         assert s["tasks"]["t-1"]["phase"] == phase
@@ -241,3 +242,25 @@ def test_cli_advance_implement_without_red_tells_the_model_why(repo):
     task_in(repo, "tests")
     r = run_script("state", ["advance", "implement"], cwd=str(repo))
     assert r.returncode != 0 and "red" in r.stderr and "fail" in r.stderr
+
+
+# ---- verifier gate: verify -> report needs a recorded verdict --------------------------------------------------------
+
+def test_new_task_starts_with_no_verifier_state():
+    s = state.empty()
+    t = state.new_task(s, "t-1")
+    assert t["verifier"] is None and t["verify_round"] == 0 and t["verify_run"] is None and t["verify_history"] == []
+
+
+def test_advance_to_report_refuses_without_a_verdict_and_names_the_brief():
+    s = state.empty()
+    t = state.new_task(s, "t-1")
+    t["red_check"] = {"passed": 1, "failed": 1}
+    for phase in ["tests", "implement", "verify"]:
+        state.advance(s, "t-1", phase)
+    with pytest.raises(ValueError) as e:
+        state.advance(s, "t-1", "report")
+    assert "verdict" in str(e.value) and "verify.py brief" in str(e.value) and t["phase"] == "verify"
+    t["verifier"] = {"round": 1, "verdict": "fail", "findings": [], "tests_added": [], "coverage": []}
+    state.advance(s, "t-1", "report")  # any verdict, even fail: the user decides at merge time
+    assert t["phase"] == "report"

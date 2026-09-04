@@ -2,7 +2,7 @@
 evidence (report + PROGRESS.md snapshot) on the rehearsal branch so /rehorse:merge carries it into the real branch."""
 import os
 
-from conftest import commit_in, git, run_script, task_in, task_state
+from conftest import VERDICT, commit_in, git, run_script, task_in, task_state
 
 import state
 
@@ -14,7 +14,8 @@ def verified_task(repo, **fields):
     t = s["tasks"]["t-1"]
     t.update(red_check={"passed": 1, "failed": 1}, tests_sha=tests_sha, edit_seq=1,
              last_test_run={"passed": 2, "failed": 0, "after_edit_seq": 1, "output": "2 passed in 0.01s"},
-             plan=[{"title": "Add sub()", "done": True, "summary": "Added sub() to app.py.\nTests: 2 passed.", "commit": "abc"}], step=1)
+             plan=[{"title": "Add sub()", "done": True, "summary": "Added sub() to app.py.\nTests: 2 passed.", "commit": "abc"}], step=1,
+             verifier=dict(VERDICT), verify_round=1)
     t.update(fields)
     state.advance(s, "t-1", "implement")
     state.advance(s, "t-1", "verify")

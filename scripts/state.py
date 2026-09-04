@@ -30,11 +30,8 @@ def empty():
 
 
 def load(root):
-    try:
-        with open(os.path.join(root, STATE_REL)) as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return empty()
+    path = os.path.join(root, STATE_REL)
+    return json.load(open(path)) if os.path.exists(path) else empty()
 
 
 def active(cwd):
@@ -68,20 +65,24 @@ def new_task(state, tid):
     task = {"id": tid, "phase": "spec", "created": datetime.datetime.now().isoformat(timespec="seconds"),
             "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None, "test_cmd": None, "test_paths": [],
             "baseline": None, "red_check": None, "red_kind": None, "weak_tests": 0, "last_test_run": None, "tests_sha": None, "summary": None,
-            "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "verifier": None, "report_path": None, "linked_deps": []}
+            "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "report_path": None, "linked_deps": [],
+            "verifier": None, "verify_round": 0, "verify_run": None, "verify_history": []}
     state["tasks"][tid] = task
     state["active_task"] = tid
     return task
 
 
 def gate(task, to):
-    """Evidence a transition needs, or None: tests -> implement wants a red run with a failing new test (a failed build counts)."""
+    """Evidence a transition needs, or None: tests -> implement wants a red run with a failing new test (a failed build
+    counts); verify -> report wants a recorded verifier verdict (any verdict: a fail is reported, and the user decides)."""
     r = task.get("red_check") or {"passed": 0, "failed": 0}
     if (task["phase"], to) == ("tests", "implement") and not (task.get("red_kind") == "build_failed" or r["failed"]):
         if not task.get("red_check"):
             return "no red run recorded; run the test command inside the worktree after the tests are written (at least one must fail)"
         return ("the red run ran 0 tests; fix test discovery and run it again" if not r["passed"] else
                 "nothing failed in the red run: tests that pass before the feature exists test nothing; make at least one fail")
+    if (task["phase"], to) == ("verify", "report") and not task.get("verifier"):
+        return "no verifier verdict recorded; run `verify.py brief` and spawn the rehorse-verifier subagent with its output"
 
 
 def advance(state, tid, to, reason=None):

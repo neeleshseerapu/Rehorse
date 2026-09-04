@@ -56,6 +56,12 @@
         "hooks": [
           {"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/progress.py", "--step-done"], "timeout": 30}
         ]
+      },
+      {
+        "matcher": "rehorse-verifier",
+        "hooks": [
+          {"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/verify.py", "--verdict"], "timeout": 30}
+        ]
       }
     ],
     "SessionStart": [

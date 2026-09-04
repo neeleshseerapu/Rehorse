@@ -358,3 +358,27 @@ not used on an accepted stop); SubagentStop `matcher` filters on `agent_type`, i
   Swift and Cargo compiler-output fixtures existed, and `swift_tests_red.txt` (a compiled-language red that *fails tests*
   rather than the build) is now also pushed through `on_bash_done.py` to prove it records `red_kind: "tests"` with counts.
   The conftest phase walker sets a failing `red_check` when a test asks for a phase past `tests` and gave none.
+- **The verifier's input is fixed by code, not by the orchestrator** (chunk 2). `verify.py brief` writes
+  `.rehorse/verify/<id>-round<n>.md` (spec, `base_sha..HEAD` diff capped at 200 kB, last test output, and from round 2 the
+  verifier's own earlier findings) and prints the subagent prompt, which the build skill passes through verbatim. The
+  orchestrator therefore never holds the diff in its context and cannot slip step summaries or its own reading of the code
+  into the verifier's prompt. The agent's prose forbids reading `rehorse-reports/`, `PROGRESS.md` and `.rehorse/`; there is
+  no PreToolUse hook on Read, so that part is prose-guided and README says so.
+- **The verdict is recorded by a hook, never copied by the model.** `verify.py --verdict` runs on SubagentStop (matched
+  on `rehorse-verifier` in `hooks.json`, and re-checked in the script, since the step-done hook proved the compact summarizer
+  and other agents fire the same event). It blocks the verifier's stop, with the exact command, until the test command ran
+  inside the worktree after its last edit (`verify_run`, recorded separately by `on_bash_done.py` in phase `verify`), the
+  worktree is committed (`verify: round N tests for <id>`), and the reply ends with a ```json block whose `verdict` is
+  pass|concerns|fail; findings, coverage and tests_added are normalised with defaults. Same 8-block cap into
+  `needs-attention` as the other stop hooks.
+- **`verify -> report` is gated in `state.advance` on a recorded verdict**, any verdict. Before this, "checked by an
+  independent verifier" was prose: `state.py advance report` and `report.py` accepted a task nobody had verified. A `fail`
+  still reaches the report (the user decides at merge time); what cannot happen is a report with no verdict.
+- **In phase `verify` the edit lock is one file.** `guard_edit.py` allows only a test path whose basename is
+  `rehorse_verify_<id>` plus the runner's suffix. The spec said `tests/rehorse_verify_<task-id>.<ext>`; pytest does not
+  collect a file that does not match `test_*.py`, so `testcmd.verify_file` names it per runner: `tests/test_rehorse_verify_<id>.py`
+  (pytest, checked: pytest collects the hyphenated task id), `<dir>/rehorse_verify_<id>.test.ts|js` (vitest/jest, `.ts` when a
+  tsconfig exists), `tests/rehorse_verify_<id>.rs`, `rehorse_verify_<id>_test.go`, `Tests/<target>/rehorse_verify_<id>.swift`.
+  The denial reason names that exact path.
+- The verifier agent gets `Read, Write, Edit, Bash, Grep, Glob` (it must read the worktree to write tests that import
+  the right things) and no `Agent`; `model: inherit`.

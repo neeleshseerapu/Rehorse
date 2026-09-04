@@ -2,13 +2,13 @@
 import json
 import os
 
-from conftest import commit_in, git, run_script, task_in, task_state
+from conftest import VERDICT, commit_in, git, run_script, task_in, task_state
 
 import grant
 
 
 def ready(repo, phase="report"):
-    wt = task_in(repo, phase)
+    wt = task_in(repo, phase, verifier=dict(VERDICT))  # a verdict is recorded: the report gate is not what these tests test
     commit_in(wt, "app.py", "def add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n", "step 1: sub")
     return wt
 

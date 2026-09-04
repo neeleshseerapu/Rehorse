@@ -9,6 +9,7 @@
                                        (0-test runs like `no tests ran` are {0, 0}; --collect-only, --version, grep hits are None)
   effective_cwd(cmd, cwd)           -> where a Bash command really runs after a leading `cd <dir> &&`
   build_failed(text)                -> did the runner output show a compiler/build error (swift, cargo, go, tsc, xcodebuild)?
+  verify_file(task, wt)             -> the one file the verifier may write, named so the runner discovers it
   run_cmd(root)                     -> how to run the project (package.json dev/start, make run, build.sh, cargo/go/swift, README) or None
   affected_tests(root, changed, dirs) -> existing test files that look like they cover the changed files
 CLI: testcmd.py detect | testcmd.py set "<cmd>" (record a user-supplied command in the active task) | testcmd.py parse
@@ -125,6 +126,22 @@ def parse_counts(text):
                 return {"passed": found.get("passed", 0),
                         "failed": found.get("failed", 0) + found.get("error", 0) + found.get("errors", 0)}
     return None
+
+
+def verify_file(task, wt):
+    """The verifier's one writable file, relative to the worktree: pytest only collects test_*.py, vitest/jest *.test.*,
+    go *_test.go next to the package, cargo tests/*.rs, XCTest any .swift in the test target's directory."""
+    tid, runner, d = task["id"], runner_of(task.get("test_cmd") or ""), (task.get("test_paths") or ["tests/"])[0]
+    if runner == "go":
+        return "rehorse_verify_%s_test.go" % tid
+    if runner == "cargo":
+        return "%srehorse_verify_%s.rs" % (d, tid)
+    if runner == "swift":
+        subs = sorted(x for x in (os.listdir(os.path.join(wt, d)) if os.path.isdir(os.path.join(wt, d)) else []) if os.path.isdir(os.path.join(wt, d, x)))
+        return "%s%s/rehorse_verify_%s.swift" % (d, subs[0], tid) if subs else "%srehorse_verify_%s.swift" % (d, tid)
+    if runner in ("vitest", "jest", "npm"):
+        return "%srehorse_verify_%s.test.%s" % (d, tid, "ts" if os.path.exists(os.path.join(wt, "tsconfig.json")) else "js")
+    return "%stest_rehorse_verify_%s.py" % (d, tid)
 
 
 def affected_tests(root, changed_files, test_dirs):

@@ -41,10 +41,12 @@ def test_render_writes_one_section_per_task_from_state(repo):
 def test_next_action_per_phase(repo):
     plan_task(repo, "implement", plan=[{"title": "A", "done": True, "summary": "x", "commit": "c"}], step=1)
     assert "advance verify" in progress.next_action(state.load(str(repo))["tasks"]["t-1"])
-    for phase, needle in [("spec", "baseline"), ("tests", "red"), ("verify", "report.py"), ("report", "/rehorse:merge t-1")]:
+    for phase, needle in [("spec", "baseline"), ("tests", "red"), ("verify", "verify.py brief"), ("report", "/rehorse:merge t-1")]:
         s = state.load(str(repo))
         s["tasks"]["t-1"]["phase"] = phase
         assert needle in progress.next_action(s["tasks"]["t-1"]), phase
+    s["tasks"]["t-1"].update(phase="verify", verifier={"round": 1, "verdict": "concerns", "findings": [], "tests_added": [], "coverage": []})
+    assert "report.py" in progress.next_action(s["tasks"]["t-1"]) and "concerns" in progress.next_action(s["tasks"]["t-1"])
 
 
 def test_render_shows_needs_attention_reason_and_terminal_tasks_as_one_line(repo):

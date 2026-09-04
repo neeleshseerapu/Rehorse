@@ -276,3 +276,23 @@ def test_build_failed_recognises_compiler_errors_but_not_test_failures(name, exp
 def test_build_failed_also_matches_go_and_pytest_import_errors():
     assert testcmd.build_failed("./app_test.go:5:2: undefined: sub\nFAIL\tmilo [build failed]\n")
     assert not testcmd.build_failed("FAILED tests/test_app.py::test_sub - assert 1 == 2\n1 failed, 2 passed in 0.01s")
+
+
+# ---- the verifier's one writable file, named so the runner discovers it -------------------------------------------
+
+@pytest.mark.parametrize("test_cmd,test_paths,files,expected", [
+    ("python3 -m pytest -q", ["tests/"], [], "tests/test_rehorse_verify_t-1.py"),
+    ("python3 -m pytest -q", [], [], "tests/test_rehorse_verify_t-1.py"),
+    ("npx vitest run --reporter=dot", ["test/"], ["tsconfig.json"], "test/rehorse_verify_t-1.test.ts"),
+    ("npx jest", ["__tests__/"], [], "__tests__/rehorse_verify_t-1.test.js"),
+    ("cargo test", ["tests/"], [], "tests/rehorse_verify_t-1.rs"),
+    ("go test ./...", [], [], "rehorse_verify_t-1_test.go"),
+    ("swift test", ["Tests/"], ["Tests/MiloTests/ParserTests.swift"], "Tests/MiloTests/rehorse_verify_t-1.swift"),
+    ("make test", ["tests/"], ["tests/test_a.py"], "tests/test_rehorse_verify_t-1.py"),
+])
+def test_verify_file_per_runner(tmp_path, test_cmd, test_paths, files, expected):
+    for f in files:
+        (tmp_path / f).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / f).write_text("")
+    task = {"id": "t-1", "test_cmd": test_cmd, "test_paths": test_paths}
+    assert testcmd.verify_file(task, str(tmp_path)) == expected

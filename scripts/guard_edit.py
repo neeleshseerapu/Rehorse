@@ -4,10 +4,12 @@
 Reads the hook JSON on stdin. Prints a deny decision, or nothing (normal permission flow). Exits 0.
 Rules, in order: no active task -> dormant; rehorse-reports/ -> always allowed (evidence trail, not code);
 outside the worktree -> deny; phase `tests` -> test paths only; phase `implement` -> test paths locked and
-main-thread (no agent_id) edits denied. Every allowed edit inside the worktree bumps edit_seq.
+main-thread (no agent_id) edits denied; phase `verify` -> only the verifier's own test file (testcmd.verify_file).
+Every allowed edit inside the worktree bumps edit_seq.
 """
 import json
 import os
+import re
 import sys
 
 import state
@@ -40,6 +42,9 @@ def check(root, task, inside, rel, from_subagent):
     if phase == "implement" and not from_subagent:
         return ("phase implement: the orchestrator does not edit files. Delegate this edit to a step subagent with the "
                 "Agent tool; only %s may be edited directly." % REPORTS)
+    if phase == "verify" and not (is_test and re.search(r"rehorse_verify_%s(?:[._]|$)" % re.escape(task["id"]), os.path.basename(rel))):
+        return ("phase verify: the verifier fixes nothing and writes only its own tests. Write them to %s; every other "
+                "file is locked until the report." % testcmd.verify_file(task, wt))
     return None
 
 
