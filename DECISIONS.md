@@ -271,3 +271,14 @@ Six sessions again, all exit 0 and empty stderr except run 2a, whose `is_error: 
   rendered the report (drift `none`, banner `GREEN: 4 passed, 0 failed · unverified`). Run 2d (fresh session,
   `/rehorse:build` with no text) read `phase report` and started nothing. No SubagentStop block was needed in either run:
   every agent tested and committed before stopping.
+
+## Before milestone 5: user fixes (2026-09-03)
+
+- **Dependencies are symlinked into the worktree.** A fresh worktree has no `.venv`, `venv`, `node_modules`, `target/`
+  or `.tox` (all gitignored), so the baseline run failed on any real repo, including this one. `worktree.create` now
+  symlinks each of those that exists in the main checkout and not in the worktree (never copies; a copy would be slow,
+  stale, and double the disk), records the names as `linked_deps` in `state.json`, and the report prints them on a
+  "Worktree setup" line. The linked names go into `.git/info/exclude` as bare names: the user's own `.venv/` pattern
+  matches directories only, and a symlink is a file, so without that `worktree.dirty()` listed the links and the
+  step-done refusal would have fired on them. Proven with `tests/fixtures/repo_with_venv/` plus a real venv: the
+  worktree's `.venv/bin/python` reports the main checkout's venv as `sys.prefix`.

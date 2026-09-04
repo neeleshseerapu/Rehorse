@@ -9,7 +9,8 @@ import worktree
 
 def test_create_makes_worktree_branch_and_records_base_sha(repo):
     info = worktree.create(str(repo), "t-1")
-    assert info == {"worktree": ".rehorse/worktrees/t-1", "branch": "rehorse/t-1", "base_sha": git(repo, "rev-parse", "HEAD").strip()}
+    assert info == {"worktree": ".rehorse/worktrees/t-1", "branch": "rehorse/t-1", "base_sha": git(repo, "rev-parse", "HEAD").strip(),
+                    "linked_deps": []}
     wt = repo / ".rehorse" / "worktrees" / "t-1"
     assert (wt / "app.py").exists()
     assert git(wt, "branch", "--show-current").strip() == "rehorse/t-1"
@@ -35,6 +36,34 @@ def test_create_excludes_the_spec_file_and_test_caches_locally_not_in_gitignore(
     (wt / "__pycache__" / "app.pyc").write_text("")
     assert worktree.dirty(str(repo), "t-1") == []
     assert "REHORSE_SPEC.md" not in (repo / ".gitignore").read_text()
+
+
+def test_create_symlinks_gitignored_dependency_dirs_from_the_main_checkout(venv_repo):
+    """Fresh worktrees have no .venv/node_modules/target/.tox (gitignored), so the baseline would fail on any real repo."""
+    import subprocess
+    import sys
+    root = str(venv_repo)
+    (venv_repo / ".gitignore").write_text(".venv/\nnode_modules/\n")
+    (venv_repo / "node_modules").mkdir()
+    (venv_repo / "node_modules" / "left-pad.js").write_text("")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "init")
+    info = worktree.create(root, "t-1")
+    wt = venv_repo / ".rehorse" / "worktrees" / "t-1"
+    assert info["linked_deps"] == [".venv", "node_modules"]  # present in the main checkout; target/ and .tox/ are not
+    for name in info["linked_deps"]:
+        assert os.path.islink(wt / name) and os.path.realpath(wt / name) == os.path.realpath(venv_repo / name)
+    assert not os.path.exists(wt / "target") and not os.path.exists(wt / ".tox")
+    prefix = subprocess.run([str(wt / ".venv" / "bin" / "python"), "-c", "import sys; print(sys.prefix)"], capture_output=True, text=True).stdout.strip()
+    assert os.path.realpath(prefix) == os.path.realpath(root + "/.venv")  # the worktree now runs the repo's own interpreter
+    assert worktree.dirty(root, "t-1") == []  # a symlink never shows up as work to commit
+
+
+def test_create_links_nothing_when_the_main_checkout_has_no_dependency_dirs(repo):
+    assert worktree.create(str(repo), "t-1")["linked_deps"] == []
 
 
 def test_list_shows_only_rehorse_worktrees(repo):

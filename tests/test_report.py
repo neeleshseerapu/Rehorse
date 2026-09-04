@@ -88,3 +88,15 @@ def test_report_name_uses_the_task_date_and_slug_with_rehearsal_suffix(repo):
     assert report.report_name({"id": "t-20260903-add-dark-mode-toggle", "created": "2026-09-04T10:00:00"}) == "2026-09-03-add-dark-mode-toggle.md"
     assert report.report_name({"id": "t-20260903-x-r2", "created": "2026-09-04T10:00:00"}) == "2026-09-03-x-r2.md"
     assert report.report_name({"id": "t-1", "created": "2026-09-04T10:00:00"}) == "2026-09-04-1.md"
+
+
+def test_report_names_the_dependency_dirs_linked_into_the_worktree(repo):
+    verified_task(repo, linked_deps=[".venv", "node_modules"])
+    text = render(repo)
+    assert "Worktree setup: linked .venv, node_modules" in text
+    import state
+    s = state.load(str(repo))
+    s["tasks"]["t-1"]["linked_deps"] = []
+    s["tasks"]["t-1"]["phase"] = "report"
+    state.save(str(repo), s)
+    assert "Worktree setup: nothing linked" in render(repo)

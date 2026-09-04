@@ -147,6 +147,7 @@ def test_cli_new_creates_the_worktree_detects_the_test_command_and_prints_the_ta
     assert t["test_cmd"] == "python3 -m pytest -q --tb=short" and t["test_paths"] == ["tests/"]  # from the target repo
     assert state.load(str(repo))["tasks"][t["id"]] == t
     assert t["tests_sha"] is None and t["plan"] == [] and t["step"] == 0
+    assert t["linked_deps"] == []  # the plain repo fixture has no .venv/node_modules to link
 
 
 def test_cli_advance_show(repo):

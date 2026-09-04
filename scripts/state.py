@@ -75,7 +75,7 @@ def new_task(state, tid):
         "id": tid, "phase": PHASES[0], "created": datetime.datetime.now().isoformat(timespec="seconds"),
         "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None,
         "test_cmd": None, "test_paths": [], "baseline": None, "red_check": None, "last_test_run": None, "tests_sha": None,
-        "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "verifier": None, "report_path": None,
+        "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "verifier": None, "report_path": None, "linked_deps": [],
     }
     state["tasks"][tid] = task
     state["active_task"] = tid

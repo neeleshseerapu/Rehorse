@@ -29,18 +29,32 @@ def ensure_ignored(root):
 
 
 EXCLUDE = ["REHORSE_SPEC.md", "__pycache__/", ".pytest_cache/"]
+DEP_DIRS = [".venv", "venv", "node_modules", "target", ".tox"]
 
 
-def ensure_excluded(root):
+def ensure_excluded(root, names=EXCLUDE):
     """Local-only ignores in .git/info/exclude (shared by every worktree, never committed): the spec file and test
     caches must not be swept into a step commit or trip the dirty-tree refusal."""
     path = os.path.join(root, git(root, "rev-parse", "--git-common-dir").strip(), "info", "exclude")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     lines = open(path).read().splitlines() if os.path.exists(path) else []
-    missing = [e for e in EXCLUDE if e not in lines]
+    missing = [e for e in names if e not in lines]
     if missing:
         with open(path, "a") as f:
             f.write(("" if not lines or lines[-1] == "" else "\n") + "\n".join(missing) + "\n")
+
+
+def link_deps(root, wt):
+    """Symlink (never copy) the main checkout's gitignored dependency dirs into a fresh worktree, so the test command
+    finds the same interpreter, packages and build cache there. Returns the names linked."""
+    linked = []
+    for name in DEP_DIRS:
+        src = os.path.join(root, name)
+        if os.path.isdir(src) and not os.path.lexists(os.path.join(wt, name)):
+            os.symlink(src, os.path.join(wt, name))
+            linked.append(name)
+    ensure_excluded(root, linked)  # bare names: the user's `.venv/` pattern matches directories, and a symlink is a file
+    return linked
 
 
 def create(root, tid):
@@ -50,7 +64,8 @@ def create(root, tid):
     base_sha = git(root, "rev-parse", "HEAD").strip()
     os.makedirs(os.path.dirname(path_for(root, tid)), exist_ok=True)
     git(root, "worktree", "add", "-q", "-b", "rehorse/" + tid, path_for(root, tid), "HEAD")
-    return {"worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": base_sha}
+    return {"worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": base_sha,
+            "linked_deps": link_deps(root, path_for(root, tid))}
 
 
 def list_(root):
