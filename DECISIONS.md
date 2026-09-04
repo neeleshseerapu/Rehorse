@@ -575,3 +575,13 @@ pygments 2.19.2 from the lock. Results row: merged-green yes, upstream-tests-pas
   driven with real pytest through the hook: the old failure alone is refused by the gate, a new failing test passes it.
   An `ERROR` collection line is an id too (pytest counts it as a failure); a new test file that fails to import still
   shows fewer tests than baseline and stays `build_failed`. IDEAS.md entry removed.
+- **Guard tests** (fix 2). The tests-phase agent marks a regression guard with `# rehorse: guard` (or `// rehorse:
+  guard`) on the line above its definition; `coverage.guards()` reads the marker in the tests phase's new or changed test
+  files (the first test definition at or after it: python `def test_`, with the class for indented methods; `it(`/`test(`;
+  go `func Test`; rust `fn` after the marker; swift `func test`) and `on_bash_done.py` records the ids in `task["guards"]`
+  at the red run. The weak-test count is early passes minus passing guards; the hook and the report say "N guard(s)
+  expected to pass; M unexpected pass(es)" and only M > 0 is a warning. A failing guard is excluded from `new_failing`
+  (it was expected to pass, so it is not red) and reported as `failing_guards`. The rich-3881 run's "2 new tests passed
+  before implementation" were two such guards; with the marker they would have read "2 guards expected to pass; 0
+  unexpected passes". Marker rather than reply metadata because the marker lives next to the test, is visible in the diff
+  the verifier reads, and survives a re-run of the tests phase.

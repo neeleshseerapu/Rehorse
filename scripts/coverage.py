@@ -6,6 +6,9 @@ The mapping comes from the tests-phase agent's reply, a ```json block {"coverage
 "ref": "<file>::<test>"}]} (the verifier's coverage shape), recorded by step_done.py as task["coverage"]. This module
 checks the mapping against the files: the ref must name a new or changed test file and a test that exists in it. It
 cannot judge whether that test really exercises the criterion; that is the verifier's job. Not a hook (no line cap).
+Also here (same inputs, no line cap): changed_tests() lists the tests phase's new or changed test files, and guards() the
+tests in them marked `# rehorse: guard` / `// rehorse: guard` on the line above (or on) their definition: regression guards
+the agent expects to pass before the implementation exists, so on_bash_done.py neither counts them as weak nor as red.
 CLI: coverage.py check   -> {"uncovered": [...]} for the active task; exit 1 when anything is uncovered
 """
 import json
@@ -21,6 +24,10 @@ HEADING_RE = re.compile(r"^#+\s*acceptance criteria\s*$", re.I)
 ITEM_RE = re.compile(r"^\s*(?:\d+[.)]|[-*])\s+(.+?)\s*$")
 BLOCK_RE = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
 NO_SECTION = "REHORSE_SPEC.md has no '## Acceptance criteria' section (numbered, each testable); write it before the tests"
+GUARD_RE = re.compile(r"(?:#|//)\s*rehorse:\s*guard\b")
+TEST_DEF_RE = re.compile(r"^\s*(?:async\s+)?def (test\w*)|^\s*(?:it|test)\(\s*['\"`](.+?)['\"`]|^func (Test\w+)\b"
+                         r"|^\s*(?:pub\s+)?fn (\w+)|^\s*(?:override\s+)?func (test\w+)")
+CLASS_RE = re.compile(r"^class (\w+)")
 
 
 def criteria(text):
@@ -69,6 +76,35 @@ def matches(n, criterion, entry):
     return bool(ne) and (ne == nc or (len(ne) >= 12 and (ne in nc or nc in ne)))
 
 
+def changed_tests(root, task):
+    """Test files the tests phase added or changed: committed since base_sha, or dirty in the worktree."""
+    wt = os.path.realpath(os.path.join(root, task["worktree"]))
+    changed = set(worktree.git(wt, "diff", "--name-only", task["base_sha"] + "..HEAD").split()) if task.get("base_sha") else set()
+    return {f for f in changed | set(worktree.dirty(root, task["id"])) if testcmd.is_test_path(f, task.get("test_paths") or [])}
+
+
+def guards(wt, files):
+    """Ids (<file>::[<Class>::]<test>) of the tests marked as guards: the first test definition at or after each marker."""
+    out = []
+    for f in sorted(files):
+        try:
+            lines = open(os.path.join(wt, f), errors="ignore").read().splitlines()
+        except OSError:
+            continue
+        cls, armed = None, False
+        for line in lines:
+            m = CLASS_RE.match(line)
+            cls = m.group(1) if m else cls
+            armed = armed or bool(GUARD_RE.search(line))
+            d = armed and TEST_DEF_RE.match(line)
+            if d:
+                name = next(g for g in d.groups() if g)
+                inside = f.endswith(".py") and cls and line[:1].isspace()
+                out.append("%s::%s" % (f, "%s::%s" % (cls, name) if inside else name))
+                armed = False
+    return sorted(out)
+
+
 def uncovered(root, task):
     """Criteria with no verified test, as '<n>. <criterion>: <why>' lines. Empty means the gate is satisfied."""
     wt = os.path.realpath(os.path.join(root, task["worktree"]))
@@ -78,8 +114,7 @@ def uncovered(root, task):
         crits = None
     if crits is None:
         return [NO_SECTION]
-    changed = set(worktree.git(wt, "diff", "--name-only", task["base_sha"] + "..HEAD").split()) if task.get("base_sha") else set()
-    tests = {f for f in changed | set(worktree.dirty(root, task["id"])) if testcmd.is_test_path(f, task.get("test_paths") or [])}
+    tests = changed_tests(root, task)
     out = []
     for n, c in enumerate(crits, 1):
         why = "no test mapped"

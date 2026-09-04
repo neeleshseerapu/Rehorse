@@ -57,7 +57,7 @@ def new_task(state, tid):
         tid = "%s-r%d" % (base, n)
     task = {"id": tid, "phase": "spec", "created": datetime.datetime.now().isoformat(timespec="seconds"),
             "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None, "test_cmd": None, "test_paths": [],
-            "baseline": None, "red_check": None, "red_kind": None, "weak_tests": 0, "last_test_run": None, "tests_sha": None, "summary": None,
+            "baseline": None, "red_check": None, "red_kind": None, "weak_tests": 0, "guards": [], "last_test_run": None, "tests_sha": None, "summary": None,
             "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "report_path": None, "linked_deps": [],
             "verifier": None, "verify_round": 0, "verify_run": None, "verify_history": [], "coverage": []}
     state["tasks"][tid] = task

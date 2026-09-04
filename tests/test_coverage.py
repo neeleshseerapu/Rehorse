@@ -63,3 +63,28 @@ def test_a_spec_without_the_section_or_a_task_without_a_mapping_is_uncovered(rep
     open(os.path.join(wt, "REHORSE_SPEC.md"), "w").write(SPEC)
     un = coverage.uncovered(str(repo), state.load(str(repo))["tasks"]["t-1"])
     assert len(un) == 3 and all("no test mapped" in u for u in un)
+
+
+# ---- guards: tests the tests-phase agent marks as expected to pass before the implementation ---------------------
+
+def test_guards_are_the_marked_tests_in_the_given_files_across_runners(tmp_path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_a.py").write_text(
+        "def test_new():\n    assert 0\n\n\n# rehorse: guard\ndef test_add_unchanged():\n    assert 1\n\n\n"
+        "class TestK:\n    # rehorse: guard\n    async def test_k(self):\n        pass\n\n\ndef test_other():  # rehorse: guard\n    pass\n")
+    (tmp_path / "tests" / "a.test.ts").write_text(
+        "import { it, test } from 'vitest'\n// rehorse: guard\nit('keeps adding', () => {})\ntest(\"breaks\", () => {})\n"
+        "// rehorse: guard\ntest(`template name`, () => {})\n")
+    (tmp_path / "tests" / "a_test.go").write_text("// rehorse: guard\nfunc TestOld(t *testing.T) {}\nfunc TestNew(t *testing.T) {}\n")
+    (tmp_path / "tests" / "a.rs").write_text("// rehorse: guard\n#[test]\nfn old_still_works() {}\n#[test]\nfn new_one() {}\n")
+    (tmp_path / "tests" / "A.swift").write_text("    // rehorse: guard\n    func testOld() {}\n    func testNew() {}\n")
+    got = coverage.guards(str(tmp_path), ["tests/test_a.py", "tests/a.test.ts", "tests/a_test.go", "tests/a.rs", "tests/A.swift", "tests/missing.py"])
+    assert got == ["tests/A.swift::testOld", "tests/a.rs::old_still_works", "tests/a.test.ts::keeps adding", "tests/a.test.ts::template name",
+                   "tests/a_test.go::TestOld", "tests/test_a.py::TestK::test_k", "tests/test_a.py::test_add_unchanged", "tests/test_a.py::test_other"]
+
+
+def test_changed_tests_are_the_new_or_changed_test_files_committed_or_dirty(repo):
+    wt = spec_task(repo, [])
+    open(os.path.join(wt, "tests", "test_dirty.py"), "w").write("def test_x():\n    pass\n")
+    open(os.path.join(wt, "app.py"), "w").write("changed but not a test\n")
+    assert coverage.changed_tests(str(repo), task_state(repo)) == {"tests/test_dirty.py", "tests/test_new.py"}

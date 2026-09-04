@@ -181,7 +181,8 @@ exists, run against your unchanged code; if they cannot fail, the task does not 
 not counts: a test that already failed before Rehorse started does not make a run red. Green comes from
 implementation code that satisfies them, written while every test file is locked, so the only way to green is to
 change the code. A new test that passes before the implementation exists is flagged in the report as possibly
-testing nothing. Bug fixes follow the same flow: the new test reproduces the bug first, then the fix makes it pass.
+testing nothing, unless it is marked `# rehorse: guard` (a regression guard, expected to pass); the report counts
+guards and unexpected passes separately. Bug fixes follow the same flow: the new test reproduces the bug first, then the fix makes it pass.
 
 ### What this is not
 

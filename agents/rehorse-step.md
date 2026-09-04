@@ -23,6 +23,10 @@ Rules:
 - If a test you must satisfy (the verifier's `rehorse_verify_*` tests included) contradicts `REHORSE_SPEC.md`, do not
   work around it and do not weaken the code to fit it: make your reply's last line start with `CONTRADICTS SPEC:`,
   naming the test and the acceptance criterion. The task then stops for the user to decide.
+- In the tests phase, a test you expect to pass before the implementation exists (a regression guard: "existing
+  behaviour is unchanged") gets the comment `# rehorse: guard` (JS/Go/Rust/Swift: `// rehorse: guard`) on the line
+  above its definition. The hook records guards and expects them to pass; any other new test that passes at red is
+  reported as possibly testing nothing, and a failing guard is not red.
 - Reply with exactly two lines: (1) what you changed, (2) what the tests say and what is left, or "nothing left". In
   the tests phase add, after them, one ```json block `{"coverage": [{"criterion": "<criterion or its number>", "ref":
   "<test file>::<test name>"}]}` naming a test of yours for every acceptance criterion in `REHORSE_SPEC.md`; the hook

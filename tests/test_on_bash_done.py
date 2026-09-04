@@ -122,7 +122,7 @@ def test_red_check_with_no_weak_tests_records_zero(repo):
 def test_red_check_with_one_weak_test_records_it_and_warns_but_still_counts_as_red(repo):
     wt = task_in(repo, "tests", baseline={"passed": 2, "failed": 0})
     out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, error="Exit code 1\n\n1 failed, 3 passed in 0.01s")
-    assert "1 new test(s) passed before implementation" in context(out, "PostToolUseFailure")
+    assert "WARNING: 0 guard(s) expected to pass; 1 unexpected pass(es)" in context(out, "PostToolUseFailure")
     t = task_state(repo)
     assert pf(t["red_check"]) == {"passed": 3, "failed": 1} and t["weak_tests"] == 1 and t["phase"] == "tests"
 
@@ -265,3 +265,39 @@ def test_real_pytest_in_a_repo_with_a_preexisting_failure_goes_red_only_on_a_new
     r = task_state(repo)["red_check"]
     assert r["new_failed"] == 1 and r["new_failing"] == ["tests/test_new.py::test_sub"] and r["preexisting"] == 1
     state.advance(state.load(str(repo)), "t-1", "implement")  # the gate lets it through now
+
+
+# ---- guards: marked regression tests are expected to pass at red and are not weak, nor red ------------------------
+
+GUARDED = ("def test_sub():\n    from app import sub\n    assert sub(3, 1) == 2\n\n\n# rehorse: guard\ndef test_add_unchanged():\n"
+           "    from app import add\n    assert add(1, 2) == 3\n")
+
+
+def test_guards_are_recorded_at_red_and_subtracted_from_the_early_passes(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 1, "failed": 0})
+    pathlib.Path(wt, "tests", "test_new.py").write_text(GUARDED)  # 2 added: the guard passes, test_sub fails
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt,
+               error="Exit code 1\n\nFAILED tests/test_new.py::test_sub - ImportError\n1 failed, 2 passed in 0.01s")
+    t = task_state(repo)
+    assert t["guards"] == ["tests/test_new.py::test_add_unchanged"] and t["weak_tests"] == 0
+    assert "1 guard(s) expected to pass; 0 unexpected pass(es)" in context(out, "PostToolUseFailure")
+    assert "WARNING" not in context(out, "PostToolUseFailure")
+
+
+def test_an_unmarked_early_pass_is_still_unexpected_and_warns(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 1, "failed": 0})
+    pathlib.Path(wt, "tests", "test_new.py").write_text(GUARDED + "\n\ndef test_also_passes():\n    pass\n")  # 3 added, 2 pass, 1 guard
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt,
+               error="Exit code 1\n\nFAILED tests/test_new.py::test_sub - ImportError\n1 failed, 3 passed in 0.01s")
+    assert task_state(repo)["weak_tests"] == 1
+    assert "WARNING: 1 guard(s) expected to pass; 1 unexpected pass(es)" in context(out, "PostToolUseFailure")
+
+
+def test_a_failing_guard_is_not_red(repo):
+    wt = task_in(repo, "tests", baseline={"passed": 1, "failed": 0})
+    pathlib.Path(wt, "tests", "test_new.py").write_text(GUARDED)
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt,
+               error="Exit code 1\n\nFAILED tests/test_new.py::test_add_unchanged - assert\n1 failed, 2 passed in 0.01s")
+    r = task_state(repo)["red_check"]
+    assert r["new_failed"] == 0 and r["new_failing"] == [] and r["failing_guards"] == ["tests/test_new.py::test_add_unchanged"]
+    assert "1 guard(s) failing" in context(out, "PostToolUseFailure")

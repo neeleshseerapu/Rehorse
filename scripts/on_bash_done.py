@@ -7,13 +7,15 @@ arrives as PostToolUse (tool_response.stdout/stderr); a failing one as PostToolU
 spec -> baseline with the failing test ids (0 tests => needs-attention), tests -> red_check with new_failed (failing ids that
 were not failing at baseline; counts with ids_unavailable when the runner printed none), red_kind ("build_failed" when the
 output shows a compiler error or fewer tests ran than at baseline: the new tests reference symbols that do not exist yet)
-and weak_tests (new tests that already pass; a warning, not a gate), verify -> verify_run, always -> last_test_run.
+and weak_tests (new tests that already pass and are not marked `# rehorse: guard`; a warning, not a gate; guards are recorded
+in task["guards"] and a failing guard is not red either), verify -> verify_run, always -> last_test_run.
 """
 import datetime
 import json
 import os
 import sys
 
+import coverage
 import state
 import testcmd
 import worktree
@@ -25,19 +27,22 @@ def note(hook, text):
     return 0
 
 
-def red_by_ids(red, ids, base):
-    """Fill red['new_failed'] (and new_failing / preexisting / ids_unavailable): red means a failure the baseline did not have."""
+def red_by_ids(red, ids, base, guards):
+    """Fill red['new_failed'] (and new_failing / preexisting / failing_guards / ids_unavailable): red means a failure the
+    baseline did not have and that is not a guard."""
     base_ids = base.get("failing") if base.get("failed") else []  # a green baseline needs no ids
+    red["failing_guards"] = sorted(set(ids or []) & set(guards))
     if ids is not None and base_ids is not None:
-        new = sorted(set(ids) - set(base_ids))
+        new = sorted(set(ids) - set(base_ids) - set(guards))
         red.update(new_failing=new, new_failed=len(new), preexisting=len(set(ids) & set(base_ids)))
         note = ""
     else:
         red.update(new_failed=max(0, red["failed"] - base["failed"]), preexisting=min(base["failed"], red["failed"]), ids_unavailable=True)
         note = "; WARNING: no test ids in the runner output, judged by counts"
-    return "%d new failing test(s)%s%s%s." % (
+    return "%d new failing test(s)%s%s%s%s." % (
         red["new_failed"], "; %d failing at baseline (ignored)" % red["preexisting"] if red["preexisting"] else "",
-        " (the failures also fail at baseline; write a test that fails because the feature is missing)" if red["failed"] and not red["new_failed"] else "", note)
+        "; %d guard(s) failing (a guard is expected to pass and is not red)" % len(red["failing_guards"]) if red["failing_guards"] else "",
+        " (the failures also fail at baseline; write a test that fails because the feature is missing)" if red["preexisting"] and not red["new_failed"] else "", note)
 
 
 def main():
@@ -72,17 +77,20 @@ def main():
         task["red_check"] = dict(counts)
         base = task.get("baseline") or {"passed": 0, "failed": 0}
         added = counts["passed"] + counts["failed"] - base["passed"] - base["failed"]
-        red_note = red_by_ids(task["red_check"], ids, base)
+        task["guards"] = guards = coverage.guards(wt, coverage.changed_tests(root, task))
+        red_note = red_by_ids(task["red_check"], ids, base, guards)
         if broken or added < 0:
             task["red_kind"], task["weak_tests"] = "build_failed", 0
             msg += " red: build failed (new tests reference symbols that don't exist yet); that counts as red."
         else:
             task["red_kind"] = "tests"
-            task["weak_tests"] = max(0, min(added, counts["passed"] - base["passed"]))
+            passing_guards = len(guards) - len(task["red_check"]["failing_guards"])
+            task["weak_tests"] = max(0, min(added, counts["passed"] - base["passed"]) - passing_guards)
             msg += " red: " + red_note
-        if task["weak_tests"]:
-            msg += (" WARNING: %d new test(s) passed before implementation and may not test anything; make them fail "
-                    "first or say why they cannot." % task["weak_tests"])
+        if guards or task["weak_tests"]:
+            msg += " %s%d guard(s) expected to pass; %d unexpected pass(es)%s." % (
+                "WARNING: " if task["weak_tests"] else "", len(guards), task["weak_tests"],
+                " that may not test anything; make them fail first, or mark regression guards with `# rehorse: guard`" if task["weak_tests"] else "")
     elif task["phase"] == "verify":
         task["verify_run"] = dict(counts)
     state.save(root, s)

@@ -62,6 +62,16 @@ def ids(names, cap=5):
     return ", ".join(names[:cap]) + (" (+%d more)" % (len(names) - cap) if len(names) > cap else "")
 
 
+def guard_line(task):
+    """Guards are new tests marked as expected to pass before the implementation; any other early pass is a warning."""
+    g, weak, fg = task.get("guards") or [], task.get("weak_tests") or 0, (task.get("red_check") or {}).get("failing_guards") or []
+    if not g and not weak:
+        return []
+    return ["%s%d guard(s) expected to pass; %d unexpected pass(es)%s%s" % (
+        "**Warning:** " if weak else "", len(g), weak, " (guards: %s)" % ids(g) if g else "",
+        "; %d guard(s) failing at red: %s" % (len(fg), ids(fg)) if fg else ""), ""]
+
+
 def red_lines(task):
     """Pre-existing failures are reported apart from red; red is judged by ids that were not failing at baseline."""
     base, red, out = task.get("baseline") or {}, task.get("red_check") or {}, []
@@ -143,8 +153,7 @@ def render(root, task, name):
         row("green (last run)", task["last_test_run"]), "",
         "Command: `%s`" % task["test_cmd"], "",
         *red_lines(task),
-        *(["**Warning:** %d new test(s) passed before implementation and may not test anything." % task["weak_tests"], ""]
-          if task.get("weak_tests") else []),
+        *guard_line(task),
         "## Changes (base..HEAD)", "", "```", stat or "(no commits)", "```", "",
         *verifier,
         "## Test-file drift", "", drift_text, "",

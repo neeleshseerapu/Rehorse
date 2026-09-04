@@ -73,7 +73,9 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    Rehorse phase: tests. Read <worktree>/REHORSE_SPEC.md first.
    Worktree: <worktree>. Edit only there. Test paths: <test_paths>.
    Write failing tests for every acceptance criterion, in test files only (implementation files are locked in this
-   phase). Run: cd <worktree> && <test_cmd>   (failures are expected; that is the point).
+   phase). A regression guard you expect to pass now gets `# rehorse: guard` (or `// rehorse: guard`) on the line
+   above its definition; every other new test must fail. Run: cd <worktree> && <test_cmd>   (failures are expected;
+   that is the point).
    Commit: cd <worktree> && git add -A && git commit -m "tests: red for <id>"
    Reply with two lines, (1) which tests you added and where, (2) what fails and why, then a ```json block
    {"coverage": [{"criterion": "<criterion or its number>", "ref": "<test file>::<test name>"}]} with one entry per
