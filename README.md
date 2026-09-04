@@ -16,8 +16,8 @@ The rules are enforced by **hooks**, small Python scripts Claude Code runs on ev
 prose. The model cannot edit outside the rehearsal, cannot touch your tests while it implements, cannot stop with
 untested edits, and cannot merge. Those hold even with permissions bypassed.
 
-> Pre-release. The verifier subagent (milestone 5) and the marketplace listing (milestone 8) are still to come; see
-> [Status](#status).
+> Pre-release. The eval on real repos (milestones 6 and 7) and the marketplace listing (milestone 8) are still to come;
+> see [Status](#status).
 
 ## Install
 
@@ -106,8 +106,14 @@ when *you* type the command, and the scripts refuse without it.
    must fail before the task moves on.
 4. **implement** – the work is split into 1 to 6 steps. Each step is a fresh subagent that may edit implementation
    files only, must run the tests, and must commit. The orchestrator never reads source; it reads two-line summaries.
-5. **verify** – an independent verifier that has not seen how the code was built (milestone 5).
-6. **report** – the report is written, committed on the rehearsal branch, and the session ends.
+5. **verify** – an independent verifier subagent that has not seen how the code was built. It gets only the spec, the
+   diff and the last test output (a script writes that brief; the orchestrator adds nothing), assumes the tests were
+   written to pass, writes its own tests into one file of its own, runs the suite, and returns a verdict: `pass`,
+   `concerns` or `fail`, with findings and a per-criterion coverage map. A hook records the verdict; nobody copies it.
+   A `fail`, or a failing verifier test, sends the task back to implement with the findings as new steps, at most
+   twice; a third failure stops the task for you.
+6. **report** – the report is written, committed on the rehearsal branch, and the session ends. The verdict is the
+   banner; the report cannot be rendered without one.
 
 If a session is interrupted, compacted, or you open a new one, Rehorse injects a one-line state summary and
 continues from PROGRESS.md. If the model gets stuck (for example, it keeps trying to stop without running tests), the
@@ -117,8 +123,8 @@ task drops to `needs-attention` with the reason instead of ending silently; `/re
 ### What Rehorse writes in your repo
 
 - `.rehorse/` (added to your `.gitignore` on first run): `state.json`, the single source of truth, and the worktrees.
-- `rehorse-reports/`: `PROGRESS.md` and one report per task. These are meant to be committed; the merge brings them in
-  from the rehearsal branch.
+- `rehorse-reports/`: `PROGRESS.md`, one report per task, and `verifier/` for findings too long for the report. These
+  are meant to be committed; the merge brings them in from the rehearsal branch.
 - `~/.rehorse/`: one-shot merge/discard grants, outside every repo, deleted when used.
 
 ## The guarantees
@@ -130,8 +136,14 @@ While a task is active, regardless of permission mode:
 - **Tests are locked when it implements.** In the tests phase only test files can change; in the implement phase
   test files cannot change at all. The report flags any drift in test files after the tests phase.
 - **Red before green, with evidence.** A test run counts only if it ran inside the worktree and printed the runner's
-  own summary line. A baseline that runs zero tests stops the task. A red run that does not even compile because the
-  new tests name symbols that do not exist yet counts as red, and the report says so instead of showing counts.
+  own summary line. A baseline that runs zero tests stops the task. The task cannot leave the tests phase until a red
+  run with a failing test is recorded. A red run that does not even compile because the new tests name symbols that do
+  not exist yet counts as red, and the report says so instead of showing counts.
+- **Verified by someone else, before the report.** The verifier's stop is held until it ran the tests, committed, and
+  returned a JSON verdict; that verdict is written to state by the hook, and the report cannot be rendered without
+  one. During verification the only writable file is the verifier's own test file; afterwards it is locked like every
+  test. What the verifier reads is prose-guided (there is no hook on Read), what it may write and what counts as its
+  verdict are not.
 - **No stopping with untested edits.** The turn cannot end, and a step cannot close, until the tests ran after the
   last edit and the work is committed.
 - **No merge.** `git merge/rebase/push/checkout/reset --hard` and friends are denied, along with `rm -rf` on your repo
@@ -164,8 +176,8 @@ Out of scope for v1: model routing, non-git repos, running several tasks in para
 | 2. State, worktree and test-command scripts | done |
 | 3. The four guard hooks, live-checked | done |
 | 4. Skills, step agent, progress/report/merge, user-granted merge authority; live-checked end to end | done |
-| 5. Red-before-green gate, verifier agent, verdict in the report | next |
-| 6–7. Eval on `rich`, `fastapi`, `zod` (graded by the upstream PRs' tests) | |
+| 5. Red-before-green gate, verifier agent, verdict in the report, verify round-trip; live-checked | done |
+| 6–7. Eval on `rich`, `fastapi`, `zod` (graded by the upstream PRs' tests) | next |
 | 8. Marketplace listing, install instructions, demo | |
 
 ## Contributing
