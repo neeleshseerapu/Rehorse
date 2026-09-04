@@ -343,3 +343,18 @@ and the only part not generated from state.
   banner under a line saying it was written by the model at report time. Milo's most useful paragraphs ("The UI was
   type-checked and built, not clicked") were exactly this kind of text, and they were indistinguishable from the
   generated parts; now the reader knows which sentences came from state and which from the model.
+
+## Milestone 5: red gate, verifier agent, verify round-trip (2026-09-04)
+
+Docs re-fetched before writing (hooks, sub-agents, plugins). Confirmed: Stop and SubagentStop answer with top-level
+`decision: "block"` / `reason` (plus optional `hookSpecificOutput.additionalContext`, which keeps the subagent running, so it is
+not used on an accepted stop); SubagentStop `matcher` filters on `agent_type`, including plugin-scoped names
+(`^my-plugin:reviewer$`); plugin agents ignore `permissionMode` and `hooks`. Nothing contradicted SPEC.md.
+
+- **Red gate moved into `state.advance`** (chunk 1). `tests -> implement` now raises unless `red_check` has at least one failure
+  or `red_kind` is `build_failed`; the message says which of "no red run", "0 tests ran", "nothing failed" it is and what to do.
+  Until now the gate was prose in the build skill ("at least one test must fail") and `state.py advance implement` accepted
+  anything. The weak-test flag and `red_kind: build_failed` were already implemented and rendered (milestone 4 fixes); the
+  Swift and Cargo compiler-output fixtures existed, and `swift_tests_red.txt` (a compiled-language red that *fails tests*
+  rather than the build) is now also pushed through `on_bash_done.py` to prove it records `red_kind: "tests"` with counts.
+  The conftest phase walker sets a failing `red_check` when a test asks for a phase past `tests` and gave none.

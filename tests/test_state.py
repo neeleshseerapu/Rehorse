@@ -45,7 +45,7 @@ def test_load_missing_file_returns_empty_state(tmp_path):
 
 def test_advance_walks_the_phase_order_only():
     s = state.empty()
-    state.new_task(s, "t-1")
+    state.new_task(s, "t-1")["red_check"] = {"passed": 1, "failed": 1}  # the red gate wants a failing run before implement
     for phase in ["tests", "implement", "verify", "report", "merged"]:
         state.advance(s, "t-1", phase)
         assert s["tasks"]["t-1"]["phase"] == phase
@@ -74,7 +74,7 @@ def test_merged_only_from_report_but_discarded_from_anywhere():
 
 def test_needs_attention_records_reason_and_resumes_to_prior_phase():
     s = state.empty()
-    state.new_task(s, "t-1")
+    state.new_task(s, "t-1")["red_check"] = {"passed": 1, "failed": 1}
     state.advance(s, "t-1", "tests")
     state.advance(s, "t-1", "implement")
     s["tasks"]["t-1"]["stop_blocks"] = 8
@@ -104,6 +104,7 @@ def test_summary_line_for_no_task_active_and_attention():
     s = state.empty()
     assert state.summary(s) == "REHORSE: no active task."
     t = state.new_task(s, "t-20260903-dark-mode")
+    t["red_check"] = {"passed": 1, "failed": 1}
     state.advance(s, "t-20260903-dark-mode", "tests")
     state.advance(s, "t-20260903-dark-mode", "implement")
     t["plan"] = ["a", "b", "c"]
@@ -203,3 +204,40 @@ def test_cli_new_starts_in_setup_when_no_test_command_is_detectable(tmp_path):
     t = json.loads(r.stdout)
     assert t["phase"] == "setup" and t["test_cmd"] is None
     assert "setup" in state.summary(state.load(str(tmp_path)))
+
+
+# ---- red-before-green gate: tests -> implement needs a recorded red run with at least one failure -------------------
+
+def red_task(**fields):
+    s = state.empty()
+    t = state.new_task(s, "t-1")
+    state.advance(s, "t-1", "tests")
+    t.update(fields)
+    return s
+
+
+@pytest.mark.parametrize("fields,why", [
+    ({}, "no red run"),
+    ({"red_check": {"passed": 3, "failed": 0}}, "nothing failed"),
+    ({"red_check": {"passed": 0, "failed": 0}}, "0 tests"),
+])
+def test_advance_to_implement_refuses_without_a_failing_red_run(fields, why):
+    s = red_task(**fields)
+    with pytest.raises(ValueError) as e:
+        state.advance(s, "t-1", "implement")
+    assert why in str(e.value) and s["tasks"]["t-1"]["phase"] == "tests"
+
+
+def test_advance_to_implement_accepts_a_failing_test_or_a_build_failure():
+    s = red_task(red_check={"passed": 2, "failed": 1}, red_kind="tests")
+    state.advance(s, "t-1", "implement")
+    s = red_task(red_check={"passed": 0, "failed": 0}, red_kind="build_failed")
+    state.advance(s, "t-1", "implement")
+    assert s["tasks"]["t-1"]["phase"] == "implement"
+
+
+def test_cli_advance_implement_without_red_tells_the_model_why(repo):
+    from conftest import run_script, task_in
+    task_in(repo, "tests")
+    r = run_script("state", ["advance", "implement"], cwd=str(repo))
+    assert r.returncode != 0 and "red" in r.stderr and "fail" in r.stderr

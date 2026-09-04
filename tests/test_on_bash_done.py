@@ -158,3 +158,12 @@ def test_ordinary_red_run_has_red_kind_tests(repo):
     wt = task_in(repo, "tests", baseline={"passed": 2, "failed": 0})
     done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt)
     assert task_state(repo)["red_kind"] == "tests"
+
+
+def test_swift_red_run_with_failing_tests_is_an_ordinary_red_not_a_build_failure(repo):
+    wt = task_in(repo, "tests", test_cmd="swift test", baseline={"passed": 2, "failed": 0})
+    out = done(repo, "posttoolusefailure_bash_pytest_fail", cwd=wt, command="cd %s && swift test" % wt,
+               error="Exit code 1\n" + fixture_output("swift_tests_red.txt"))
+    assert "2 passed, 1 failed" in context(out, "PostToolUseFailure")
+    t = task_state(repo)
+    assert t["red_kind"] == "tests" and t["red_check"] == {"passed": 2, "failed": 1} and t["weak_tests"] == 0

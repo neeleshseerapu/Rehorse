@@ -79,7 +79,8 @@ Record its command and move on: `testcmd.py set "<command>"`, then
 
 2. Run `cd <worktree> && <test_cmd>` yourself; the hook records `red_check`. **At least one test must fail.** If nothing
    fails, the tests do not test the feature: spawn the subagent again saying which criteria are untested.
-3. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/state.py advance implement`
+3. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/state.py advance implement` (it refuses, and says why, until a red run with a
+   failure, or a failed build, is recorded).
 
 ## 3. implement (every step delegated)
 

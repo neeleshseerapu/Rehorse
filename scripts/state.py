@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Rehorse state: <repo>/.rehorse/state.json is the single source of truth. Phases move only through advance().
-CLI: --summary (SessionStart) | new "<title>" [--date D] (task+worktree+test cmd) | advance <phase> [--task ID] [--reason R] | show
-"""
+"""Rehorse state: <repo>/.rehorse/state.json is the single source of truth; phases move only through advance(), which
+gates tests -> implement on a red run. CLI: --summary (SessionStart) | new "<title>" [--date D] | advance <phase> [--task ID] [--reason R] | show"""
 import datetime
 import json
 import os
@@ -41,10 +40,8 @@ def load(root):
 def active(cwd):
     """(root, state, task) for the hook scripts. task is None when Rehorse is dormant here (no repo or no active task)."""
     root = find_root(cwd or os.getcwd())
-    if not root:
-        return None, empty(), None
-    s = load(root)
-    return root, s, s["tasks"].get(s["active_task"]) if s["active_task"] else None
+    s = load(root) if root else empty()
+    return root, s, (s["tasks"].get(s["active_task"]) if s["active_task"] else None)
 
 
 def save(root, state):
@@ -68,30 +65,35 @@ def new_task(state, tid):
     while tid in state["tasks"]:  # re-rehearsal: t-...-r2, -r3
         n += 1
         tid = "%s-r%d" % (base, n)
-    task = {
-        "id": tid, "phase": "spec", "created": datetime.datetime.now().isoformat(timespec="seconds"),
-        "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None,
-        "test_cmd": None, "test_paths": [], "baseline": None, "red_check": None, "red_kind": None, "weak_tests": 0, "last_test_run": None,
-        "tests_sha": None, "summary": None,
-        "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "verifier": None, "report_path": None, "linked_deps": [],
-    }
+    task = {"id": tid, "phase": "spec", "created": datetime.datetime.now().isoformat(timespec="seconds"),
+            "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None, "test_cmd": None, "test_paths": [],
+            "baseline": None, "red_check": None, "red_kind": None, "weak_tests": 0, "last_test_run": None, "tests_sha": None, "summary": None,
+            "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "verifier": None, "report_path": None, "linked_deps": []}
     state["tasks"][tid] = task
     state["active_task"] = tid
     return task
 
 
+def gate(task, to):
+    """Evidence a transition needs, or None: tests -> implement wants a red run with a failing new test (a failed build counts)."""
+    r = task.get("red_check") or {"passed": 0, "failed": 0}
+    if (task["phase"], to) == ("tests", "implement") and not (task.get("red_kind") == "build_failed" or r["failed"]):
+        if not task.get("red_check"):
+            return "no red run recorded; run the test command inside the worktree after the tests are written (at least one must fail)"
+        return ("the red run ran 0 tests; fix test discovery and run it again" if not r["passed"] else
+                "nothing failed in the red run: tests that pass before the feature exists test nothing; make at least one fail")
+
+
 def advance(state, tid, to, reason=None):
-    """The only legal phase transitions. Raises ValueError with the allowed next phase(s)."""
+    """The only legal phase transitions. Raises ValueError naming the allowed next phase(s) or the gate that objected."""
     task = state["tasks"][tid]
     cur = task["phase"]
-    if cur in TERMINAL:
-        allowed = []
-    elif cur == ATTENTION:
-        allowed = [task["attention"]["prior_phase"], "discarded"]
-    else:
-        allowed = PHASES[PHASES.index(cur) + 1:][:1] + ["discarded", ATTENTION] + (["merged"] if cur == "report" else [])
+    allowed = ([] if cur in TERMINAL else [task["attention"]["prior_phase"], "discarded"] if cur == ATTENTION else
+               PHASES[PHASES.index(cur) + 1:][:1] + ["discarded", ATTENTION] + (["merged"] if cur == "report" else []))
     if to not in allowed:
         raise ValueError("cannot advance %s from %r to %r; allowed: %s" % (tid, cur, to, ", ".join(allowed) or "none"))
+    if gate(task, to):
+        raise ValueError("cannot advance %s to %s: %s" % (tid, to, gate(task, to)))
     task["attention"] = {"reason": reason or "unspecified", "prior_phase": cur} if to == ATTENTION else None
     task["stop_blocks"] = 0 if cur == ATTENTION else task["stop_blocks"]  # a resumed task starts its block count over
     task["phase"] = to
@@ -109,10 +111,8 @@ def summary(state):
     if t["phase"] == ATTENTION:
         return "REHORSE: task %s NEEDS ATTENTION (was in %s): %s. Run /rehorse:status." % (tid, t["attention"]["prior_phase"], t["attention"]["reason"])
     parts = ["REHORSE: active task %s, phase %s" % (tid, t["phase"])]
-    if t["plan"]:
-        parts.append("step %d/%d" % (min(t["step"] + 1, len(t["plan"])), len(t["plan"])))
-    if t["last_test_run"]:
-        parts.append("last tests %(passed)d passed, %(failed)d failed" % t["last_test_run"])
+    parts += ["step %d/%d" % (min(t["step"] + 1, len(t["plan"])), len(t["plan"]))] if t["plan"] else []
+    parts += ["last tests %(passed)d passed, %(failed)d failed" % t["last_test_run"]] if t["last_test_run"] else []
     return ", ".join(parts) + ". Read rehorse-reports/PROGRESS.md before acting."
 
 
