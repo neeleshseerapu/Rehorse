@@ -154,7 +154,7 @@ Out of scope for v1: model routing, non-git repos, running several tasks in para
 
 ## Contributing
 
-The spec is `PROMPT.md`; every decision and the evidence behind it is in `DECISIONS.md`; ideas out of scope are in
+The spec is `SPEC.md`; every decision and the evidence behind it is in `DECISIONS.md`; ideas out of scope are in
 `IDEAS.md`. The layout follows the Claude Code plugin format: `skills/`, `agents/`, `hooks/hooks.json`, `scripts/`.
 
 ```bash

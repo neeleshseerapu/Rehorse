@@ -46,7 +46,7 @@ decisions per the docs. Raw hook inputs from these runs are saved under `tests/f
 
 ## Before milestone 2: user decisions (2026-09-03)
 
-- "Orchestrator never edits" is hook-enforced: in `implement`, `guard_edit.py` denies Edit/Write/MultiEdit calls with no `agent_id` (main thread) except paths under `.rehorse/` and `rehorse-reports/`, because `agent_id` is documented as the subagent discriminator and spike 8 confirmed it. PROMPT.md "Context management" updated; it no longer calls the rule prose-only.
+- "Orchestrator never edits" is hook-enforced: in `implement`, `guard_edit.py` denies Edit/Write/MultiEdit calls with no `agent_id` (main thread) except paths under `.rehorse/` and `rehorse-reports/`, because `agent_id` is documented as the subagent discriminator and spike 8 confirmed it. SPEC.md "Context management" updated; it no longer calls the rule prose-only.
 - `guard_stop.py` tracks consecutive blocks in `state.json` (`stop_blocks`, reset on any allowed stop); on the 8th block it sets the phase to `needs-attention` with the reason, allows the stop, and `report.py` renders that state as the banner, because Claude Code caps consecutive Stop blocks at 8 and silently allowing the 9th would hide an unfinished task.
 - `on_bash_done.py` stays wired to both `PostToolUse` and `PostToolUseFailure` for Bash (spike 6 decision confirmed).
 - `needs-attention` is a phase in `state.py`: reachable from any non-terminal phase, records `{reason, prior_phase}` in `attention`, and exits only back to `prior_phase` (user-driven resume) or to `discarded`; `merged` is reachable only from `report`, `discarded` from any non-terminal phase.
@@ -73,7 +73,7 @@ decisions per the docs. Raw hook inputs from these runs are saved under `tests/f
 Docs re-fetched before writing (hooks reference, plugins). They confirm the spike findings: PreToolUse answers with
 `hookSpecificOutput.permissionDecision`; PostToolUse, PostToolUseFailure and Stop use top-level `decision`/`reason` and
 `hookSpecificOutput.additionalContext`; PostToolUse input carries `tool_response`, PostToolUseFailure carries `error`; Claude Code
-overrides a Stop hook after 8 consecutive blocks. Nothing in PROMPT.md contradicted the docs this time.
+overrides a Stop hook after 8 consecutive blocks. Nothing in SPEC.md contradicted the docs this time.
 
 - Every hook is written test-first (`tests/test_guard_*.py`, `test_on_bash_done.py`; 106 red, then green) against the captured
   inputs in `tests/fixtures/hook_inputs/` with `cwd`/`file_path`/`command` overridden to point at a throwaway repo, so the
@@ -149,7 +149,7 @@ Docs re-fetched before writing (hooks, skills, plugins, sub-agents). What they s
 and carries the raw `prompt`; `SubagentStop` uses Stop's `decision`/`reason` schema and its `agent_type` is the
 plugin-scoped name (`rehorse:rehorse-step`); a plugin skill's command comes from the frontmatter `name`, so
 `skills/rehorse-build/SKILL.md` with `name: build` is `/rehorse:build`; `${CLAUDE_PLUGIN_ROOT}` is substituted in plugin
-skill bodies; plugin agents ignore `permissionMode`/`hooks`. PROMPT.md amended accordingly (hook table, phase 1 and 6,
+skill bodies; plugin agents ignore `permissionMode`/`hooks`. SPEC.md amended accordingly (hook table, phase 1 and 6,
 context-management paragraph, state example).
 
 - Every new script was written test-first (`test_grant`, `test_authorize`, `test_progress`, `test_handoff`, `test_report`,
@@ -294,3 +294,9 @@ Six sessions again, all exit 0 and empty stderr except run 2a, whose `is_error: 
   IDEAS.md), instead of implying Rehorse works on any repo. A "Testing Rehorse on your own project" note under
   Contributing asks early users for one small task and an issue with the report attached, because the eval
   (milestones 6 and 7) covers three repos and real projects will find what a toy repo cannot.
+
+## Repo hygiene before milestone 5 (2026-09-03)
+
+- `PROMPT.md` renamed to `SPEC.md` (`git mv`, history kept) with a one-line header saying what it is; every reference
+  in README, CLAUDE.md, DECISIONS.md and IDEAS.md updated. "Prompt" described how the file was first used; "spec" is
+  what it is.

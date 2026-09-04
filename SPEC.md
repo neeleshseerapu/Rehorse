@@ -1,3 +1,5 @@
+This is the build spec. Claude Code reads it before each milestone; humans can too.
+
 # Rehorse — build spec for Claude Code
 
 You are building **Rehorse**, an open-source Claude Code plugin. Read this whole file before touching anything. Do not widen scope beyond what is written here; if you think something is missing, ask before adding it.

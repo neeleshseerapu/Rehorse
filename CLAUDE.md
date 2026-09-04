@@ -9,8 +9,8 @@ rehearses on a git worktree, must go red-then-green on tests, is checked by an i
 verifier subagent, and stops with a report. Nothing touches the user's real branch until they
 run `/rehorse:merge`.
 
-**There is no production code yet.** `PROMPT.md` is the full build spec and the source of truth;
-read it before doing anything. Work proceeds in numbered milestones (PROMPT.md, bottom).
+**There is no production code yet.** `SPEC.md` is the full build spec and the source of truth;
+read it before doing anything. Work proceeds in numbered milestones (SPEC.md, bottom).
 Milestone 1 (the Day-1 spikes) is complete: all 11 passed on 2026-09-03. `DECISIONS.md` holds
 the evidence and three design changes the spikes forced (PostToolUseFailure for failing test
 runs, SessionStart(compact) for post-compaction injection, SubagentStop filtering by agent_type).
@@ -32,7 +32,7 @@ Read it before wiring any hook. Real hook inputs captured from those runs are in
   - https://code.claude.com/docs/en/plugins
   - https://code.claude.com/docs/en/hooks
   - https://code.claude.com/docs/en/skills
-  If Claude Code behaves differently from PROMPT.md, trust the docs and tell the user what changed.
+  If Claude Code behaves differently from SPEC.md, trust the docs and tell the user what changed.
 - Never widen scope. Missing feature ideas go in `IDEAS.md`. Out of scope for v1: model routing,
   knowledge graph, any UI, non-git repos, multi-task parallelism.
 - Write the failing pytest for a hook script before the script itself.
