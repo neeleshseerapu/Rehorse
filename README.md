@@ -166,6 +166,13 @@ bash tests/e2e_live.sh /tmp/rehorse-e2e                  # real sessions on toy 
 
 Hook scripts are written test-first, stay under 150 lines, and import only the standard library.
 
+### Development
+
+`main` is kept green: pytest passes on every commit, so any commit is safe to load. Releases are tagged. The plugin
+runs from whatever is checked out in the directory you pass to `--plugin-dir`, so a half-finished change in your
+working tree is live in every session that uses it. To test Rehorse on another project while mid-change, keep a second
+clone checked out at the latest tag and point `--plugin-dir` at that one.
+
 ### Testing Rehorse on your own project
 
 The most useful thing you can do right now is run it on a real repo. Clone this repository, start Claude Code in
