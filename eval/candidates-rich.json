@@ -10,7 +10,7 @@
     "pr_test_files": [
       "tests/test_file_proxy.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -24,7 +24,7 @@
     "pr_test_files": [
       "tests/test_markdown.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -38,7 +38,7 @@
     "pr_test_files": [
       "tests/test_cells.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -52,7 +52,7 @@
     "pr_test_files": [
       "tests/test_cells.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -66,7 +66,7 @@
     "pr_test_files": [
       "tests/test_cells.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -80,7 +80,7 @@
     "pr_test_files": [
       "tests/test_prompt.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -95,7 +95,7 @@
       "tests/test_columns.py",
       "tests/test_table.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -109,7 +109,7 @@
     "pr_test_files": [
       "tests/test_text.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -124,7 +124,7 @@
       "tests/test_segment.py",
       "tests/test_text.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -138,7 +138,7 @@
     "pr_test_files": [
       "tests/test_live.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -152,7 +152,7 @@
     "pr_test_files": [
       "tests/test_console.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -166,7 +166,7 @@
     "pr_test_files": [
       "tests/test_syntax.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -180,7 +180,7 @@
     "pr_test_files": [
       "tests/test_traceback.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -194,7 +194,7 @@
     "pr_test_files": [
       "tests/test_traceback.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -208,7 +208,7 @@
     "pr_test_files": [
       "tests/test_ansi.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -222,7 +222,7 @@
     "pr_test_files": [
       "tests/test_panel.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -236,7 +236,7 @@
     "pr_test_files": [
       "tests/test_table.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -250,7 +250,7 @@
     "pr_test_files": [
       "tests/test_text.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -264,7 +264,7 @@
     "pr_test_files": [
       "tests/test_pretty.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -278,7 +278,7 @@
     "pr_test_files": [
       "tests/test_syntax.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -292,7 +292,7 @@
     "pr_test_files": [
       "tests/test_markdown.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -306,7 +306,7 @@
     "pr_test_files": [
       "tests/test_highlighter.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -320,7 +320,7 @@
     "pr_test_files": [
       "tests/test_markdown.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -334,7 +334,7 @@
     "pr_test_files": [
       "tests/test_markdown.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -348,7 +348,7 @@
     "pr_test_files": [
       "tests/test_text.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -362,7 +362,7 @@
     "pr_test_files": [
       "tests/test_markup.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -376,7 +376,7 @@
     "pr_test_files": [
       "tests/test_style.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -390,7 +390,7 @@
     "pr_test_files": [
       "tests/test_repr.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -404,7 +404,7 @@
     "pr_test_files": [
       "tests/test_pretty.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -418,7 +418,7 @@
     "pr_test_files": [
       "tests/test_console.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -432,7 +432,7 @@
     "pr_test_files": [
       "tests/test_console.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -446,7 +446,7 @@
     "pr_test_files": [
       "tests/test_pretty.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -460,7 +460,7 @@
     "pr_test_files": [
       "tests/test_syntax.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -474,7 +474,7 @@
     "pr_test_files": [
       "tests/test_pretty.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -488,7 +488,7 @@
     "pr_test_files": [
       "tests/test_console.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -502,7 +502,7 @@
     "pr_test_files": [
       "tests/test_ansi.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -516,7 +516,7 @@
     "pr_test_files": [
       "tests/test_getfileno.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -530,7 +530,7 @@
     "pr_test_files": [
       "tests/test_console.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   },
   {
@@ -544,7 +544,7 @@
     "pr_test_files": [
       "tests/test_console.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   }
 ]

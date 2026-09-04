@@ -1,16 +1,16 @@
 [
   {
-    "id": "rich-2942",
+    "id": "rich-3881",
     "repo": "Textualize/rich",
-    "base_sha": "610fd75c433c3dfcd9c296e8b91363979127b9fa",
-    "issue_url": "https://github.com/Textualize/rich/issues/2942",
-    "issue_title": "[BUG] Style.clear_meta_and_links should reset hash",
-    "issue_body": "The hash of a `Style` instance depends on `_meta` and `_link`:\r\n\r\nhttps://github.com/Textualize/rich/blob/6d30ad0f30028210124c149811cbbe2b183711f9/rich/style.py#L432-L445\r\n\r\nSo, when the link and meta are cleared with the method `Style.clear_meta_and_links`, the cached hash should be cleared:\r\n\r\nhttps://github.com/Textualize/rich/blob/6d30ad0f30028210124c149811cbbe2b183711f9/rich/style.py#L664-L668",
-    "pr_url": "https://github.com/Textualize/rich/pull/2943",
+    "base_sha": "12eeb42c96a7a953865b19da204dea6fe658713b",
+    "issue_url": "https://github.com/Textualize/rich/issues/3881",
+    "issue_title": "[BUG] PromptBase.on_validate_error should explicitly enable markup",
+    "issue_body": "- [x] I've checked [docs](https://rich.readthedocs.io/en/latest/introduction.html) and [closed issues](https://github.com/Textualize/rich/issues?q=is%3Aissue+is%3Aclosed) for possible solutions.\n- [x] I can't find my issue in the [FAQ](https://github.com/Textualize/rich/blob/master/FAQ.md).\n\n**Describe the bug**\n\nI create a console with `Console(markup=False)` and then pass it to `Confirm.ask(..., console=console)`.  If the user doesn't pick a valid choice, they get an error that says `[prompt.invalid]Please enter Y or N`.\n\nI think `PromptBase.on_validate_error()` should explicitly pass `markup=true` to `self.console.print(error)`.\n\n**Platform**\n\nEvery platform, it's a logic bug.  (I'm on Ubuntu 25.10 with gnome-terminal, which doesn't matter.)",
+    "pr_url": "https://github.com/Textualize/rich/pull/3882",
     "pr_test_files": [
-      "tests/test_style.py"
+      "tests/test_prompt.py"
     ],
-    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+    "setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs \"pygments==$(sed -n '/^name = \"pygments\"/{n;s/version = \"\\(.*\\)\"/\\1/p;}' poetry.lock)\"",
     "test_cmd": ".venv/bin/python -m pytest -q --tb=short"
   }
 ]

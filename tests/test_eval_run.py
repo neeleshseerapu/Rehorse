@@ -29,13 +29,15 @@ def state(**over):
 
 def test_rehorse_outcome_is_read_from_state_not_the_report_text():
     assert run_eval.outcome(state()) == {"merged_green": True, "verdict": "concerns", "rounds": 1, "phase": "report",
-                                         "report_path": "rehorse-reports/2026-09-04-x.md", "worktree": ".rehorse/worktrees/t-1", "attention": None}
+                                         "report_path": "rehorse-reports/2026-09-04-x.md", "worktree": ".rehorse/worktrees/t-1", "attention": None,
+                                         "baseline": None, "last_test_run": {"passed": 40, "failed": 0}}
     assert run_eval.outcome(state(phase="implement"))["merged_green"] is False
     assert run_eval.outcome(state(last_test_run={"passed": 40, "failed": 1}))["merged_green"] is False
     assert run_eval.outcome(state(verifier=None))["verdict"] is None
     att = run_eval.outcome(state(phase="needs-attention", attention={"reason": "gave up", "prior_phase": "implement"}))
     assert att["merged_green"] is False and att["attention"] == "gave up"
-    assert run_eval.outcome(None) == {"merged_green": False, "verdict": None, "rounds": 0, "phase": None, "report_path": None, "worktree": None, "attention": None}
+    assert run_eval.outcome(None) == {"merged_green": False, "verdict": None, "rounds": 0, "phase": None, "report_path": None, "worktree": None,
+                                      "attention": None, "baseline": None, "last_test_run": None}
 
 
 def test_tasks_with_a_result_file_are_skipped_unless_rerun(tmp_path):

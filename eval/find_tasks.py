@@ -18,8 +18,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import testcmd  # noqa: E402
 
 MAX_FILES = 5
-DEFAULTS = {  # per-repo setup and test commands; the target's own venv, so the plugin's interpreter never leaks in
-    "Textualize/rich": {"setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e . pytest",
+PYGMENTS_PIN = r"""pygments==$(sed -n '/^name = "pygments"/{n;s/version = "\(.*\)"/\1/p;}' poetry.lock)"""  # the lock's version
+DEFAULTS = {  # per-repo setup and test commands; the target's own venv, so the plugin's interpreter never leaks in.
+    # rich: attrs is a dev dependency its tests import; pygments must match poetry.lock (the syntax tests are golden output)
+    "Textualize/rich": {"setup_cmd": 'python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs "%s"' % PYGMENTS_PIN,
                         "test_cmd": ".venv/bin/python -m pytest -q --tb=short"},
     "fastapi/fastapi": {"setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e '.[all]' -r requirements-tests.txt",
                         "test_cmd": ".venv/bin/python -m pytest -q --tb=short"},

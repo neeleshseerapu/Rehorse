@@ -523,6 +523,14 @@ Docs re-fetched before writing (CLI reference): `claude -p --output-format json`
   reads `CLAUDE.md` from parent directories and a clone under `eval/` would inherit Rehorse's own development
   instructions. Runs pass `< /dev/null` (spike 1), `--dangerously-skip-permissions`, `--debug-file` for the hook lines,
   `--max-turns 150` and a wall-clock timeout so a runaway session is a row, not a hang; never `--bare` (it drops plugins).
-- **The first task is `rich-2942`** (`Style.clear_meta_and_links` should reset the cached hash: one source file, one
-  test file, a precise issue body) so the harness is checked on the smallest possible rehearsal; the other nine are the
-  user's pick from `eval/candidates-rich.json`.
+- **The `rich` setup pins pygments from `poetry.lock` and installs `attrs`.** With the latest pygments, seven syntax
+  tests (golden ANSI output) fail at every base; with the lock's version the 2025 bases run green (931 passed at
+  `rich-3881`'s base, from a clean venv). `attrs` is a dev dependency `tests/test_pretty.py` imports. Bases from 2023
+  (`rich` 13.x) keep nine failures that are Python 3.13's own (dataclass and builtin reprs); this machine has 3.13 and
+  3.9 only, so `rich` tasks are picked from bases that support the running Python (14.x, 2025), and the result JSON
+  records the baseline counts so a task whose baseline was never green cannot pass for a Rehorse failure. Seen while
+  checking: with any pre-existing failure the red gate is vacuous, since it counts failures rather than comparing
+  failing test ids against the baseline (IDEAS.md already lists the fix); not changed in this milestone.
+- **The first task is `rich-3881`** (`PromptBase.on_validate_error` should print with markup on: one source file,
+  one test file, a precise issue body, 2025 base) so the harness is checked on the smallest possible rehearsal; the
+  other nine are the user's pick from `eval/candidates-rich.json`.

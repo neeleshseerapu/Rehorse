@@ -38,12 +38,13 @@ def outcome(state):
     """What Rehorse itself says happened, read from .rehorse/state.json (never parsed out of the report's prose)."""
     t = (state or {}).get("tasks", {}).get((state or {}).get("active_task")) or next(iter((state or {}).get("tasks", {}).values()), None)
     if not t:
-        return {"merged_green": False, "verdict": None, "rounds": 0, "phase": None, "report_path": None, "worktree": None, "attention": None}
+        return {"merged_green": False, "verdict": None, "rounds": 0, "phase": None, "report_path": None, "worktree": None, "attention": None,
+                "baseline": None, "last_test_run": None}
     last = t.get("last_test_run") or {}
     green = t["phase"] == "report" and bool(last) and last["failed"] == 0 and last["passed"] > 0
     return {"merged_green": green, "verdict": (t.get("verifier") or {}).get("verdict"), "rounds": t.get("verify_round", 0),
             "phase": t["phase"], "report_path": t.get("report_path"), "worktree": t.get("worktree"),
-            "attention": (t.get("attention") or {}).get("reason")}
+            "attention": (t.get("attention") or {}).get("reason"), "baseline": t.get("baseline"), "last_test_run": last or None}
 
 
 def pending(tasks, results_dir, rerun=False, only=None):
@@ -111,7 +112,7 @@ def run_task(task, work, max_turns, timeout):
         row["error"] = err
     sp = os.path.join(clone, ".rehorse", "state.json")
     o = outcome(json.load(open(sp)) if os.path.exists(sp) else None)
-    row.update({k: o[k] for k in ("merged_green", "verdict", "rounds", "phase", "attention")})
+    row.update({k: o[k] for k in ("merged_green", "verdict", "rounds", "phase", "attention", "baseline", "last_test_run")})
     if o["report_path"] and os.path.exists(os.path.join(clone, o["report_path"])):
         shutil.copy(os.path.join(clone, o["report_path"]), os.path.join(RESULTS, tid + ".report.md"))
         row["report"] = "results/%s.report.md" % tid
