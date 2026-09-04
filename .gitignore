@@ -7,3 +7,6 @@ __pycache__/
 
 # Rehorse runtime state when dogfooding on this repo (rehorse-reports/ is committed on purpose)
 .rehorse/
+
+# tests/e2e_live.sh output when pointed inside the repo (default is /tmp/rehorse-e2e)
+rehorse-e2e/

@@ -300,3 +300,9 @@ Six sessions again, all exit 0 and empty stderr except run 2a, whose `is_error: 
 - `PROMPT.md` renamed to `SPEC.md` (`git mv`, history kept) with a one-line header saying what it is; every reference
   in README, CLAUDE.md, DECISIONS.md and IDEAS.md updated. "Prompt" described how the file was first used; "spec" is
   what it is.
+- Tracked-file audit (`git ls-files`, 68 files): nothing to remove. No scratch files, no e2e output, nothing under
+  `.venv/` or `.rehorse/`. `tests/fixtures/repo_with_venv/` stays: it is the fixture behind the venv-detection and
+  dependency-symlink tests, not a leftover. `CLAUDE.md` at the plugin root stays: it is development context for this
+  repo; the validator's warning only says it is not shipped as plugin context, which is intended. `.gitignore` already
+  covered `.venv/`, `.rehorse/`, `__pycache__/`, `.pytest_cache/`; `rehorse-e2e/` added in case the live script is
+  pointed inside the repo (its default output is `/tmp/rehorse-e2e`).
