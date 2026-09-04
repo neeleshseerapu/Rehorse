@@ -139,6 +139,14 @@ While a task is active, regardless of permission mode:
 
 Every denial tells the model what it may do instead.
 
+### How red-then-green works
+
+Rehorse never edits your existing tests. Red comes from new tests written from the spec before any implementation
+exists, run against your unchanged code; if they cannot fail, the task does not move on. Green comes from
+implementation code that satisfies them, written while every test file is locked, so the only way to green is to
+change the code. A new test that passes before the implementation exists is flagged in the report as possibly
+testing nothing. Bug fixes follow the same flow: the new test reproduces the bug first, then the fix makes it pass.
+
 ### What this is not
 
 Hooks stop **shortcuts**, not an **adversarial model**. Bash can run arbitrary programs, and a determined program can
