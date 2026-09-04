@@ -163,3 +163,14 @@ def test_tests_phase_agent_must_commit_but_no_plan_step_is_touched(repo):
     commit_in(wt, "tests/test_sub.py", "def test_sub(): assert 0\n", "tests: sub")
     assert step_done(repo) is None
     assert task_state(repo)["plan"] == [] and task_state(repo)["step"] == 0
+
+
+def test_setup_phase_next_action_and_step_done_require_a_commit_but_no_test_run(repo):
+    wt = plan_task(repo, "setup", test_cmd=None, edit_seq=3)
+    s = state.load(str(repo))
+    assert "harness" in progress.next_action(s["tasks"]["t-1"]) and "testcmd.py set" in progress.next_action(s["tasks"]["t-1"])
+    (repo / ".rehorse" / "worktrees" / "t-1" / "tests" / "test_harness.py").write_text("def test_smoke(): pass\n")
+    out = step_done(repo, "Added a pytest harness.\nRun: python3 -m pytest -q")
+    assert out["decision"] == "block" and 'git commit -m "setup: test harness for t-1"' in out["reason"]
+    commit_in(wt, "tests/test_harness.py", "def test_smoke(): pass\n", "setup: test harness for t-1")
+    assert step_done(repo, "Added a pytest harness.\nRun: python3 -m pytest -q") is None  # no test_cmd yet: no run required

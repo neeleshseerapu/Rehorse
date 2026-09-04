@@ -92,15 +92,20 @@ when *you* type the command, and the scripts refuse without it.
 
 ### What happens while you are away
 
-1. **spec** – a worktree `.rehorse/worktrees/<id>/` on branch `rehorse/<id>` is created from your HEAD, the test
-   command is detected from your repo (its `.venv`, pyproject, package.json, Makefile), a short spec is written, and
-   your tests run once for the baseline.
-2. **tests** – a fresh subagent writes failing tests from the spec. It can only touch test files. At least one test
+0. **your branch is left alone.** If the folder is not a git repo yet, Rehorse asks before running `git init` and
+   commits your files exactly as they are. That is the only thing it ever does outside the rehearsal.
+1. **setup** (only when no test command is detectable) – inside the worktree, a subagent adds the smallest harness
+   that runs one real test, and the smallest refactor needed to make the code testable, committed on the rehearsal
+   branch. You can discard all of it.
+2. **spec** – a worktree `.rehorse/worktrees/<id>/` on branch `rehorse/<id>` is created from your HEAD with your
+   `.venv`/`node_modules` linked in, the test command is detected from your repo (its `.venv`, pyproject,
+   package.json, Makefile, Package.swift), a short spec is written, and your tests run once for the baseline.
+3. **tests** – a fresh subagent writes failing tests from the spec. It can only touch test files. At least one test
    must fail before the task moves on.
-3. **implement** – the work is split into 1 to 6 steps. Each step is a fresh subagent that may edit implementation
+4. **implement** – the work is split into 1 to 6 steps. Each step is a fresh subagent that may edit implementation
    files only, must run the tests, and must commit. The orchestrator never reads source; it reads two-line summaries.
-4. **verify** – an independent verifier that has not seen how the code was built (milestone 5).
-5. **report** – the report is written, committed on the rehearsal branch, and the session ends.
+5. **verify** – an independent verifier that has not seen how the code was built (milestone 5).
+6. **report** – the report is written, committed on the rehearsal branch, and the session ends.
 
 If a session is interrupted, compacted, or you open a new one, Rehorse injects a one-line state summary and
 continues from PROGRESS.md. If the model gets stuck (for example, it keeps trying to stop without running tests), the

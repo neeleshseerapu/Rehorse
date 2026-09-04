@@ -20,7 +20,9 @@ def wt_path(root, task):
     return os.path.realpath(os.path.join(root, task["worktree"]))
 
 
-NEXT = {"spec": "write REHORSE_SPEC.md in the worktree, run the test command there once (baseline), then `state.py advance tests`.",
+NEXT = {"setup": "no test command was detected: delegate to a rehorse-step subagent the minimal test harness (and any refactor "
+                 "needed to make the code testable), inside the worktree, committed; then `testcmd.py set \"<cmd>\"` and `state.py advance spec`.",
+        "spec": "write REHORSE_SPEC.md in the worktree, run the test command there once (baseline), then `state.py advance tests`.",
         "tests": "delegate the failing tests to a rehorse-step subagent (test paths only), run the test command in the worktree "
                  "(red_check: at least one failure), then `state.py advance implement` and `progress.py plan \"...\"`.",
         "verify": "run the verifier, then `report.py`.",
@@ -62,11 +64,10 @@ def section(root, task):
     lines.append("- Spec: %s/REHORSE_SPEC.md %s" % (task["worktree"], goal(root, task)))
     lines.append("- Tests: `%s`; baseline %s; red %s; last %s" % (task["test_cmd"], counts(task["baseline"]),
                                                                   counts(task["red_check"]), counts(task["last_test_run"])))
-    if plan:
-        lines.append("- Plan:")
-        for n, p in enumerate(plan, 1):
-            done = " — %s (commit %s)" % (" ".join((p["summary"] or "").splitlines()), p["commit"]) if p["done"] else ""
-            lines.append("  - [%s] %d. %s%s" % ("x" if p["done"] else " ", n, p["title"], done))
+    lines += ["- Plan:"] if plan else []
+    for n, p in enumerate(plan, 1):
+        done = " — %s (commit %s)" % (" ".join((p["summary"] or "").splitlines()), p["commit"]) if p["done"] else ""
+        lines.append("  - [%s] %d. %s%s" % ("x" if p["done"] else " ", n, p["title"], done))
     lines.append("- Next: " + next_action(task))
     return "\n".join(lines) + "\n"
 
@@ -99,16 +100,16 @@ def set_plan(root, s, task, titles):
 
 def step_done(hook):
     root, s, task = state.active(hook.get("cwd"))
-    if not task or task["phase"] not in ("tests", "implement") or (hook.get("agent_type") or "").split(":")[-1] != STEP_AGENT:
+    if not task or task["phase"] not in ("setup", "tests", "implement") or (hook.get("agent_type") or "").split(":")[-1] != STEP_AGENT:
         return 0
     wt, plan, i = wt_path(root, task), task["plan"], task["step"]
     title = plan[i]["title"] if task["phase"] == "implement" and i < len(plan) else None
     pending = task["edit_seq"] - (task.get("last_test_run") or {}).get("after_edit_seq", 0)
-    if pending > 0:
+    if pending > 0 and task["test_cmd"]:
         return guard_stop.block(root, s, task, "%d edit(s) since the last recorded test run. Run `cd %s && %s`, then stop again." % (pending, wt, task["test_cmd"]), "step-done")
     dirty = worktree.dirty(root, task["id"])
     if dirty:
-        msg = "step %d: %s" % (i + 1, title) if title else "tests: red for %s" % task["id"]
+        msg = "step %d: %s" % (i + 1, title) if title else ("setup: test harness for %s" if task["phase"] == "setup" else "tests: red for %s") % task["id"]
         return guard_stop.block(root, s, task, "uncommitted changes in the worktree (%s). Run `cd %s && git add -A && git commit -m \"%s\"`, then stop again."
                      % (", ".join(dirty[:5]), wt, msg), "step-done")
     task["stop_blocks"] = 0

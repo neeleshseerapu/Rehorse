@@ -88,7 +88,7 @@ def test_implement_phase_denies_the_orchestrator_but_not_its_reports(repo):
     assert task_state(repo)["edit_seq"] == 0
 
 
-@pytest.mark.parametrize("phase", ["spec", "verify", "report"])
+@pytest.mark.parametrize("phase", ["setup", "spec", "verify", "report"])
 def test_other_phases_enforce_isolation_only(repo, phase):
     wt = task_in(repo, phase)
     assert edit(repo, wt + "/app.py") is None

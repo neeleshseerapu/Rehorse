@@ -24,14 +24,38 @@ Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/state.py show`.
   `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/progress.py render`, read only this task's section, and continue at the phase
   its **Next:** line names. Do not start a new task. If the phase is `needs-attention`: quote the reason to the user and
   stop, unless the task text says `resume`, in which case run `state.py advance <prior phase>` and continue.
-- Otherwise start one: `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/state.py new "<short title>"` (a few words; the full task
-  text goes in the spec). It creates the worktree and branch, detects the test command from the repo, and prints the
-  task JSON. Note `id`, `worktree` and `test_cmd`; the worktree path is `<repo>/.rehorse/worktrees/<id>`.
+- If the folder is **not a git repository** (`git rev-parse --git-dir` fails): ask the user for permission to run
+  `git init` and commit the current files exactly as they are. With permission (or no user present), run
+  `git init -q && git add -A && git commit -q -m "Initial commit (as-is, before Rehorse)"` and **nothing else**: no
+  refactor, no test harness, no `.gitignore` edits, no file moves. Everything that makes the code testable happens
+  inside the rehearsal (phase `setup` below), where the hooks are live and the user can still discard it.
+- Then start the task **immediately**, before any other command:
+  `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/state.py new "<short title>"` (a few words; the full task text goes in the
+  spec). It creates the worktree and branch, links the repo's `.venv`/`node_modules`/`target`/`.tox` into it, detects
+  the test command from the repo, and prints the task JSON. Note `id`, `worktree` and `test_cmd`; the worktree path is
+  `<repo>/.rehorse/worktrees/<id>`. If `test_cmd` is `null` the task starts in phase `setup`; otherwise in `spec`.
+
+## 1a. setup (only when no test command was detected; delegated)
+
+The main checkout is untouched from here on. Spawn one `rehorse-step` subagent (`subagent_type: "rehorse:rehorse-step"`):
+
+```
+Rehorse phase: setup. Worktree: <worktree>. Edit only there.
+This project has no test command Rehorse can run. Add the smallest harness that makes one real test runnable
+(for example a pytest.ini and tests/, a Package.swift test target, a Makefile `test` target that builds and runs the
+tests) and, only if needed, the smallest refactor that makes the code testable (a seam such as an injectable path,
+a module split). Do not change behaviour. Run the harness once.
+Commit: cd <worktree> && git add -A && git commit -m "setup: test harness for <id>"
+Reply with exactly two lines: (1) the exact test command to run from the worktree root, (2) what you changed and why.
+```
+
+Record its command and move on: `testcmd.py set "<command>"`, then
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/state.py advance spec`.
 
 ## 1. spec (you write it; nothing else is edited in this phase)
 
-1. If `test_cmd` is `null`: ask the user for the test command. With no user present (non-interactive run), choose one
-   from the repo's files and record it: `testcmd.py set "<command>"`.
+1. If `test_cmd` is still `null` (detection failed and no setup happened): ask the user for the test command, or with
+   no user present choose one from the repo's files, and record it with `testcmd.py set "<command>"`.
 2. Write `<worktree>/REHORSE_SPEC.md`. First line: one sentence stating the goal (the report quotes it). Then
    `## Acceptance criteria` (numbered, each testable), `## Files likely involved`, `## Assumptions` (every question you
    would have asked; if a user is present and the task is genuinely ambiguous, ask before writing).

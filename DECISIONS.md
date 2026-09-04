@@ -306,3 +306,21 @@ Six sessions again, all exit 0 and empty stderr except run 2a, whose `is_error: 
   repo; the validator's warning only says it is not shipped as plugin context, which is intended. `.gitignore` already
   covered `.venv/`, `.rehorse/`, `__pycache__/`, `.pytest_cache/`; `rehorse-e2e/` added in case the live script is
   pointed inside the repo (its default output is `/tmp/rehorse-e2e`).
+
+## After the Milo run: three changes before milestone 5 (2026-09-03)
+
+Milo is a Swift desktop app with no git history and no test harness. Its Rehorse report (task `t-20260903-journal-tab`,
+20 passed after 3 baseline) showed three things the toy repos could not: the initial commit on `main` "also split the model
+into Model.swift and added the make test harness", made while no task existed and the hooks were dormant; the red row read
+`0 passed, 1 failed` against a baseline of 3, which was a compile failure, not a failing test; and the model's closing
+prose ("What you get on merge ... The UI was type-checked and built, not clicked") was the most useful part of the report
+and the only part not generated from state.
+
+- **Setup happens inside the rehearsal.** Before any task exists the main checkout may receive exactly one change: if the
+  folder is not a git repo, `git init` (with the user's permission) and one as-is commit. `state.py new` runs next, so
+  the hooks are live for everything else. When no test command is detectable the task starts in a new optional `setup`
+  phase (`[setup →] spec → ...`) in which a `rehorse-step` subagent adds the minimal harness and any refactor needed to
+  make the code testable, inside the worktree, committed on the rehearsal branch; `testcmd.py set` records the command
+  and `state.py advance spec` continues to the baseline. Isolation is the only rule in `setup`; the step-done hook
+  requires the commit (`setup: test harness for <id>`) but no test run, since no command exists yet. The user can now
+  discard the harness and the refactor along with the task, which was impossible when they lived in the initial commit.

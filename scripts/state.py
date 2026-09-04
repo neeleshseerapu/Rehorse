@@ -9,7 +9,7 @@ import re
 import sys
 import tempfile
 
-PHASES = ["spec", "tests", "implement", "verify", "report"]
+PHASES = ["setup", "spec", "tests", "implement", "verify", "report"]  # setup only when no test command was detected
 TERMINAL = ("merged", "discarded")
 ATTENTION = "needs-attention"
 STATE_REL = os.path.join(".rehorse", "state.json")
@@ -21,12 +21,9 @@ def find_root(start):
     parts = p.split(os.sep)
     if ".rehorse" in parts:
         return os.sep.join(parts[:parts.index(".rehorse")]) or os.sep
-    while not os.path.exists(os.path.join(p, ".git")):
-        parent = os.path.dirname(p)
-        if parent == p:
-            return None
-        p = parent
-    return p
+    while not os.path.exists(os.path.join(p, ".git")) and os.path.dirname(p) != p:
+        p = os.path.dirname(p)
+    return p if os.path.exists(os.path.join(p, ".git")) else None
 
 
 def empty():
@@ -72,9 +69,10 @@ def new_task(state, tid):
         n += 1
         tid = "%s-r%d" % (base, n)
     task = {
-        "id": tid, "phase": PHASES[0], "created": datetime.datetime.now().isoformat(timespec="seconds"),
+        "id": tid, "phase": "spec", "created": datetime.datetime.now().isoformat(timespec="seconds"),
         "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None,
-        "test_cmd": None, "test_paths": [], "baseline": None, "red_check": None, "weak_tests": 0, "last_test_run": None, "tests_sha": None,
+        "test_cmd": None, "test_paths": [], "baseline": None, "red_check": None, "red_kind": None, "weak_tests": 0, "last_test_run": None,
+        "tests_sha": None, "summary": None,
         "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "verifier": None, "report_path": None, "linked_deps": [],
     }
     state["tasks"][tid] = task
@@ -131,6 +129,7 @@ def main(argv):
         import testcmd, worktree  # noqa: E401 (lazy: the SessionStart path must not pay for git)
         task = new_task(state, task_id(argv[1], opts.get("date")))
         task.update(worktree.create(root, task["id"]), **{k: v for k, v in (testcmd.detect(root) or {}).items() if k != "runner"})
+        task["phase"] = "spec" if task["test_cmd"] else "setup"  # no runnable suite: build the harness inside the rehearsal first
         json.dump(task, sys.stdout, indent=2)
     elif argv[0] == "advance":
         try:

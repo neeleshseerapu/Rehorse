@@ -175,3 +175,31 @@ def test_active_returns_root_state_and_task_for_hooks(tmp_path):
 
 def test_active_outside_a_repo_is_dormant(tmp_path):
     assert state.active(str(tmp_path)) == (None, state.empty(), None)
+
+
+# ---- setup phase: a task with no detectable test command starts in `setup`, inside the worktree ----------------
+
+def test_phase_order_starts_with_an_optional_setup_phase():
+    assert state.PHASES == ["setup", "spec", "tests", "implement", "verify", "report"]
+    s = state.empty()
+    state.new_task(s, "t-1")
+    assert s["tasks"]["t-1"]["phase"] == "spec"  # default: a detected test command skips setup
+    s["tasks"]["t-1"]["phase"] = "setup"
+    with pytest.raises(ValueError):
+        state.advance(s, "t-1", "tests")  # setup cannot skip spec (the baseline lives there)
+    state.advance(s, "t-1", "spec")
+    assert s["tasks"]["t-1"]["phase"] == "spec"
+
+
+def test_cli_new_starts_in_setup_when_no_test_command_is_detectable(tmp_path):
+    git(tmp_path, "init", "-q", "-b", "main")
+    git(tmp_path, "config", "user.email", "t@example.com")
+    git(tmp_path, "config", "user.name", "t")
+    (tmp_path / "main.swift").write_text('print("hi")\n')
+    git(tmp_path, "add", "-A")
+    git(tmp_path, "commit", "-q", "-m", "as-is")
+    r = run_script("state", ["new", "Add a parser", "--date", "20260903"], cwd=str(tmp_path))
+    assert r.returncode == 0, r.stderr
+    t = json.loads(r.stdout)
+    assert t["phase"] == "setup" and t["test_cmd"] is None
+    assert "setup" in state.summary(state.load(str(tmp_path)))
