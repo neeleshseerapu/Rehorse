@@ -223,3 +223,15 @@ def test_report_without_a_verdict_in_needs_attention_still_says_unverified(repo)
     state.save(str(repo), s)
     text = render(repo)
     assert "NEEDS ATTENTION" in text[:300] and "## Verifier: not run" in text
+
+
+def test_many_tests_added_are_counted_not_listed(repo):
+    ids = ["tests/test_rehorse_verify_t-1.py::test_%d" % n for n in range(12)]
+    verified_task(repo, verifier=dict(VERDICT, tests_added=ids))
+    text = render(repo)
+    assert "Tests added: 12 in tests/test_rehorse_verify_t-1.py" in text and text.count("::test_") == 0
+    import state
+    s = state.load(str(repo))
+    s["tasks"]["t-1"]["verifier"]["tests_added"] = ids[:2]
+    state.save(str(repo), s)
+    assert "Tests added: tests/test_rehorse_verify_t-1.py::test_0, tests/test_rehorse_verify_t-1.py::test_1" in render(repo)

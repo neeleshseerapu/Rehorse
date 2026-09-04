@@ -443,3 +443,22 @@ and report.
   task to implement with `Fix (verifier round 1): ...` and `Make the verifier's tests pass: ...` steps, so the script was
   right and the wiring was wrong. This is what the live check is for: the summary of the docs I had read showed the
   anchored example, and I chose a looser string that landed on the exact-match path.
+- **Second attempt, after the matcher fix: the whole round-trip, live.** One session, 13 turns, 324 s, exit 0. Hook lines
+  in order: the verifier's shell write denied (Bash-write rule), `PostToolUseFailure ... recorded test run: 10 passed, 6
+  failed (edit_seq 2)`, then `Hook SubagentStop ... {"systemMessage": "REHORSE: verifier round 1: FAIL, 3 finding(s); its
+  run: 10 passed, 6 failed. Back to implement with 2 new step(s); round 2 of 3 follows once they are green."}`. The
+  orchestrator read PROGRESS.md, spawned a `rehorse-step` for step 2 (`Fix (verifier round 1): divide() is a bare
+  return a / b; divide(1, 0) raises ZeroDivisionError ... (app.py:6)`), which wrapped the division and re-raised
+  `ValueError("division by zero")` (`16 passed, 0 failed (edit_seq 3)`, commit 598b060); step 3 (`Make the verifier's
+  tests pass ... (6 failing)`) found nothing left to edit and was closed on the same commit; `state.py advance verify`;
+  `verify.py brief` for round 2 carried round 1's findings; the verifier added twelve more tests (over-catching, Decimal
+  and Fraction zeros, keyword arguments) and answered `Hook SubagentStop ... verifier round 2: PASS, 0 finding(s); its run:
+  28 passed, 0 failed.`; `report.py --summary` rendered `GREEN: 28 passed, 0 failed · verifier PASS`, `Verifier: PASS
+  (round 2 of 3)`, the coverage table with both criteria on `test`, and `Round 1: FAIL` with its three findings;
+  drift `none`. Branch: `e20bec7 rehorse: report` / `91c718a verify: round 2 tests` / `598b060 step 2` / `efa3580 verify:
+  round 1 tests` / `41eaafa step 1` / `e51ad94 tests: red` / `f778950 init`. Nothing merged. The report is the README's
+  sample now.
+- Two things the live output showed and that were changed after it: the verifier's finding descriptions ran to a
+  paragraph, so as step titles they swamped PROGRESS.md (now capped at 180 characters, keeping `(file:line)`; the agent is
+  asked for one sentence; the full text stays in `verify_history` and the report), and "Tests added" listed twelve test ids
+  on one line (more than three are now counted per file, the ids stay in state).

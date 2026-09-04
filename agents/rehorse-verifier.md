@@ -41,6 +41,7 @@ End your reply with exactly one ```json block, and nothing after it:
   something is untested, unclear, or changed outside the spec. `pass`: every criterion has a test and you found nothing.
 - `coverage` lists every acceptance criterion in the spec, in order. `test` means a test exercises it; `build_only`
   means the code for it compiles or imports but no test exercises it; `none` means neither.
-- A finding names a real file and line. A worry without a location is not a finding; put it in the description of the
-  coverage entry it belongs to.
+- A finding names a real file and line, and its description is one sentence (it becomes a plan step title for the
+  implementer; name the test that shows it). A worry without a location is not a finding; put it in the description
+  of the coverage entry it belongs to.
 - Fix nothing. Explain nothing after the block.

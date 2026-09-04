@@ -44,35 +44,57 @@ and there are no dependencies to add: the hooks use only the Python standard lib
 ```
 
 Then walk away. When you come back, `rehorse-reports/<date>-<slug>.md` in your repo looks like this (from a real run
-on a toy repo):
+on a toy repo whose implementer had left the divide-by-zero branch untested and unimplemented; the verifier's round 1
+caught it, a fix step followed, and round 2 passed; abridged):
 
 ```markdown
-# Rehearsal report: Add sub(a, b) to app.py returning a - b.
+# Rehearsal report: Add divide(a, b) to app.py, returning a / b.
 
-Task `t-20260903-add-sub-function` · branch `rehorse/t-20260903-add-sub-function` · base `b59e534` · 2026-09-03
+Task `t-20260904-add-divide` · branch `rehorse/t-20260904-add-divide` · base `f778950` · 2026-09-04
 
-## GREEN: 8 passed, 0 failed · unverified
+## GREEN: 28 passed, 0 failed · verifier PASS
 
 | stage                                   | passed | failed |
 | baseline                                | 2      | 0      |
-| red (tests written, no implementation)  | 3      | 5      |
-| green (last run)                        | 8      | 0      |
+| red (tests written, no implementation)  | 2      | 1      |
+| green (last run)                        | 28     | 0      |
 
 ## Changes (base..HEAD)
- app.py            | 4 ++++
- tests/test_sub.py | 22 ++++++++++++++++++++++
+ app.py                                             |   7 +
+ tests/test_divide.py                               |   5 +
+ tests/test_rehorse_verify_t-20260904-add-divide.py | 155 +++++++++++++++++++++
+
+## Verifier: PASS (round 2 of 3)
+Its run: 28 passed, 0 failed. Tests added: 12 in tests/test_rehorse_verify_t-20260904-add-divide.py
+Findings: none
+
+| acceptance criterion                                               | evidence | ref                                  |
+| divide(6, 3) == 2                                                  | test     | ...::test_divide_6_by_3_equals_2     |
+| divide(1, 0) raises ValueError with the message "division by zero" | test     | ...::test_divide_by_zero_message_... |
+
+Round 1: FAIL (3 finding(s); its run 10 passed / 6 failed)
+- [high] app.py:6 divide() is a bare `return a / b`; divide(1, 0) raises ZeroDivisionError, which is not a
+  ValueError subclass, so acceptance criterion 2 is unmet. Shown by ::test_divide_by_zero_raises_value_error ...
+- [medium] app.py:6 Float zero divisors (0.0, -0.0) escape as ZeroDivisionError with message 'float division by zero' ...
+- [low] tests/test_divide.py:4 The implementer's only test covers divide(6, 3); no test in the diff exercises the
+  zero-divisor branch that criterion 2 requires, so the reported '3 passed' gave no signal about the unmet criterion.
 
 ## Test-file drift
-none: test files unchanged since the tests phase.
+none: test files unchanged since the tests phase (`e51ad94`).
+
+## Plan
+- [x] 1. add divide(a, b) to app.py — Added divide(a, b) to app.py. Tests: 3 passed, 0 failed; nothing left.
+- [x] 2. Fix (verifier round 1): divide() is a bare `return a / b`; divide(1, 0) raises ZeroDivisionError ... (app.py:6)
+- [x] 3. Make the verifier's tests pass: tests/test_rehorse_verify_t-20260904-add-divide.py (6 failing) — No edits: ...
 
 ## Next
-/rehorse:merge t-20260903-add-sub-function      merge into your branch and remove the worktree
-/rehorse:discard t-20260903-add-sub-function    drop the worktree and the branch
+/rehorse:merge t-20260904-add-divide      merge rehorse/t-20260904-add-divide into your branch and remove the worktree
+/rehorse:discard t-20260904-add-divide    drop the worktree and the branch
 ```
 
-Below the numbers the report has a "Try it yourself" section with the worktree path, the test command and, when
-detectable, how to run the project, and an optional summary in the model's own words, labelled as such. Read it, then
-decide:
+Below the numbers the report has a "Try it yourself" section with the worktree path, the test command, how to run
+the project when detectable, and the acceptance criteria no test covers (what to eyeball), plus an optional summary in
+the model's own words, labelled as such. Read it, then decide:
 
 ```
 /rehorse:merge      # fast-forward (or merge) the rehearsal into your current branch, remove the worktree

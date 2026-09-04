@@ -24,7 +24,7 @@ AGENT = "rehorse-verifier"
 VERDICTS = ("pass", "concerns", "fail")
 EVIDENCE = ("test", "build_only", "none")
 MAX_ROUNDS = 3
-DIFF_CAP = 200000
+DIFF_CAP, TITLE_CAP = 200000, 180  # diff size in the brief; a finding's description as a step title (full text stays in state)
 SHAPE = ('{"verdict": "pass|concerns|fail", "findings": [{"severity": "high|medium|low", "file": "<path>", "line": 0, '
          '"description": "..."}], "tests_added": ["<file>::<test>"], "coverage": [{"criterion": "<acceptance criterion>", '
          '"evidence": "test|build_only|none", "ref": "<test id or file>"}]}')
@@ -87,7 +87,8 @@ def round_trip_steps(v, run, vfile, n):
     """Plan steps for the implementer: one per high finding (every finding when the verdict is fail and none is high), one to
     make the verifier's failing tests pass, and a generic step when a fail verdict came with nothing else."""
     found = [f for f in v["findings"] if f["severity"] == "high"] or (v["findings"] if v["verdict"] == "fail" else [])
-    steps = ["Fix (verifier round %d): %s (%s:%s)" % (n, f["description"], f["file"], "?" if f["line"] is None else f["line"]) for f in found]
+    steps = ["Fix (verifier round %d): %s (%s:%s)" % (n, f["description"][:TITLE_CAP] + ("..." if len(f["description"]) > TITLE_CAP else ""),
+                                                      f["file"], "?" if f["line"] is None else f["line"]) for f in found]
     if run["failed"]:
         steps.append("Make the verifier's tests pass: %s (%d failing)" % (vfile, run["failed"]))
     return steps or ["Address the verifier's FAIL verdict from round %d (no findings listed: re-read REHORSE_SPEC.md against the diff)" % n]

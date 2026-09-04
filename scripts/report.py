@@ -63,6 +63,13 @@ def coverage_table(cov):
     return ["| acceptance criterion | evidence | ref |", "|---|---|---|"] + ["| %s | %s | %s |" % (c["criterion"], c["evidence"], c["ref"]) for c in cov]
 
 
+def tests_added(ids):
+    """A few test ids are listed; many are counted per file (the ids stay in state.json)."""
+    if len(ids) <= 3:
+        return ", ".join(ids) or "none"
+    return "%d in %s" % (len(ids), ", ".join(sorted({i.split("::")[0] for i in ids})))
+
+
 def verifier_section(task, name):
     """Report lines for the verdict; second value is the full findings file's text when the report shows only the first few."""
     v = task.get("verifier")
@@ -70,7 +77,7 @@ def verifier_section(task, name):
         return ["## Verifier: not run", "", "no verdict recorded.", ""], None
     n = len(v["findings"])
     lines = ["## Verifier: %s (round %d of %d)" % (v["verdict"].upper(), v["round"], verify.MAX_ROUNDS), "",
-             "Its run: %s. Tests added: %s" % (progress.counts(v.get("tests")).replace(" / ", ", "), ", ".join(v["tests_added"]) or "none"), "",
+             "Its run: %s. Tests added: %s" % (progress.counts(v.get("tests")).replace(" / ", ", "), tests_added(v["tests_added"])), "",
              "Findings:" if n else "Findings: none", *([verify.findings_text({"findings": v["findings"][:MAX_FINDINGS]})] if n else [])]
     if n > MAX_FINDINGS:
         lines.append("- ... %d more in %s/verifier/%s" % (n - MAX_FINDINGS, REPORTS, name))

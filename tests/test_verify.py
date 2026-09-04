@@ -243,3 +243,12 @@ def test_third_failed_round_sets_needs_attention_and_keeps_the_verdict_for_the_r
     assert r.returncode == 0, r.stderr
     text = open(r.stdout.strip()).read()
     assert "NEEDS ATTENTION" in text[:400] and "## Verifier: FAIL (round 3 of 3)" in text and "Round 1: FAIL" in text
+
+
+def test_round_trip_step_titles_are_capped_but_keep_the_location(repo):
+    long = "x" * 400
+    verify_task(repo)
+    ran(repo)
+    stop(repo, '```json\n{"verdict": "fail", "findings": [{"severity": "high", "file": "app.py", "line": 6, "description": "%s"}]}\n```' % long)
+    title = task_state(repo)["plan"][1]["title"]
+    assert title.startswith("Fix (verifier round 1): xxxx") and title.endswith("... (app.py:6)") and len(title) < 240
