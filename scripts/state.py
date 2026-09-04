@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Rehorse state: <repo>/.rehorse/state.json is the single source of truth. Phases move only through advance().
-CLI: --summary (SessionStart hook) | new "<title>" [--date D] | advance <phase> [--task ID] [--reason R] | show [--task ID]
+CLI: --summary (SessionStart) | new "<title>" [--date D] (task+worktree+test cmd) | advance <phase> [--task ID] [--reason R] | show
 """
 import datetime
 import json
@@ -74,7 +74,7 @@ def new_task(state, tid):
     task = {
         "id": tid, "phase": PHASES[0], "created": datetime.datetime.now().isoformat(timespec="seconds"),
         "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None,
-        "test_cmd": None, "test_paths": [], "baseline": None, "red_check": None, "last_test_run": None,
+        "test_cmd": None, "test_paths": [], "baseline": None, "red_check": None, "last_test_run": None, "tests_sha": None,
         "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "verifier": None, "report_path": None,
     }
     state["tasks"][tid] = task
@@ -109,8 +109,7 @@ def summary(state):
         return "REHORSE: no active task."
     t = state["tasks"][tid]
     if t["phase"] == ATTENTION:
-        return "REHORSE: task %s NEEDS ATTENTION (was in %s): %s. Run /rehorse:status." % (
-            tid, t["attention"]["prior_phase"], t["attention"]["reason"])
+        return "REHORSE: task %s NEEDS ATTENTION (was in %s): %s. Run /rehorse:status." % (tid, t["attention"]["prior_phase"], t["attention"]["reason"])
     parts = ["REHORSE: active task %s, phase %s" % (tid, t["phase"])]
     if t["plan"]:
         parts.append("step %d/%d" % (min(t["step"] + 1, len(t["plan"])), len(t["plan"])))
@@ -121,8 +120,7 @@ def summary(state):
 
 def main(argv):
     if argv[:1] == ["--summary"]:
-        text = summary(active(json.load(sys.stdin).get("cwd"))[1])
-        json.dump({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}, sys.stdout)
+        json.dump({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": summary(active(json.load(sys.stdin).get("cwd"))[1])}}, sys.stdout)
         return 0
     root, state, _ = active(os.getcwd())
     if not root:
@@ -130,7 +128,10 @@ def main(argv):
     opts = {a[2:]: argv[i + 1] for i, a in enumerate(argv[:-1]) if a.startswith("--")}  # --key value
     tid = opts.get("task") or state["active_task"]
     if argv[0] == "new":
-        print(new_task(state, task_id(argv[1], opts.get("date")))["id"])
+        import testcmd, worktree  # noqa: E401 (lazy: the SessionStart path must not pay for git)
+        task = new_task(state, task_id(argv[1], opts.get("date")))
+        task.update(worktree.create(root, task["id"]), **{k: v for k, v in (testcmd.detect(root) or {}).items() if k != "runner"})
+        json.dump(task, sys.stdout, indent=2)
     elif argv[0] == "advance":
         try:
             advance(state, tid, argv[1], opts.get("reason"))

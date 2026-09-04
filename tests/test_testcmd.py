@@ -1,5 +1,8 @@
 """testcmd.py: detect the test command, recognise test runs and test paths, parse counts from real hook output."""
 import json
+import os
+import subprocess
+import sys
 
 import pytest
 from conftest import hook_input, run_script
@@ -12,7 +15,7 @@ import testcmd
 def test_detect_pytest_from_pyproject(tmp_path):
     (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\ntestpaths = ['tests']\n")
     (tmp_path / "tests").mkdir()
-    assert testcmd.detect(str(tmp_path)) == {"test_cmd": "python3 -m pytest -q", "runner": "pytest", "test_paths": ["tests/"]}
+    assert testcmd.detect(str(tmp_path)) == {"test_cmd": "python3 -m pytest -q --tb=short", "runner": "pytest", "test_paths": ["tests/"]}
 
 
 def test_detect_pytest_from_tests_dir_alone(tmp_path):
@@ -23,7 +26,7 @@ def test_detect_pytest_from_tests_dir_alone(tmp_path):
 
 
 @pytest.mark.parametrize("script,cmd,runner", [
-    ("vitest run", "npx vitest run", "vitest"),
+    ("vitest run", "npx vitest run --reporter=dot", "vitest"),
     ("jest --ci", "npx jest", "jest"),
     ("node --test", "npm test", "npm"),
 ])
@@ -189,3 +192,37 @@ def test_is_test_command_rejects_collect_only_version_help(command):
 def test_effective_cwd_follows_a_leading_cd(command, cwd, expected):
     assert testcmd.effective_cwd(command, cwd) == expected
 
+
+# ---- fix 2: the test command comes from the target repo, never from Rehorse's environment ----
+
+def test_detect_uses_the_target_repos_own_venv_by_absolute_path(venv_repo):
+    got = testcmd.detect(str(venv_repo))
+    python = os.path.join(str(venv_repo), ".venv", "bin", "python")
+    assert got["test_cmd"] == python + " -m pytest -q --tb=short"
+    assert got["runner"] == "pytest" and got["test_paths"] == ["tests/"]
+    # the interpreter named in the command really is the fixture's, not the one running this test suite
+    prefix = subprocess.run([python, "-c", "import sys; print(sys.prefix)"], capture_output=True, text=True).stdout.strip()
+    assert os.path.realpath(prefix) == os.path.realpath(str(venv_repo / ".venv"))
+    assert sys.executable not in got["test_cmd"]
+
+
+def test_detect_never_falls_back_to_sys_executable(tmp_path):
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    assert sys.executable not in testcmd.detect(str(tmp_path))["test_cmd"]
+    assert sys.prefix not in testcmd.detect(str(tmp_path))["test_cmd"]
+
+
+def test_detect_accepts_venv_dir_and_windows_layout(tmp_path):
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    (tmp_path / "venv" / "Scripts").mkdir(parents=True)
+    (tmp_path / "venv" / "Scripts" / "python.exe").write_text("")
+    assert testcmd.detect(str(tmp_path))["test_cmd"].startswith(os.path.join(str(tmp_path), "venv", "Scripts", "python.exe"))
+
+
+def test_set_records_a_user_supplied_command_in_the_active_task(repo):
+    from conftest import task_in, task_state
+    task_in(repo, "spec")
+    r = run_script("testcmd", ["set", "make check"], cwd=str(repo))
+    assert r.returncode == 0, r.stderr
+    assert task_state(repo)["test_cmd"] == "make check"
+    assert task_state(repo)["test_paths"] == ["tests/"]

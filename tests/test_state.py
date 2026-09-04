@@ -138,10 +138,19 @@ def test_summary_hook_outside_a_repo_still_exits_zero_with_valid_json(tmp_path):
     assert json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"] == "REHORSE: no active task."
 
 
-def test_cli_new_advance_show(repo):
+def test_cli_new_creates_the_worktree_detects_the_test_command_and_prints_the_task(repo):
     r = run_script("state", ["new", "Dark mode toggle", "--date", "20260903"], cwd=str(repo))
     assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == "t-20260903-dark-mode-toggle"
+    t = json.loads(r.stdout)
+    assert t["id"] == "t-20260903-dark-mode-toggle" and t["phase"] == "spec"
+    assert os.path.isdir(repo / ".rehorse" / "worktrees" / t["id"]) and t["base_sha"] == git(repo, "rev-parse", "HEAD").strip()
+    assert t["test_cmd"] == "python3 -m pytest -q --tb=short" and t["test_paths"] == ["tests/"]  # from the target repo
+    assert state.load(str(repo))["tasks"][t["id"]] == t
+    assert t["tests_sha"] is None and t["plan"] == [] and t["step"] == 0
+
+
+def test_cli_advance_show(repo):
+    run_script("state", ["new", "Dark mode toggle", "--date", "20260903"], cwd=str(repo))
     r = run_script("state", ["advance", "tests"], cwd=str(repo))
     assert r.returncode == 0, r.stderr
     r = run_script("state", ["advance", "verify"], cwd=str(repo))

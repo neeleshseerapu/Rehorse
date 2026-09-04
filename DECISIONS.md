@@ -122,3 +122,136 @@ create`, advanced to `implement`. Hook lines below are from Claude Code's own de
 Also observed: the SessionStart summary was injected in every session (`Hook SessionStart (... state.py --summary) provided
 additionalContext (119 chars)`), and in scenario 1 the model noted that `rehorse-reports/PROGRESS.md`, which the summary tells it
 to read, does not exist yet (it arrives with `progress.py` in milestone 4). Allowed hooks print nothing, so they leave no log line.
+
+## Before milestone 4: user decisions (2026-09-03)
+
+- **Merge authority moves to `UserPromptSubmit`.** That event fires only for text a human typed (a Skill tool call is a
+  PreToolUse), so `authorize.py` minting `~/.rehorse/<merge|discard>-<id>` there proves the user asked. `guard_bash.py`
+  lifts its git denials only while such a file exists (`grant.present`), `merge.py`/`discard.py` consume it first
+  (`grant.take`), and every command string naming `~/.rehorse/` is denied, so the model has no honest way to read or mint
+  one. The old `REHORSE_MERGE_TOKEN` in `state.json` was readable by the model; it is gone.
+- A grant is one-shot, dies on the next user prompt (`authorize.py` clears this repo's grants before it looks at the
+  prompt) and after one hour, and `merge` is granted only for a task in `report`; `discard` for any non-terminal task.
+  A stale or premature grant must not linger to lift denials in a later turn.
+- **`testcmd.detect()` reads the target repo only**: its `.venv`/`venv` interpreter by absolute path (`bin/python` or
+  `Scripts/python.exe`), else `python3` on PATH; never `sys.executable`, which is whatever runs Rehorse. The worktree has
+  no venv of its own (it is gitignored), so the main checkout's interpreter runs with `cd <worktree>`; `python -m pytest`
+  puts the cwd first on `sys.path`, which is why the worktree's code wins for flat layouts (src-layout editable installs
+  are a known gap, IDEAS.md). Quiet flags are appended (`-q --tb=short`, `--reporter=dot`). `tests/fixtures/repo_with_venv/`
+  plus a real pip-less venv created at test time prove the detected interpreter's `sys.prefix` is the fixture's.
+- **The orchestrator may run the test command during implement; everything else it delegates.** The Stop hook names
+  `cd <worktree> && <test_cmd>` for the main thread, baseline and red runs are recorded from the orchestrator's own run,
+  and a test run reads nothing into context but a summary line. Reading source or editing stays delegated.
+
+## Milestone 4: skills, step agent, progress / handoff / report / merge / discard (2026-09-03)
+
+Docs re-fetched before writing (hooks, skills, plugins, sub-agents). What they settled: `UserPromptSubmit` has no matcher
+and carries the raw `prompt`; `SubagentStop` uses Stop's `decision`/`reason` schema and its `agent_type` is the
+plugin-scoped name (`rehorse:rehorse-step`); a plugin skill's command comes from the frontmatter `name`, so
+`skills/rehorse-build/SKILL.md` with `name: build` is `/rehorse:build`; `${CLAUDE_PLUGIN_ROOT}` is substituted in plugin
+skill bodies; plugin agents ignore `permissionMode`/`hooks`. PROMPT.md amended accordingly (hook table, phase 1 and 6,
+context-management paragraph, state example).
+
+- Every new script was written test-first (`test_grant`, `test_authorize`, `test_progress`, `test_handoff`, `test_report`,
+  `test_merge_discard`; 235 tests green). `tests/fixtures/` is excluded from collection because fixture repos carry tests
+  of their own.
+- `state.py new` now creates the worktree and detects the test command in one call and prints the task JSON, so the
+  orchestrator starts a task with one command; `testcmd.py set` records a user-supplied command when detection fails.
+- `worktree.create` adds `REHORSE_SPEC.md`, `__pycache__/` and `.pytest_cache/` to `.git/info/exclude` (local, shared by
+  all worktrees, never committed) so `git add -A` in a step never sweeps them up and the dirty-tree refusal never fires
+  on junk.
+- `progress.py plan` refuses a dirty worktree and records `tests_sha` (worktree HEAD) at that moment, which is what the
+  report's drift check diffs test paths against; so the red tests are committed before the plan exists.
+- `progress.py --step-done` acts only for `agent_type` ending in `rehorse-step` (the compact summarizer arrives with
+  `agent_type: ""`, spike 9), only in `tests`/`implement`, and blocks in this order: untested edits (names the test
+  command), uncommitted tree (names `git add -A && git commit -m "step N: <title>"`), then marks the step done with the
+  first two non-empty lines of `last_assistant_message` and the commit sha. It shares `guard_stop.block()` and the same
+  8-consecutive-block cap into `needs-attention`, since Claude Code applies that cap to SubagentStop too.
+- `report.py` writes the report and PROGRESS.md in the main checkout (the user cannot be asked to look inside
+  `.rehorse/`) and commits copies on the rehearsal branch, because the model may not commit outside the worktree and
+  the evidence must reach the real branch with the merge. The first dry run showed the flaw: git refuses a merge that
+  would overwrite those untracked copies, so `merge.py` removes them first (they are identical; PROGRESS.md is
+  re-rendered after the merge). Test added before the fix.
+- `handoff.py` prints nothing: PreCompact cannot inject (spike 9); it snapshots `.rehorse/handoff.json` and refreshes
+  PROGRESS.md, and `state.py --summary` on `SessionStart(compact)` points the model at PROGRESS.md's `Next:` line.
+- The `rehorse-step` agent gets `tools: Read, Edit, Write, MultiEdit, Bash, Grep, Glob` (no `Agent`, no questions);
+  `build`/`merge`/`discard` skills carry `disable-model-invocation: true`. Both are prose; the hooks above are the
+  guarantees, and README now has a threat-model section saying so.
+- The red-before-green gate in `state.advance` (tests -> implement requires a failing run) and the verifier are left to
+  milestone 5 as scoped; the report renders `unverified` and `Verifier: not run` until then.
+
+### Evidence: model-free walk of the whole pipeline on a toy repo (2026-09-03)
+
+A throwaway repo (`app.py` with `add`, two tests, its own `.venv` with pytest) was driven through every script with the
+JSON Claude Code sends to each hook (`tests/e2e` dry run; `<toy>` stands for the scratch path, `<id>` for
+`t-20260903-add-a-subtract-function`). Every line below is verbatim script output.
+
+- `state.py new` detected `test_cmd=<toy>/.venv/bin/python -m pytest -q --tb=short` (the toy's interpreter, not Rehorse's).
+- Baseline in the worktree: `REHORSE: recorded test run: 2 passed, 0 failed (edit_seq 1).`
+- Tests phase, orchestrator edit of `app.py`: `permissionDecision: deny ... phase tests: only test files may be edited`.
+  Subagent's `tests/test_sub.py`: allowed. Red run (collection error, pytest `1 error`): `recorded test run: 0 passed, 1 failed`.
+- SubagentStop with the tests uncommitted: `{"decision": "block", "reason": "REHORSE: uncommitted changes in the worktree
+  (tests/test_sub.py). Run \`cd <wt> && git add -A && git commit -m \"tests: red for <id>\"\`, then stop again. (block 1 of 7)"}`;
+  after the commit the same event printed nothing.
+- `progress.py plan "Add sub() to app.py"` -> `Next: run step 1 (Add sub() to app.py) as a rehorse-step subagent.`
+- Implement: main-thread edit of `app.py` denied (`the orchestrator does not edit files`), subagent edit of
+  `tests/test_sub.py` denied (`test paths are locked`), subagent edit of `app.py` allowed.
+- SubagentStop before a test run: `block ... 1 edit(s) since the last recorded test run. Run \`cd <wt> && <toy>/.venv/bin/python -m pytest -q --tb=short\``;
+  after the run (`recorded test run: 4 passed, 0 failed (edit_seq 3)`) but before the commit: `block ... git commit -m "step 1: Add sub() to app.py" ... (block 2 of 7)`;
+  after the commit: nothing, and PROGRESS.md shows `- [x] 1. Add sub() to app.py — Added sub() to app.py. Tests: 4 passed, 0 failed; nothing left. (commit 0c27495)`.
+- PreCompact wrote `handoff.json` (`"phase": "implement", "step": 1, "next_action": "all steps done: \`state.py advance verify\`."`);
+  SessionStart(compact) summary: `REHORSE: active task <id>, phase implement, step 1/1, last tests 4 passed, 0 failed. Read rehorse-reports/PROGRESS.md before acting.`
+- `git merge rehorse/<id>` without a grant: denied with the `/rehorse:merge` way out; `touch ~/.rehorse/merge-<id>`:
+  `the grant directory ~/.rehorse/ is off limits to the model`.
+- `report.py` rendered `rehorse-reports/2026-09-03-add-a-subtract-function.md` (banner `GREEN: 4 passed, 0 failed · unverified`;
+  tests table baseline 2/0, red 0/1, green 4/0; diff stat `app.py | 4`, `tests/test_sub.py | 9`; drift `none ... (ec33914)`;
+  merge/discard commands) and committed it with PROGRESS.md on the branch: `6d9cd67 rehorse: report for <id>` above
+  `0c27495 step 1` and `ec33914 tests: red`.
+- `merge.py <id>` without a grant: `REHORSE: no user authorization to merge <id>. Only the user grants it, by typing /rehorse:merge <id>.` (exit 1).
+  UserPromptSubmit with prompt `/rehorse:merge <id>` minted `-rw------- ~/.rehorse/merge-<id>` and answered
+  `REHORSE: the user authorized merge of <id>. Run \`python3 .../scripts/merge.py <id>\` now, report its output, and do nothing else.`;
+  `git merge` then passed guard_bash silently. The first `merge.py` run aborted on the untracked-report flaw above
+  (main unchanged, worktree kept, grant consumed); the fix is covered by
+  `test_merge_succeeds_when_report_and_progress_are_still_untracked_in_the_main_checkout`.
+
+### Live check with real Claude Code sessions (Claude Code 2.1.260, `tests/e2e_live.sh`, 2026-09-03)
+
+The user ran the script; six `claude -p` sessions, all exit 0, empty stderr. Two toy repos under `/tmp/rehorse-e2e`
+(`app.py` with `add`, two tests, own `.venv` with pytest). Lines below are from Claude Code's debug logs, the toy repos,
+and the session transcripts. Allowed hooks print nothing and leave no log line (as in milestone 3).
+
+- **Run 1, full `/rehorse:build "add a subtract function ..."`**: 12 turns, 90 s, spec -> tests -> implement (1 step) ->
+  report, nothing merged. `state.py new` detected `/private/tmp/rehorse-e2e/live1/.venv/bin/python -m pytest -q --tb=short`
+  (the toy's interpreter). Hook lines: baseline `recorded test run: 2 passed, 0 failed`; red `PostToolUseFailure ...
+  recorded test run: 2 passed, 4 failed`; one run in the main checkout answered `test run ignored: it did not run inside
+  the worktree. Run \`cd <wt> && ...\``; green `recorded test run: 7 passed, 0 failed`. Rehearsal branch:
+  `e8f9a21 rehorse: report` / `9181c1e step 1: add sub(a, b) to app.py` / `f1d9329 tests: red for <id>` / `72635cb init`.
+  The orchestrator's final message described the phases and ended without merging.
+- **Run 1b, `/rehorse:merge` typed as the user in a new session**: `Hook UserPromptSubmit ... REHORSE: the user
+  authorized merge of t-20260903-add-sub-function. Run \`python3 .../scripts/merge.py t-20260903-add-sub-function\` now,
+  report its output, and do nothing else.`; the model ran it once and quoted
+  `{"merged": ..., "into": "main", "sha": "e8f9a21...", "report": "rehorse-reports/2026-09-03-add-sub-function.md"}`.
+  `main` is now the four commits above, fast-forwarded; worktree and branch gone; `~/.rehorse/` empty (grant consumed).
+- **Run 2a, two-step task with `--max-turns 30`**: finished the whole rehearsal in 14 turns (red `2 passed, 6 failed`;
+  step 1 `5 passed, 3 failed`; step 2 `8 passed, 0 failed`), so the cap did not cut it mid-implement. Report and
+  PROGRESS.md rendered as designed (banner `GREEN: 8 passed, 0 failed · unverified`, drift `none ... (4a3f4d8)`, both
+  steps `[x]` with the agents' two-line summaries and commit shas 3f68091 / 8d5b2cb).
+- **Run 2b, forced `/compact --resume`**: `.rehorse/handoff.json` written (`"phase": "report", "step": 2, "trigger":
+  "manual", "next_action": "done; the user decides ..."`), then `Hook SessionStart:compact ... REHORSE: active task
+  t-20260903-add-sub-and-mul, phase report, step 2/2, last tests 8 passed, 0 failed. Read rehorse-reports/PROGRESS.md
+  before acting.` **Run 2c** (resume of that session) and **Run 2d** (fresh session, `/rehorse:build` with no text) both
+  read PROGRESS.md, reported the task as finished with the merge/discard commands, and started no new task. Compaction
+  and resume are proven, but in the `report` phase, not mid-implement; `tests/e2e_live.sh` run 2 now drives the task to
+  `implement` with a two-step plan first and cuts with `--max-turns 3`, to be rerun with milestone 5's live check.
+- **Confirmed**: the orchestrator passed `subagent_type: "rehorse:rehorse-step"` (4 Agent calls in the live1 transcripts),
+  SubagentStop carried `agent_type: "rehorse:rehorse-step"`, and every step was marked done by `progress.py --step-done`
+  (no block was needed: each agent ran the tests and committed before stopping).
+- **Found and fixed**: every hook line says `(edit_seq 0)`. The step agents used Bash and Read only (12 Bash, 6 Read,
+  zero Edit/Write in the subagent transcripts) and wrote files with `printf '...' >> app.py`, which never passes through
+  `guard_edit.py`: no isolation, no test-path lock, no `edit_seq`, so the Stop guard had nothing to guard. That is a
+  shortcut, not an attack, so it belongs to the hooks: `guard_bash.py` now denies shell file writes into the repo or
+  worktree (redirection other than to `/dev/null` or another descriptor, `tee`, `cp`, `mv`, `dd`, `truncate`, `install`,
+  `patch`, `sed -i`, `perl -i`) with the reason "use the Edit or Write tool on <path>"; writes outside the repo and
+  `touch`/`mkdir` stay allowed. 18 tests added before the fix (`test_file_writes_from_bash_are_denied_...`).
+- Debug logs are appended across invocations: the user ran the script twice, so `run2*.log` also hold lines from an
+  earlier task (`...-to-app`, phase tests); only the later timestamps were used above.

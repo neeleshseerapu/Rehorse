@@ -28,9 +28,25 @@ def ensure_ignored(root):
             f.write(("" if not lines or lines[-1] == "" else "\n") + ".rehorse/\n")
 
 
+EXCLUDE = ["REHORSE_SPEC.md", "__pycache__/", ".pytest_cache/"]
+
+
+def ensure_excluded(root):
+    """Local-only ignores in .git/info/exclude (shared by every worktree, never committed): the spec file and test
+    caches must not be swept into a step commit or trip the dirty-tree refusal."""
+    path = os.path.join(root, git(root, "rev-parse", "--git-common-dir").strip(), "info", "exclude")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    lines = open(path).read().splitlines() if os.path.exists(path) else []
+    missing = [e for e in EXCLUDE if e not in lines]
+    if missing:
+        with open(path, "a") as f:
+            f.write(("" if not lines or lines[-1] == "" else "\n") + "\n".join(missing) + "\n")
+
+
 def create(root, tid):
     """New branch rehorse/<id> at HEAD, checked out in its own directory. Returns the fields state.json needs."""
     ensure_ignored(root)
+    ensure_excluded(root)
     base_sha = git(root, "rev-parse", "HEAD").strip()
     os.makedirs(os.path.dirname(path_for(root, tid)), exist_ok=True)
     git(root, "worktree", "add", "-q", "-b", "rehorse/" + tid, path_for(root, tid), "HEAD")

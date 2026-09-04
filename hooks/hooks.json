@@ -37,6 +37,27 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/authorize.py"], "timeout": 30}
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py"], "timeout": 30}
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/progress.py", "--step-done"], "timeout": 30}
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

@@ -23,6 +23,20 @@ def test_create_adds_rehorse_to_gitignore_once(repo):
     assert git(repo, "status", "--porcelain").strip() == "?? .gitignore"  # worktrees themselves are ignored
 
 
+def test_create_excludes_the_spec_file_and_test_caches_locally_not_in_gitignore(repo):
+    worktree.create(str(repo), "t-1")
+    exclude = (repo / ".git" / "info" / "exclude").read_text()
+    assert "REHORSE_SPEC.md" in exclude and "__pycache__/" in exclude and ".pytest_cache/" in exclude
+    worktree.create(str(repo), "t-2")
+    assert (repo / ".git" / "info" / "exclude").read_text().count("REHORSE_SPEC.md") == 1
+    wt = repo / ".rehorse" / "worktrees" / "t-1"
+    (wt / "REHORSE_SPEC.md").write_text("# spec\n")
+    (wt / "__pycache__").mkdir()
+    (wt / "__pycache__" / "app.pyc").write_text("")
+    assert worktree.dirty(str(repo), "t-1") == []
+    assert "REHORSE_SPEC.md" not in (repo / ".gitignore").read_text()
+
+
 def test_list_shows_only_rehorse_worktrees(repo):
     worktree.create(str(repo), "t-1")
     listed = worktree.list_(str(repo))

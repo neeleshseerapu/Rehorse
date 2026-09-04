@@ -5,16 +5,10 @@ import pytest
 from conftest import hook_input, hook_out, run_script, task_in
 
 
-def bash(repo, command, cwd=None, env=None):
+def bash(repo, command, cwd=None):
     payload = dict(hook_input("pretooluse_bash_git_merge"), cwd=cwd or str(repo))
     payload["tool_input"] = dict(payload["tool_input"], command=command)
-    full_env = dict(os.environ, **(env or {}))
-    full_env.pop("REHORSE_MERGE_TOKEN", None) if not env else None
-    import subprocess, sys, json
-    from conftest import SCRIPTS
-    r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "guard_bash.py")], input=json.dumps(payload),
-                       capture_output=True, text=True, cwd=cwd or str(repo), env=full_env)
-    return hook_out(r)
+    return hook_out(run_script("guard_bash", stdin=payload, cwd=cwd or str(repo)))
 
 
 def denied(out):
@@ -128,14 +122,72 @@ def test_rm_rf_on_repo_root_or_rehorse_is_denied(repo, command, cwd):
     assert "/rehorse:discard t-1" in reason
 
 
-def test_merge_token_lifts_git_denials_but_not_rm(repo):
+def test_user_grant_file_lifts_git_denials_but_not_rm(repo, home):
+    import grant
+    task_in(repo, "report")
+    denied(bash(repo, "git merge rehorse/t-1"))
+    grant.mint("merge", "t-1", "s")
+    assert bash(repo, "git merge rehorse/t-1") is None
+    assert bash(repo, "git branch -D rehorse/t-1") is None
+    denied(bash(repo, "rm -rf .rehorse"))
+    grant.clear(["t-1"])
+    denied(bash(repo, "git merge rehorse/t-1"))
+    grant.mint("discard", "t-1", "s")
+    assert bash(repo, "git worktree remove .rehorse/worktrees/t-1") is None
+
+
+def test_env_var_tokens_from_the_old_design_are_ignored(repo, home):
     import state
-    wt = task_in(repo, "report")
+    task_in(repo, "report")
     s = state.load(str(repo))
     s["merge_token"] = "tok-123"
     state.save(str(repo), s)
-    denied(bash(repo, "git merge rehorse/t-1"))
-    denied(bash(repo, "git merge rehorse/t-1", env={"REHORSE_MERGE_TOKEN": "wrong"}))
-    assert bash(repo, "git merge rehorse/t-1", env={"REHORSE_MERGE_TOKEN": "tok-123"}) is None
-    assert bash(repo, "REHORSE_MERGE_TOKEN=tok-123 git merge rehorse/t-1") is None
-    denied(bash(repo, "rm -rf .rehorse", env={"REHORSE_MERGE_TOKEN": "tok-123"}))
+    denied(bash(repo, "REHORSE_MERGE_TOKEN=tok-123 git merge rehorse/t-1"))
+
+
+@pytest.mark.parametrize("command", [
+    "cat ~/.rehorse/merge-t-1",
+    "touch $HOME/.rehorse/merge-t-1",
+    "ls ${HOME}/.rehorse",
+    "echo '{}' > {home}/.rehorse/discard-t-1",
+    "python3 -c \"open('{home}/.rehorse/merge-t-1','w')\"",
+])
+def test_the_grant_directory_is_unreachable_from_bash(repo, home, command):
+    task_in(repo, "implement")
+    reason = denied(bash(repo, command.replace("{home}", str(home))))
+    assert "/rehorse:merge" in reason and ".rehorse" in reason
+
+
+# ---- milestone 4 live run: step agents wrote files with `printf >> app.py`, bypassing guard_edit ---------------
+
+@pytest.mark.parametrize("command", [
+    "printf 'def sub(a, b):\\n    return a - b\\n' >> app.py",
+    "echo x > tests/test_app.py",
+    "cat <<'EOF' > app.py\nx\nEOF",
+    "cd {wt} && printf 'x' >> app.py && pytest -q",
+    "sed -i '' 's/add/sub/' app.py",
+    "perl -pi -e 's/a/b/' app.py",
+    "tee app.py < other.py",
+    "cp other.py app.py",
+    "mv other.py app.py",
+    "python3 - > app.py",
+])
+def test_file_writes_from_bash_are_denied_inside_the_repo_or_worktree(repo, command):
+    wt = task_in(repo, "implement")
+    reason = denied(bash(repo, command.format(wt=wt), cwd=wt))
+    assert "Edit" in reason and "Write" in reason
+
+
+@pytest.mark.parametrize("command", [
+    "pytest -q 2>&1 | tail -5",
+    "pytest -q > /dev/null 2>&1",
+    "pytest -q 2>/dev/null",
+    "git log --oneline > /tmp/rehorse-log.txt",
+    "echo hi",
+    "cat app.py",
+    "git add -A && git commit -m 'step 1: x'",
+    "mkdir -p build && touch build/.keep",
+])
+def test_redirects_to_dev_null_or_outside_the_repo_and_non_writes_are_allowed(repo, command):
+    wt = task_in(repo, "implement")
+    assert bash(repo, command, cwd=wt) is None

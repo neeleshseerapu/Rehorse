@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Rehorse test-command heuristics, shared by the spec phase, guard_edit.py and on_bash_done.py.
 
-  detect(root)                      -> {"test_cmd", "runner", "test_paths"} or None
+  detect(root)                      -> {"test_cmd", "runner", "test_paths"} or None, from the target repo only
+                                       (its .venv/venv, pyproject/pytest.ini, package.json, Makefile; never sys.executable)
   is_test_command(cmd, test_cmd)    -> does this Bash command run the project's test runner?
   is_test_path(rel_path, dirs)      -> is this file a test file (locked/unlocked by phase)?
   parse_counts(text)                -> {"passed", "failed"} from pytest / vitest / jest / cargo output, or None
                                        (0-test runs like `no tests ran` are {0, 0}; --collect-only, --version, grep hits are None)
   effective_cwd(cmd, cwd)           -> where a Bash command really runs after a leading `cd <dir> &&`
   affected_tests(root, changed, dirs) -> existing test files that look like they cover the changed files
-CLI: testcmd.py detect | testcmd.py parse (PostToolUse/PostToolUseFailure JSON on stdin)
+CLI: testcmd.py detect | testcmd.py set "<cmd>" (record a user-supplied command in the active task) | testcmd.py parse
 """
 import json
 import os
@@ -37,16 +38,27 @@ def _has_pytest_config(root):
     return any(TEST_FILE_RE.match(f) and f.endswith(".py") for d in _test_dirs(root) for f in os.listdir(os.path.join(root, d)))
 
 
+def _python(root):
+    """The target repo's own interpreter when it has a venv; otherwise whatever `python3` is on the Bash tool's PATH.
+    Never sys.executable: that is the interpreter running Rehorse, not the project's."""
+    for d in (".venv", "venv"):
+        for rel in ("bin/python", "Scripts/python.exe"):
+            p = os.path.join(root, d, rel)
+            if os.path.exists(p):
+                return p
+    return "python3"
+
+
 def detect(root):
     dirs = _test_dirs(root)
     if _has_pytest_config(root):
-        return {"test_cmd": "python3 -m pytest -q", "runner": "pytest", "test_paths": dirs}
+        return {"test_cmd": _python(root) + " -m pytest -q --tb=short", "runner": "pytest", "test_paths": dirs}
     pkg = os.path.join(root, "package.json")
     if os.path.exists(pkg):
         script = (json.load(open(pkg)).get("scripts") or {}).get("test", "")
         if script and "no test specified" not in script:
             runner = "vitest" if "vitest" in script else "jest" if "jest" in script else "npm"
-            cmd = {"vitest": "npx vitest run", "jest": "npx jest", "npm": "npm test"}[runner]
+            cmd = {"vitest": "npx vitest run --reporter=dot", "jest": "npx jest", "npm": "npm test"}[runner]
             return {"test_cmd": cmd, "runner": runner, "test_paths": dirs}
     mk = os.path.join(root, "Makefile")
     if os.path.exists(mk) and re.search(r"^test\s*:", open(mk, errors="ignore").read(), re.M):
@@ -119,6 +131,13 @@ def affected_tests(root, changed_files, test_dirs):
 def main(argv):
     if argv[:1] == ["detect"]:
         json.dump(detect(os.getcwd()), sys.stdout)
+    elif argv[:1] == ["set"] and len(argv) == 2:
+        import state
+        root, s, task = state.active(os.getcwd())
+        if not task:
+            sys.exit("testcmd.py set: no active task")
+        task.update(test_cmd=argv[1], test_paths=_test_dirs(root))
+        state.save(root, s)
     elif argv[:1] == ["parse"]:
         hook = json.load(sys.stdin)
         text = hook.get("error") or (hook.get("tool_response") or {}).get("stdout") or ""

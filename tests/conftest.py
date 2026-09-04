@@ -10,6 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(ROOT, "scripts")
 FIXTURES = os.path.join(ROOT, "tests", "fixtures", "hook_inputs")
 sys.path.insert(0, SCRIPTS)
+collect_ignore = ["fixtures"]  # fixture repos carry their own tests; they are data, not this suite
 
 
 def hook_input(name):
@@ -18,12 +19,12 @@ def hook_input(name):
         return json.load(f)
 
 
-def run_script(name, args=(), stdin=None, cwd=None):
-    """Invoke scripts/<name>.py exactly as Claude Code does: python3 script, JSON on stdin."""
+def run_script(name, args=(), stdin=None, cwd=None, env=None):
+    """Invoke scripts/<name>.py exactly as Claude Code does: python3 script, JSON on stdin. `env` overrides (e.g. HOME)."""
     return subprocess.run(
         [sys.executable, os.path.join(SCRIPTS, name + ".py"), *args],
         input=json.dumps(stdin) if stdin is not None else "",
-        capture_output=True, text=True, cwd=cwd,
+        capture_output=True, text=True, cwd=cwd, env=dict(os.environ, **(env or {})),
     )
 
 
@@ -57,6 +58,36 @@ def task_in(repo, phase, **fields):
         state.advance(s, "t-1", p)
     state.save(str(repo), s)
     return os.path.realpath(os.path.join(str(repo), t["worktree"]))
+
+
+def commit_in(wt, rel_path, content, message):
+    """Write a file in the worktree and commit it; returns the new HEAD sha."""
+    path = os.path.join(wt, rel_path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(content)
+    git(wt, "add", "-A")
+    git(wt, "commit", "-q", "-m", message)
+    return git(wt, "rev-parse", "HEAD").strip()
+
+
+@pytest.fixture
+def venv_repo(tmp_path):
+    """Copy of tests/fixtures/repo_with_venv with a real (pip-less) virtualenv of its own."""
+    import shutil
+    dst = tmp_path / "target"
+    shutil.copytree(os.path.join(ROOT, "tests", "fixtures", "repo_with_venv"), dst)
+    subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(dst / ".venv")], check=True, capture_output=True)
+    return dst
+
+
+@pytest.fixture
+def home(tmp_path, monkeypatch):
+    """A throwaway HOME so grant tokens (~/.rehorse/) never touch the developer's real home."""
+    h = tmp_path / "home"
+    h.mkdir()
+    monkeypatch.setenv("HOME", str(h))
+    return h
 
 
 def task_state(repo):

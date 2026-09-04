@@ -37,7 +37,7 @@ def main():
     if counts is None:
         return 0
     task["last_test_run"] = dict(counts, at=datetime.datetime.now().isoformat(timespec="seconds"),
-                                 after_edit_seq=task["edit_seq"], command=command)
+                                 after_edit_seq=task["edit_seq"], command=command, output=text[-4000:])  # tail: verifier + report
     msg = "recorded test run: %d passed, %d failed (edit_seq %d)." % (counts["passed"], counts["failed"], task["edit_seq"])
     if task["phase"] == "spec":
         task["baseline"] = dict(counts)

@@ -33,6 +33,7 @@ rehorse/
     rehorse-merge/SKILL.md        # /rehorse:merge [task-id]
     rehorse-discard/SKILL.md      # /rehorse:discard [task-id]
   agents/
+    rehorse-step.md               # step worker: one tests-phase or implement step per fresh subagent
     rehorse-verifier.md           # independent verifier subagent
   hooks/
     hooks.json                    # wires events to scripts
@@ -41,6 +42,8 @@ rehorse/
     worktree.py                   # create / list / diff / remove worktrees
     guard_edit.py                 # PreToolUse for Edit|Write|MultiEdit
     guard_bash.py                 # PreToolUse for Bash
+    authorize.py                  # UserPromptSubmit: mints the one-shot merge/discard grant when the user types the command
+    grant.py                      # ~/.rehorse/<action>-<id> grant files: mint / present / take / clear
     on_bash_done.py               # PostToolUse for Bash (records test runs)
     guard_stop.py                 # Stop hook
     testcmd.py                    # detect test command + affected-test heuristics
@@ -80,7 +83,10 @@ Task IDs are `t-<YYYYMMDD>-<slug>` so state, branch, worktree, and report names 
       "test_paths": ["tests/"],
       "baseline": {"passed": 41, "failed": 0},
       "red_check": {"passed": 41, "failed": 2},
-      "last_test_run": {"at": "...", "passed": 43, "failed": 0, "after_edit_seq": 17},
+      "last_test_run": {"at": "...", "passed": 43, "failed": 0, "after_edit_seq": 17, "output": "<tail of the runner output>"},
+      "tests_sha": "def456",
+      "plan": [{"title": "Add the toggle", "done": true, "summary": "two lines", "commit": "0c27495"}],
+      "step": 1,
       "edit_seq": 17,
       "stop_blocks": 0,
       "attention": null,
@@ -95,19 +101,20 @@ Task IDs are `t-<YYYYMMDD>-<slug>` so state, branch, worktree, and report names 
 
 ### The phase machine (what `/rehorse:build` does)
 
-1. **spec**: Ask the user clarifying questions only if the task is ambiguous. Write `.rehorse/worktrees/<id>/REHORSE_SPEC.md` (goal, acceptance criteria, files likely involved). Detect the test command (`testcmd.py`; look for pyproject/pytest.ini, package.json scripts, Makefile, etc.; ask the user if undetectable). Record the baseline test result on the untouched worktree. A baseline that runs 0 tests (no summary line, or a summary reporting 0 tests) sends the task to `needs-attention`: the test command or test discovery is wrong, and nothing downstream can be trusted.
+1. **spec**: Ask the user clarifying questions only if the task is ambiguous. Write `.rehorse/worktrees/<id>/REHORSE_SPEC.md` (goal, acceptance criteria, files likely involved). Detect the test command (`testcmd.py`, from the **target repo only**: its `.venv`/`venv` interpreter by absolute path, pyproject/pytest.ini, package.json scripts, Makefile; never Rehorse's own interpreter; quiet flags such as `-q --tb=short` / `--reporter=dot` are appended; ask the user if undetectable, or record one with `testcmd.py set`). Record the baseline test result on the untouched worktree. A baseline that runs 0 tests (no summary line, or a summary reporting 0 tests) sends the task to `needs-attention`: the test command or test discovery is wrong, and nothing downstream can be trusted.
 2. **tests**: The model writes or extends tests from the spec **only**. It must not touch non-test files (enforced by `guard_edit.py`). Then `red_check`: run the tests; **at least one new test must fail**. If nothing fails, the phase does not advance, and the model is told why. (A test that passes before the feature exists tests nothing.) `red_check` also fails if the run parses no summary line or reports 0 tests.
 3. **implement**: The orchestrator splits the spec into 1–6 plan steps and writes them to `PROGRESS.md`. Each step runs as a **fresh subagent** (see Context management) that edits non-test files only. Test paths are locked (enforced). Edits outside the active worktree are denied (enforced). Each Bash test run is recorded by `on_bash_done.py`. After each step, `progress.py` marks it done and records a two-line summary; the orchestrator never reads the step's transcript, only that summary. **Every step ends in a commit**: `progress.py --step-done` refuses to mark a step complete while `worktree.dirty()` is non-empty, with a reason naming the exact `git add`/`git commit` command to run.
 4. **verify**: Spawn the `rehorse-verifier` subagent with **only**: `REHORSE_SPEC.md`, `git diff base_sha..HEAD`, and the last test output. It never receives the implementer's transcript. It may write additional tests into a separate `tests/rehorse_verify_*` file and run them. It returns a structured verdict (`pass | concerns | fail`, with findings).
-5. **report**: `report.py` renders `rehorse-reports/<date>-<slug>.md` and updates `PROGRESS.md`: files changed, diff stat, tests baseline → red → green counts, test-file drift check (diff of test paths vs. the end of the tests phase; any drift is flagged), verifier verdict and findings, and the exact merge/discard commands. **The agent's turn ends here.** It must not merge.
-6. **merge / discard**: User-invoked skills. `merge.py` fast-forwards or merges the rehearsal branch into the user's current branch and removes the worktree. `discard.py` removes the worktree and branch. Both are the only code paths allowed to modify the real branch.
+5. **report**: `report.py` renders `rehorse-reports/<date>-<slug>.md` and updates `PROGRESS.md`: files changed, diff stat, tests baseline → red → green counts, test-file drift check (diff of test paths vs. `tests_sha`, the worktree HEAD when `progress.py plan` was run; any drift is flagged), verifier verdict and findings, and the exact merge/discard commands. Both files are written in the main checkout (where the user looks) and committed as copies on the rehearsal branch, so `merge` carries the evidence into the real branch. **The agent's turn ends here.** It must not merge.
+6. **merge / discard**: User-invoked skills. When the user types `/rehorse:merge <id>` or `/rehorse:discard <id>`, the `UserPromptSubmit` hook (`authorize.py`) writes a one-shot grant file to `~/.rehorse/<action>-<id>` (outside the repo; `merge` only for a task in `report`, `discard` for any non-terminal task). `merge.py` consumes the grant, fast-forwards or merges the rehearsal branch into the user's current branch, and removes the worktree; `discard.py` consumes it and removes the worktree and branch. Both refuse without a grant, and are the only code paths allowed to modify the real branch. The model cannot mint or read a grant: `UserPromptSubmit` fires only for user-typed text, and `guard_bash.py`/`guard_edit.py` deny anything that names `~/.rehorse/`. A grant is cleared on the next user prompt and expires after an hour.
 
 ### Hooks (the guarantees)
 
 | Event | Matcher | Script | Enforces |
 |---|---|---|---|
 | PreToolUse | Edit, Write, MultiEdit | `guard_edit.py` | If a task is active: deny edits outside its worktree. In `tests` phase: deny edits to non-test paths. In `implement` phase: deny edits to test paths, and deny any call with no `agent_id` (the main thread / orchestrator) unless the path is under `.rehorse/` or `rehorse-reports/`. Increment `edit_seq`. |
-| PreToolUse | Bash | `guard_bash.py` | Deny `git merge/rebase/reset --hard/checkout/switch/push` and anything writing to the real branch unless `REHORSE_MERGE_TOKEN` env matches the state file (set only by `merge.py`). Deny `rm -rf` on the repo root or `.rehorse/`. Deny `--no-verify`. |
+| UserPromptSubmit | — | `authorize.py` | Clear this repo's grants (a grant lasts one turn). If the prompt is `/rehorse:merge [id]` (task in `report`) or `/rehorse:discard [id]` (any non-terminal task), mint `~/.rehorse/<action>-<id>` and tell the model which script to run; otherwise say why not. |
+| PreToolUse | Bash | `guard_bash.py` | Deny `git merge/rebase/reset --hard/checkout/switch/push` and anything writing to the real branch unless the user holds a grant file for the active task (`grant.present`). Deny any command naming `~/.rehorse/`. Deny `rm -rf` on the repo root or `.rehorse/`. Deny `--no-verify`. |
 | PostToolUse, PostToolUseFailure | Bash | `on_bash_done.py` | If the command matches the task's test command, parse pass/fail counts from `tool_response.stdout` (PostToolUse) or `error` (PostToolUseFailure; a red run exits non-zero and only fires this event) and record `last_test_run` with the current `edit_seq`. A run is recorded **only** when `parse_counts()` returns a summary; `--collect-only`, `--version`, and grep-style matches on the runner name do not count. |
 | Stop | — | `guard_stop.py` | If phase is `implement` and `last_test_run.after_edit_seq < edit_seq` (edits since last test run): block with reason "run the test command before stopping." If phase is `report`: allow. Otherwise allow. Claude Code allows at most 8 consecutive Stop blocks, so every block increments `stop_blocks` in state (reset to 0 on any allowed stop); on the 8th block the script instead sets the phase to `needs-attention` with the reason, allows the stop, and `report.py` renders that state as the banner. |
 | SessionStart (all sources: `startup`, `resume`, `clear`, `compact`) | — | `state.py --summary` | Inject a one-line summary of active tasks into context via `hookSpecificOutput.additionalContext`. This is also the post-compaction re-injection path (PreCompact cannot inject). |
@@ -120,7 +127,7 @@ Every deny returns a reason that tells the model exactly what it may do instead.
 
 The model cannot clear its own context mid-task, so Rehorse does not "clear at milestones." It keeps context small by **delegation**, like a manager who reads standup summaries instead of every engineer's inbox:
 
-- **The main session is an orchestrator.** Its context holds only: the spec, the `PROGRESS.md` section for the active task, and the state summary. The `rehorse-build` skill instructs it to delegate every phase and every implement step to a subagent and to never read files or run tests itself during implement.
+- **The main session is an orchestrator.** Its context holds only: the spec, the `PROGRESS.md` section for the active task, and the state summary. The `rehorse-build` skill instructs it to delegate every phase and every implement step to a subagent and to never read or edit files itself during implement. It **may run the test command** (that is how it records the baseline and red runs and satisfies the Stop hook); everything else it delegates.
 - **Every phase and step is a fresh subagent** (Claude Code's Task/subagent mechanism), handed only artifacts: `REHORSE_SPEC.md`, the step description, the list of files the step may touch, and the previous step's two-line summary. It returns a two-line summary. Its transcript is discarded.
 - **`PROGRESS.md` is the durable memory.** It is rewritten by `progress.py` from `state.json`, so it is always consistent and never drifts into prose. A user (or a resumed session) can read it and know exactly where the task is.
 - **Compaction is survivable.** `handoff.py` runs on PreCompact so the orchestrator re-learns phase, step, and next action from the injected summary instead of from whatever survived compaction.

@@ -3,9 +3,10 @@
 
 Denies (with the way out in the reason): git merge/rebase/pull/push/checkout/switch, reset --hard, branch delete/move,
 worktree changes; git commit outside the worktree; rm -rf on the repo root, its parents, .rehorse/ or a worktree root;
---no-verify or core.hooksPath. Git denials lift when REHORSE_MERGE_TOKEN (env, or `VAR=... git ...` in the command)
-matches state["merge_token"], which only merge.py sets. This is a token check, not a shell parser: it splits on
-&&, ||, ;, |, newlines, parentheses and backticks and recurses into `-c "..."` / `eval "..."` strings.
+--no-verify or core.hooksPath; any mention of the grant directory ~/.rehorse/; file writes from the shell (redirection,
+tee, cp, mv, sed -i ...) into the repo or worktree, which would bypass guard_edit's phase lock. Git denials lift while the user holds
+a grant for the active task (grant.present: a file only the UserPromptSubmit hook mints). This is a token check, not
+a shell parser: it splits on &&, ||, ;, |, newlines, parentheses and backticks and recurses into `-c "..."` / `eval "..."`.
 """
 import json
 import os
@@ -13,25 +14,32 @@ import re
 import shlex
 import sys
 
+import grant
 import state
 import testcmd
 import worktree
 
+GRANT_DIR_RE = re.compile(r"(?:~|\$\{?HOME\}?|%s)/\.rehorse(?:/|\b)" % re.escape(os.path.expanduser("~")))
 BRANCH_CMDS = {"merge", "rebase", "pull", "push", "checkout", "switch"}
+WRITERS = {"tee", "cp", "mv", "dd", "truncate", "install", "patch"}
 GIT_OPT_WITH_ARG = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
 
 
-def segments(command):
-    """Simple commands of a shell line, each as a token list. shlex keeps quoted strings whole and, with
-    punctuation_chars, returns operators (&&, ||, ;, |, parentheses) as their own tokens, which split the segments."""
+def tokens(command):
+    """shlex keeps quoted strings whole and, with punctuation_chars, returns operators (&&, ||, ;, |, >, parentheses)
+    as their own tokens."""
     lex = shlex.shlex(re.sub(r"[`\n]", " ; ", command), posix=True, punctuation_chars=True)
     lex.whitespace_split = True
     try:
-        tokens = list(lex)
+        return list(lex)
     except ValueError:  # unbalanced quotes: best effort on whitespace
-        tokens = command.split()
+        return command.split()
+
+
+def segments(command):
+    """Simple commands of a shell line, each as a token list, split at the operator tokens."""
     out, cur = [], []
-    for tok in tokens + [";"]:
+    for tok in tokens(command) + [";"]:
         if not re.fullmatch(r"[();<>|&]+", tok):
             cur.append(tok)
             continue
@@ -67,11 +75,37 @@ def protected(p, root):
     return len(inside) < 2 or inside[0].startswith("..")
 
 
+def write_target(command, cwd, root, wt):
+    """A file inside the repo or worktree that this line writes to from the shell, or None. Redirects to /dev/null,
+    to another descriptor, or outside the repo do not count; neither do touch/mkdir (no content)."""
+    def inside(t):
+        p = os.path.realpath(os.path.join(cwd, os.path.expanduser(t)))
+        return p if (p == root or p.startswith(root + os.sep) or worktree.contains(wt, p)) else None
+    toks = tokens(command)
+    for i, t in enumerate(toks):
+        nxt = toks[i + 1] if i + 1 < len(toks) else ""
+        if ">" in t and "<" not in t and not (("&" in t or nxt.startswith("&")) and nxt.lstrip("&") in ("1", "2")):
+            if nxt and not nxt.startswith(("/dev/", "&")) and inside(nxt):
+                return inside(nxt)
+    for seg in segments(command):
+        args = [a for a in seg[1:] if not a.startswith("-")]
+        if (seg[0] in WRITERS or (seg[0] in ("sed", "perl") and any(re.match(r"^-\w*i", a) for a in seg[1:]))) and args:
+            return next((inside(a) for a in args if inside(a)), None)
+    return None
+
+
 def check(command, cwd, root, task, token_ok):
     wt = os.path.realpath(os.path.join(root, task["worktree"]))
     root = os.path.realpath(root)
     cwd = os.path.realpath(testcmd.effective_cwd(command, cwd))
     tid = task["id"]
+    if GRANT_DIR_RE.search(command):
+        return ("the grant directory ~/.rehorse/ is off limits to the model. Only the user can authorize a merge or "
+                "discard, by typing /rehorse:merge %s or /rehorse:discard %s themselves." % (tid, tid))
+    target = write_target(command, cwd, root, wt)
+    if target:
+        return ("writing files from the shell bypasses the phase lock; use the Edit or Write tool on %s instead "
+                "(redirects to /dev/null or outside the repo are fine)." % target)
     for toks in segments(command):
         if toks[0] == "rm" and any(re.match(r"^-[a-zA-Z]*[rR]", t) or t == "--recursive" for t in toks[1:]):
             for target in (t for t in toks[1:] if not t.startswith("-")):
@@ -101,9 +135,7 @@ def main():
     if not task:
         return 0
     command = (hook.get("tool_input") or {}).get("command") or ""
-    token = s.get("merge_token")
-    token_ok = bool(token) and (os.environ.get("REHORSE_MERGE_TOKEN") == token or "REHORSE_MERGE_TOKEN=%s " % token in command)
-    reason = check(command, hook.get("cwd") or os.getcwd(), root, task, token_ok)
+    reason = check(command, hook.get("cwd") or os.getcwd(), root, task, grant.present(task["id"]))
     if reason:
         json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                           "permissionDecisionReason": "REHORSE: " + reason}}, sys.stdout)
