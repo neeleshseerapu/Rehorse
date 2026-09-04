@@ -163,3 +163,7 @@ bash tests/e2e_live.sh /tmp/rehorse-e2e                  # real sessions on toy 
 ```
 
 Hook scripts are written test-first, stay under 150 lines, and import only the standard library.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

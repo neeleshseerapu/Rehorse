@@ -288,3 +288,5 @@ Six sessions again, all exit 0 and empty stderr except run 2a, whose `is_error: 
   The gate itself is unchanged (one failing test still advances), because a step that adds one real test and one
   guard test (say, "add is unchanged") is legitimate; the warning tells the reader which reports to distrust. A
   collection error (`1 error`, nothing else runs) clamps to 0 rather than going negative.
+- **MIT license**, copyright 2026 Neelesh Seerapu, referenced at the bottom of README.md, so the repo is usable and
+  forkable before the marketplace listing (milestone 8) makes that question unavoidable.
