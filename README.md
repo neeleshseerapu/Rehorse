@@ -1,131 +1,165 @@
-# Rehorse
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo.svg" alt="Rehorse" width="160" height="160">
+  </picture>
+</p>
 
-Auto mode for Claude Code that you can walk away from. Every task rehearses on a git worktree,
-must go red-then-green on tests, is checked by an independent verifier subagent, and stops with a
-report. Nothing touches your real branch until you run `/rehorse:merge`.
+<h1 align="center">Rehorse</h1>
 
-The workflow is enforced by **hooks** (Python scripts Claude Code runs on every tool call), not by
-prompt prose. Hook denials hold even when permissions are bypassed.
+<p align="center">Auto mode for Claude Code that you can walk away from.</p>
+
+Type one command, leave, and come back to a report. Every task rehearses on its own git worktree, has to go
+red-then-green on your tests, and stops. Nothing touches your branch until you type `/rehorse:merge`.
+
+The rules are enforced by **hooks**, small Python scripts Claude Code runs on every tool call, not by prompt
+prose. The model cannot edit outside the rehearsal, cannot touch your tests while it implements, cannot stop with
+untested edits, and cannot merge. Those hold even with permissions bypassed.
+
+> Pre-release. The verifier subagent (milestone 5) and the marketplace listing (milestone 8) are still to come; see
+> [Status](#status).
+
+## Install
+
+You need Claude Code, git, and Python 3. Your project needs a test suite Rehorse can run: pytest, vitest, jest,
+`npm test`, `cargo test`, `go test`, or a `make test` target.
+
+Until the marketplace listing exists, load the plugin from a clone:
+
+```bash
+git clone https://github.com/neeleshseerapu/Rehorse.git ~/Rehorse
+cd your-project
+claude --plugin-dir ~/Rehorse
+```
+
+Check it loaded with `/rehorse:status` (it should say there is no active task). Nothing is installed anywhere else,
+and there are no dependencies to add: the hooks use only the Python standard library.
+
+## Use it
+
+```
+/rehorse:build "add a --json flag to the export command"
+```
+
+Then walk away. When you come back, `rehorse-reports/<date>-<slug>.md` in your repo looks like this (from a real run
+on a toy repo):
+
+```markdown
+# Rehearsal report: Add sub(a, b) to app.py returning a - b.
+
+Task `t-20260903-add-sub-function` · branch `rehorse/t-20260903-add-sub-function` · base `b59e534` · 2026-09-03
+
+## GREEN: 8 passed, 0 failed · unverified
+
+| stage                                   | passed | failed |
+| baseline                                | 2      | 0      |
+| red (tests written, no implementation)  | 3      | 5      |
+| green (last run)                        | 8      | 0      |
+
+## Changes (base..HEAD)
+ app.py            | 4 ++++
+ tests/test_sub.py | 22 ++++++++++++++++++++++
+
+## Test-file drift
+none: test files unchanged since the tests phase.
+
+## Next
+/rehorse:merge t-20260903-add-sub-function      merge into your branch and remove the worktree
+/rehorse:discard t-20260903-add-sub-function    drop the worktree and the branch
+```
+
+Read it, then decide:
+
+```
+/rehorse:merge      # fast-forward (or merge) the rehearsal into your current branch, remove the worktree
+/rehorse:discard    # remove the worktree and branch; your branch is untouched
+```
+
+Both take an optional task id and default to the active task. Only you can run them: the authorization is minted
+when *you* type the command, and the scripts refuse without it.
+
+### Commands
+
+| Command | What it does |
+|---|---|
+| `/rehorse:build "<task>"` | Start a rehearsal. With a task already active, it resumes from where it stopped. |
+| `/rehorse:build resume` | Resume a task that stopped in `needs-attention`, from the phase it was in. |
+| `/rehorse:status` | Show `rehorse-reports/PROGRESS.md`: phase, plan steps, last test result, next action. Read-only. |
+| `/rehorse:merge [id]` | Merge the finished rehearsal into your current branch. |
+| `/rehorse:discard [id]` | Drop the rehearsal. |
+
+### What happens while you are away
+
+1. **spec** – a worktree `.rehorse/worktrees/<id>/` on branch `rehorse/<id>` is created from your HEAD, the test
+   command is detected from your repo (its `.venv`, pyproject, package.json, Makefile), a short spec is written, and
+   your tests run once for the baseline.
+2. **tests** – a fresh subagent writes failing tests from the spec. It can only touch test files. At least one test
+   must fail before the task moves on.
+3. **implement** – the work is split into 1 to 6 steps. Each step is a fresh subagent that may edit implementation
+   files only, must run the tests, and must commit. The orchestrator never reads source; it reads two-line summaries.
+4. **verify** – an independent verifier that has not seen how the code was built (milestone 5).
+5. **report** – the report is written, committed on the rehearsal branch, and the session ends.
+
+If a session is interrupted, compacted, or you open a new one, Rehorse injects a one-line state summary and
+continues from PROGRESS.md. If the model gets stuck (for example, it keeps trying to stop without running tests), the
+task drops to `needs-attention` with the reason instead of ending silently; `/rehorse:status` shows it and
+`/rehorse:build resume` continues.
+
+### What Rehorse writes in your repo
+
+- `.rehorse/` (added to your `.gitignore` on first run): `state.json`, the single source of truth, and the worktrees.
+- `rehorse-reports/`: `PROGRESS.md` and one report per task. These are meant to be committed; the merge brings them in
+  from the rehearsal branch.
+- `~/.rehorse/`: one-shot merge/discard grants, outside every repo, deleted when used.
+
+## The guarantees
+
+While a task is active, regardless of permission mode:
+
+- **Isolation.** Edits outside the rehearsal worktree are denied (except `rehorse-reports/`). Writing files from the
+  shell (`>>`, `tee`, `cp`, `mv`, `sed -i` ...) into the repo is denied too, so the lock cannot be sidestepped.
+- **Tests are locked when it implements.** In the tests phase only test files can change; in the implement phase
+  test files cannot change at all. The report flags any drift in test files after the tests phase.
+- **Red before green, with evidence.** A test run counts only if it ran inside the worktree and printed the runner's
+  own summary line. A baseline that runs zero tests stops the task.
+- **No stopping with untested edits.** The turn cannot end, and a step cannot close, until the tests ran after the
+  last edit and the work is committed.
+- **No merge.** `git merge/rebase/push/checkout/reset --hard` and friends are denied, along with `rm -rf` on your repo
+  and `--no-verify`. Only `/rehorse:merge` and `/rehorse:discard`, typed by you, touch your branch.
+
+Every denial tells the model what it may do instead.
+
+### What this is not
+
+Hooks stop **shortcuts**, not an **adversarial model**. Bash can run arbitrary programs, and a determined program can
+write any file you can. Rehorse makes the honest path the only one the hooks describe and makes the dishonest path
+require deliberate obfuscation: an accident cannot merge, only intent can. Rehorse never widens permissions either;
+your own permission prompts still apply in default mode.
+
+Out of scope for v1: model routing, non-git repos, running several tasks in parallel, any UI.
 
 ## Status
 
-Pre-release, built in numbered milestones (see `PROMPT.md`, the spec, and `DECISIONS.md`, the evidence).
-
 | Milestone | State |
 |---|---|
-| 1. Day-1 spikes (11 assumptions about Claude Code hooks, proven with evidence) | done |
-| 2. `scripts/state.py`, `worktree.py`, `testcmd.py` + tests | done |
-| 3. Hook scripts (`guard_edit`, `guard_bash`, `on_bash_done`, `guard_stop`) + `hooks.json`, live-checked on a toy repo | done |
-| 4. Skills, step agent, `progress.py` / `handoff.py` / `report.py` / `merge.py` / `discard.py`, user-minted merge grants | done: 253 tests; live-checked with real sessions (full build, user-typed merge, forced `/compact`, resume in the same and a fresh session) |
-| 5. Red-before-green gate, verifier agent, verdict + drift in the report | next |
-| 6–8. Eval harness (`rich`, `fastapi`, `zod`), demo, publish | |
+| 1. Day-1 spikes: 11 assumptions about Claude Code hooks, proven with evidence | done |
+| 2. State, worktree and test-command scripts | done |
+| 3. The four guard hooks, live-checked | done |
+| 4. Skills, step agent, progress/report/merge, user-granted merge authority; live-checked end to end | done |
+| 5. Red-before-green gate, verifier agent, verdict in the report | next |
+| 6–7. Eval on `rich`, `fastapi`, `zod` (graded by the upstream PRs' tests) | |
+| 8. Marketplace listing, install instructions, demo | |
 
-## How a rehearsal runs
+## Contributing
 
-```
-/rehorse:build "add a subtract function"
-```
-
-1. **spec** – `state.py new` creates `.rehorse/worktrees/<id>/` on branch `rehorse/<id>` and detects the test command
-   from *your* repo (its `.venv`, pyproject, package.json, Makefile). The orchestrator writes `REHORSE_SPEC.md` there
-   and runs the tests once: the baseline.
-2. **tests** – a fresh `rehorse-step` subagent writes failing tests from the spec. Only test paths are editable. The
-   run is recorded as `red_check`; at least one test must fail.
-3. **implement** – the orchestrator writes a 1–6 step plan (`progress.py plan`); each step runs as a fresh subagent
-   that may edit implementation files only, must run the tests, and must commit. The SubagentStop hook refuses to close
-   a step otherwise, naming the exact command. The orchestrator reads only two-line summaries.
-4. **verify** – the independent verifier (milestone 5).
-5. **report** – `report.py` writes `rehorse-reports/<date>-<slug>.md` and `PROGRESS.md`, commits copies on the
-   rehearsal branch, and the turn ends. You read the report and type `/rehorse:merge <id>` or `/rehorse:discard <id>`.
-
-`/rehorse:status` shows PROGRESS.md; a new session, a resumed one, or one that just compacted gets a one-line state
-summary injected and continues from PROGRESS.md's **Next:** line.
-
-## Layout
-
-```
-.claude-plugin/plugin.json   manifest (name `rehorse`, so skills are /rehorse:<name>)
-skills/rehorse-{build,status,merge,discard}/SKILL.md   the four commands (build/merge/discard are user-invoked only)
-agents/rehorse-step.md       the step worker: one tests-phase or implement step per fresh subagent
-hooks/hooks.json             wires events to scripts, exec form: {"command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/..."]}
-scripts/state.py             .rehorse/state.json: the single source of truth; phase machine; SessionStart summary; `new` bootstraps a task
-scripts/worktree.py          create / list / diff / dirty / remove rehearsal worktrees; local excludes for the spec file and test caches
-scripts/testcmd.py           detect the test command from the target repo; recognise test runs, test paths, pass/fail counts
-scripts/guard_edit.py        PreToolUse Edit|Write|MultiEdit: worktree isolation, phase path lock, orchestrator rule, edit_seq
-scripts/guard_bash.py        PreToolUse Bash: no branch mutation without a user grant, no rm -rf on repo/.rehorse, ~/.rehorse off limits
-scripts/on_bash_done.py      PostToolUse + PostToolUseFailure Bash: record real test runs (baseline / red_check / last_test_run)
-scripts/guard_stop.py        Stop: in implement, block the turn until tests ran after the last edit (8-block cap -> needs-attention)
-scripts/authorize.py         UserPromptSubmit: mint the one-shot merge/discard grant when *you* type the command
-scripts/grant.py             ~/.rehorse/<action>-<id> grant files: mint / present / take / clear
-scripts/progress.py          PROGRESS.md regenerated from state; `plan`/`add`; SubagentStop --step-done (tests ran + committed, else refuse)
-scripts/handoff.py           PreCompact: .rehorse/handoff.json snapshot + PROGRESS.md refresh
-scripts/report.py            the one-screen rehearsal report; advances verify -> report; commits evidence on the branch
-scripts/merge.py, discard.py the only code paths that touch your branch; both consume a grant first
-tests/                       pytest for every script; tests/fixtures/hook_inputs/ are real hook payloads; tests/e2e_live.sh drives real sessions
-```
-
-## What the hooks guarantee (and what they do not)
-
-While a task is active (any phase before `merged`/`discarded`), regardless of permission mode:
-
-- **Isolation.** Edit/Write/MultiEdit outside `.rehorse/worktrees/<task>/` is denied, except `rehorse-reports/` (the
-  evidence trail). `.rehorse/state.json` is never edited directly; phases move only through `scripts/state.py`.
-- **Test-path lock.** Phase `tests`: only test files may be edited. Phase `implement`: test files are locked, and
-  the main thread (no `agent_id` in the hook input) may not edit at all; step subagents do the editing. Writing files
-  from Bash (`>>`, `tee`, `cp`, `mv`, `sed -i` ... into the repo or worktree) is denied so the lock cannot be sidestepped;
-  the reason says to use Edit or Write.
-- **No branch mutation.** `git merge/rebase/pull/push/checkout/switch`, `reset --hard`, branch delete/move and
-  `git worktree` changes are denied everywhere unless you hold a grant (below); `git commit` is denied outside the
-  worktree; `rm -rf` on the repo root, its parents, `.rehorse/` or a worktree root is denied; `--no-verify` and
-  `core.hooksPath` are denied.
-- **Merge authority is yours.** `UserPromptSubmit` fires only for text a human typed. When you type
-  `/rehorse:merge <id>` (task in `report`) or `/rehorse:discard <id>`, `authorize.py` writes a one-shot grant to
-  `~/.rehorse/<action>-<id>`, outside the repo. `merge.py`/`discard.py` consume it; without it they refuse. Grants are
-  cleared on your next prompt and expire after an hour. Any command that names `~/.rehorse/` is denied.
-- **Red before green, evidence-based.** A test run is recorded only when the command runs the task's runner inside
-  the worktree and its output parses to the runner's own summary line. `--collect-only`, `--version` and grep hits
-  do not count. A baseline of 0 tests sends the task to `needs-attention`.
-- **No stopping with untested edits.** In implement the Stop hook blocks, naming the exact command, until a run is
-  recorded after the last edit. A step subagent additionally cannot stop with an uncommitted worktree: the
-  SubagentStop hook names the exact `git add -A && git commit` command. After 8 consecutive blocks the task drops to
-  `needs-attention` instead of ending silently.
-
-Every denial says what the model may do instead.
-
-### Threat model
-
-Hooks stop **shortcuts**, not an **adversarial model**.
-
-- What they stop: the model merging or pushing "to save you a step", editing tests to make them pass, editing your
-  checkout instead of the worktree, stopping before tests ran, closing a step with uncommitted work, minting its own
-  merge authorization, and any of the above under `--dangerously-skip-permissions`, because hooks run either way.
-- What they do not stop: a model that deliberately evades them. `guard_bash.py` is a token check, not a shell parser;
-  Bash can run arbitrary programs, and a program can write any file the user can, including `~/.rehorse/`. The
-  grant design makes the honest path (`/rehorse:merge`) the only path the hooks describe, and makes the dishonest path
-  require deliberate obfuscation, which is the point: an accident cannot merge, only intent can.
-- Prose-only rules: which files a step may touch, keeping the orchestrator from reading source (hooks cannot tell a
-  Read in the main thread from one in a subagent), and step ordering. Everything in the list above is hook-enforced.
-- Rehorse never widens permissions: an allowed call prints nothing, so your own permission prompts still apply in
-  default mode.
-
-## Development
+The spec is `PROMPT.md`; every decision and the evidence behind it is in `DECISIONS.md`; ideas out of scope are in
+`IDEAS.md`. The layout follows the Claude Code plugin format: `skills/`, `agents/`, `hooks/hooks.json`, `scripts/`.
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install pytest   # dev only; nothing is needed at hook time
-.venv/bin/python -m pytest tests/ -q
-
-# exercise a script the way Claude Code will: JSON on stdin, JSON on stdout
-python3 scripts/state.py --summary < tests/fixtures/hook_inputs/sessionstart_resume.json
-python3 scripts/testcmd.py parse   < tests/fixtures/hook_inputs/posttoolusefailure_bash_pytest_fail.json
-python3 scripts/guard_bash.py      < tests/fixtures/hook_inputs/pretooluse_bash_git_merge.json   # dormant: prints nothing
-
-# load the plugin from this checkout in any repo; --debug-file records which hooks matched, exit codes and output
-claude --plugin-dir /path/to/Rehorse --debug-file /tmp/hooks.log
+python3 -m venv .venv && .venv/bin/pip install pytest    # dev only
+.venv/bin/python -m pytest tests/ -q                     # every script is tested against real hook payloads
 claude plugin validate .
-
-# real sessions end to end on two toy repos (full build + merge; compaction mid-implement + resume)
-bash tests/e2e_live.sh /tmp/rehorse-e2e
+bash tests/e2e_live.sh /tmp/rehorse-e2e                  # real sessions on toy repos: build, merge, compact, resume
 ```
 
-Every hook script is written test-first, stays under 150 lines, and imports only the stdlib. Runtime dependencies:
-Python 3 and git. Nothing else, ever, at hook time.
+Hook scripts are written test-first, stay under 150 lines, and import only the standard library.
