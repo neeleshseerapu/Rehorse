@@ -5,6 +5,8 @@
   is_test_command(cmd, test_cmd)    -> does this Bash command run the project's test runner?
   is_test_path(rel_path, dirs)      -> is this file a test file (locked/unlocked by phase)?
   parse_counts(text)                -> {"passed", "failed"} from pytest / vitest / jest / cargo output, or None
+                                       (0-test runs like `no tests ran` are {0, 0}; --collect-only, --version, grep hits are None)
+  effective_cwd(cmd, cwd)           -> where a Bash command really runs after a leading `cd <dir> &&`
   affected_tests(root, changed, dirs) -> existing test files that look like they cover the changed files
 CLI: testcmd.py detect | testcmd.py parse (PostToolUse/PostToolUseFailure JSON on stdin)
 """
@@ -18,6 +20,9 @@ TEST_FILE_RE = re.compile(r"^(test_.*\.py|.*_test\.py|conftest\.py|.*\.(test|spe
 RUNNER_TOKENS = {"pytest": ["pytest"], "vitest": ["vitest"], "jest": ["jest"], "npm": ["npm test", "npm t "],
                  "make": ["make test"], "cargo": ["cargo test"], "go": ["go test"]}
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+NOT_A_RUN_RE = re.compile(r"(?:^|\s)(?:--collect-only|--co|--version|--help|-h)(?:\s|$)")
+PYTEST_SUMMARY_RE = re.compile(r"^=*\s*(?:no tests ran|\d+ [a-z]+(?:, \d+ [a-z]+)*) in \d+(?:\.\d+)?s(?: \(.*\))?\s*=*$")
+NO_TESTS_RE = re.compile(r"^No tests? (?:files )?found")
 
 
 def _test_dirs(root):
@@ -60,7 +65,15 @@ def runner_of(test_cmd):
 def is_test_command(command, test_cmd):
     """Match on the runner, not the exact string: venv python, `cd x &&`, and extra flags all still count."""
     runner = runner_of(test_cmd)
-    return bool(runner) and any(t in command + " " for t in RUNNER_TOKENS[runner])
+    if not runner or NOT_A_RUN_RE.search(command):
+        return False
+    return any(t in command + " " for t in RUNNER_TOKENS[runner])
+
+
+def effective_cwd(command, cwd):
+    """Directory a Bash command runs in: `cd <dir> &&` / `;` / newline at the start moves it, nothing else does."""
+    m = re.match(r"\s*cd\s+(\"[^\"]+\"|'[^']+'|\S+)\s*(?:&&|;|\n)", command or "")
+    return os.path.normpath(os.path.join(cwd, os.path.expanduser(m.group(1).strip("\"'")))) if m else cwd
 
 
 def is_test_path(rel_path, test_dirs):
@@ -72,11 +85,16 @@ def is_test_path(rel_path, test_dirs):
 
 
 def parse_counts(text):
-    """Find the runner's own summary line and read its numbers; errors count as failures."""
+    """Find the runner's own summary line and read its numbers; errors count as failures.
+    A summary with no passed/failed counts (`no tests ran`, `3 deselected`, `No test files found`) is a run of 0 tests."""
     for line in reversed(ANSI_RE.sub("", text or "").splitlines()):
-        if re.search(r"\bin \d+(\.\d+)?s\b", line) or re.match(r"\s*Tests:?\s", line) or line.startswith("test result:"):
+        line = line.strip()
+        if NO_TESTS_RE.match(line):
+            return {"passed": 0, "failed": 0}
+        pytest_line = bool(PYTEST_SUMMARY_RE.match(line)) and "collected" not in line
+        if pytest_line or re.match(r"Tests:?\s", line) or line.startswith("test result:"):
             found = {k: int(n) for n, k in re.findall(r"(\d+) (passed|failed|errors?)", line)}
-            if "passed" in found or "failed" in found:
+            if pytest_line or "passed" in found or "failed" in found:
                 return {"passed": found.get("passed", 0),
                         "failed": found.get("failed", 0) + found.get("error", 0) + found.get("errors", 0)}
     return None

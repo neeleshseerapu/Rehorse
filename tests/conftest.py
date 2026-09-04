@@ -43,3 +43,28 @@ def repo(tmp_path):
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-q", "-m", "init")
     return tmp_path
+
+
+def task_in(repo, phase, **fields):
+    """Active task 't-1' with a real worktree, advanced to `phase`, extra state fields applied. Returns the worktree path."""
+    import state
+    import worktree
+    s = state.empty()
+    t = state.new_task(s, "t-1")
+    t.update(worktree.create(str(repo), "t-1"))
+    t.update({"test_cmd": "python3 -m pytest -q", "test_paths": ["tests/"]}, **fields)
+    for p in state.PHASES[1:state.PHASES.index(phase) + 1]:
+        state.advance(s, "t-1", p)
+    state.save(str(repo), s)
+    return os.path.realpath(os.path.join(str(repo), t["worktree"]))
+
+
+def task_state(repo):
+    import state
+    return state.load(str(repo))["tasks"]["t-1"]
+
+
+def hook_out(result):
+    """Parsed stdout of a hook run (None when the hook printed nothing, i.e. normal permission flow)."""
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout) if result.stdout.strip() else None

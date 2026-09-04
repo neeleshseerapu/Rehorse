@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Rehorse state: <repo>/.rehorse/state.json is the single source of truth. Phases move only through advance().
-Library (load/save/new_task/advance/summary) plus CLI:
-  --summary (SessionStart hook: JSON in, additionalContext out) | new "<title>" [--date D] |
-  advance <phase> [--task ID] [--reason R] | show [--task ID]
+CLI: --summary (SessionStart hook) | new "<title>" [--date D] | advance <phase> [--task ID] [--reason R] | show [--task ID]
 """
 import datetime
 import json
@@ -23,13 +21,12 @@ def find_root(start):
     parts = p.split(os.sep)
     if ".rehorse" in parts:
         return os.sep.join(parts[:parts.index(".rehorse")]) or os.sep
-    while True:
-        if os.path.exists(os.path.join(p, ".git")):
-            return p
+    while not os.path.exists(os.path.join(p, ".git")):
         parent = os.path.dirname(p)
         if parent == p:
             return None
         p = parent
+    return p
 
 
 def empty():
@@ -42,6 +39,15 @@ def load(root):
             return json.load(f)
     except FileNotFoundError:
         return empty()
+
+
+def active(cwd):
+    """(root, state, task) for the hook scripts. task is None when Rehorse is dormant here (no repo or no active task)."""
+    root = find_root(cwd or os.getcwd())
+    if not root:
+        return None, empty(), None
+    s = load(root)
+    return root, s, s["tasks"].get(s["active_task"]) if s["active_task"] else None
 
 
 def save(root, state):
@@ -69,8 +75,7 @@ def new_task(state, tid):
         "id": tid, "phase": PHASES[0], "created": datetime.datetime.now().isoformat(timespec="seconds"),
         "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None,
         "test_cmd": None, "test_paths": [], "baseline": None, "red_check": None, "last_test_run": None,
-        "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0,
-        "verifier": None, "report_path": None,
+        "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "verifier": None, "report_path": None,
     }
     state["tasks"][tid] = task
     state["active_task"] = tid
@@ -86,14 +91,11 @@ def advance(state, tid, to, reason=None):
     elif cur == ATTENTION:
         allowed = [task["attention"]["prior_phase"], "discarded"]
     else:
-        allowed = PHASES[PHASES.index(cur) + 1:][:1] + ["discarded", ATTENTION]
-        if cur == "report":
-            allowed.append("merged")
+        allowed = PHASES[PHASES.index(cur) + 1:][:1] + ["discarded", ATTENTION] + (["merged"] if cur == "report" else [])
     if to not in allowed:
         raise ValueError("cannot advance %s from %r to %r; allowed: %s" % (tid, cur, to, ", ".join(allowed) or "none"))
     task["attention"] = {"reason": reason or "unspecified", "prior_phase": cur} if to == ATTENTION else None
-    if cur == ATTENTION:
-        task["stop_blocks"] = 0
+    task["stop_blocks"] = 0 if cur == ATTENTION else task["stop_blocks"]  # a resumed task starts its block count over
     task["phase"] = to
     if to in TERMINAL and state["active_task"] == tid:
         state["active_task"] = None
@@ -119,15 +121,12 @@ def summary(state):
 
 def main(argv):
     if argv[:1] == ["--summary"]:
-        hook = json.load(sys.stdin)
-        root = find_root(hook.get("cwd") or os.getcwd())
-        text = summary(load(root)) if root else summary(empty())
+        text = summary(active(json.load(sys.stdin).get("cwd"))[1])
         json.dump({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}, sys.stdout)
         return 0
-    root = find_root(os.getcwd())
+    root, state, _ = active(os.getcwd())
     if not root:
         sys.exit("state.py: not inside a git repository")
-    state = load(root)
     opts = {a[2:]: argv[i + 1] for i, a in enumerate(argv[:-1]) if a.startswith("--")}  # --key value
     tid = opts.get("task") or state["active_task"]
     if argv[0] == "new":

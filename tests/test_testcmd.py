@@ -117,7 +117,7 @@ def test_parse_counts_vitest_fail_from_posttoolusefailure_error():
     ("\x1b[32m      Tests  4 passed (4)\x1b[0m", {"passed": 4, "failed": 0}),  # ANSI stripped
     ("Tests:       1 failed, 2 passed, 3 total", {"passed": 2, "failed": 1}),  # jest
     ("test result: ok. 7 passed; 0 failed; 0 ignored", {"passed": 7, "failed": 0}),  # cargo
-    ("no tests ran in 0.01s", None),
+    ("no tests ran in 0.01s", {"passed": 0, "failed": 0}),  # empty suite: a run of 0 tests
     ("Test Files  1 failed (1)\n", None),  # vitest file line alone is not a test count
     ("", None),
 ])
@@ -145,3 +145,47 @@ def test_cli_detect_and_parse(tmp_path):
     assert json.loads(r.stdout) == {"passed": 2, "failed": 1}
     r = run_script("testcmd", ["parse"], stdin=hook_input("posttooluse_bash_pytest_pass"))
     assert json.loads(r.stdout) == {"passed": 2, "failed": 0}
+
+
+# ---- milestone 3 additions: zero-test runs, non-runs, effective cwd -------
+
+@pytest.mark.parametrize("text,expected", [
+    ("no tests ran in 0.00s", {"passed": 0, "failed": 0}),  # pytest, empty suite (exit 5): a real run of 0 tests
+    ("21 deselected in 0.00s", {"passed": 0, "failed": 0}),  # pytest -k matched nothing: ran 0 tests
+    ("No test files found, exiting with code 1", {"passed": 0, "failed": 0}),  # vitest, empty
+    ("No tests found, exiting with code 1", {"passed": 0, "failed": 0}),  # jest, empty
+    ("test result: ok. 0 passed; 0 failed; 0 ignored", {"passed": 0, "failed": 0}),  # cargo, empty
+    ("no tests collected in 0.00s", None),  # pytest --collect-only: not a run
+    ("3 tests collected in 0.01s", None),  # pytest --collect-only: not a run
+    ("pytest 9.1.1", None),  # pytest --version
+    ("pyproject.toml:[tool.pytest.ini_options]", None),  # grep hit on the runner name
+    ("Compiled in 2.1s", None),  # a build tool's timing line is not a pytest summary
+    ("===== 2 passed in 65.23s (0:01:05) =====", {"passed": 2, "failed": 0}),  # pytest long-run clock suffix
+])
+def test_parse_counts_zero_test_runs_versus_non_runs(text, expected):
+    assert testcmd.parse_counts(text) == expected
+
+
+@pytest.mark.parametrize("command", [
+    "python3 -m pytest --collect-only -q",
+    "pytest --co",
+    "pytest --version",
+    "npx vitest --version",
+    "python3 -m pytest --help",
+])
+def test_is_test_command_rejects_collect_only_version_help(command):
+    assert not testcmd.is_test_command(command, "python3 -m pytest -q")
+    assert not testcmd.is_test_command(command, "npx vitest run")
+
+
+@pytest.mark.parametrize("command,cwd,expected", [
+    ("pytest -q", "/repo", "/repo"),
+    ("cd /wt && pytest -q", "/repo", "/wt"),
+    ("cd sub; pytest -q", "/repo", "/repo/sub"),
+    ("cd '/a b' && pytest", "/repo", "/a b"),
+    ("  cd /wt\npytest", "/repo", "/wt"),
+    ("echo cd /x && pytest", "/repo", "/repo"),  # only a leading cd counts
+])
+def test_effective_cwd_follows_a_leading_cd(command, cwd, expected):
+    assert testcmd.effective_cwd(command, cwd) == expected
+

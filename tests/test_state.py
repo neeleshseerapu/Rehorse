@@ -148,3 +148,20 @@ def test_cli_new_advance_show(repo):
     assert r.returncode == 1 and "tests" in r.stderr
     r = run_script("state", ["show"], cwd=str(repo))
     assert json.loads(r.stdout)["phase"] == "tests"
+
+
+def test_active_returns_root_state_and_task_for_hooks(tmp_path):
+    (tmp_path / ".git").mkdir()
+    root, s, task = state.active(str(tmp_path))
+    assert root == os.path.realpath(tmp_path) and s == state.empty() and task is None
+    state.new_task(s, "t-1")
+    state.save(str(tmp_path), s)
+    root, s, task = state.active(str(tmp_path / ".rehorse" / "worktrees" / "t-1"))
+    assert root == os.path.realpath(tmp_path) and task["id"] == "t-1"
+    state.advance(s, "t-1", "discarded")
+    state.save(str(tmp_path), s)
+    assert state.active(str(tmp_path))[2] is None  # terminal phase: dormant
+
+
+def test_active_outside_a_repo_is_dormant(tmp_path):
+    assert state.active(str(tmp_path)) == (None, state.empty(), None)

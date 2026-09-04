@@ -61,3 +61,64 @@ decisions per the docs. Raw hook inputs from these runs are saved under `tests/f
 - `testcmd.is_test_command()` matches on the runner token, not the exact string, because the spikes showed commands like `/venv/bin/python -m pytest -q` and `cd x && npx vitest run`.
 - `testcmd.parse_counts()` reads only the runner's own summary line (pytest `... in 0.01s`, vitest/jest `Tests ...`, cargo `test result:`) and counts errors as failures; `Test Files` lines and `FAILED` detail lines are ignored.
 - `state.py` stays at 150 lines because it runs as the SessionStart hook; other helpers get no such cap but keep the same style.
+
+## Before milestone 3: user decisions (2026-09-03)
+
+- Steps must end in a commit: `progress.py --step-done` refuses to mark a step complete while `worktree.dirty()` is non-empty, with a reason naming the exact git command, because the verifier and the report see only `base_sha..HEAD` and uncommitted work would be invisible to both. (Enforced when `progress.py` is written in milestone 4; spec amended now.)
+- Zero collected tests is a failure: `red_check` fails if the run parses no summary line or reports 0 tests, and a 0-test baseline sends the task to `needs-attention`, because "0 failed" from a suite that never ran would satisfy red-then-green vacuously. `testcmd.parse_counts()` therefore returns `{passed: 0, failed: 0}` for pytest's `no tests ran in Ns` line (a real runner summary) instead of `None`, so the hook can see the difference between "the suite is empty" and "this was not a test run".
+- `on_bash_done.py` records a test run only when `parse_counts()` returns a summary; `--collect-only`, `--version`, and grep-style matches on the runner name never count, because a recorded run is what releases the Stop guard and it must mean tests actually executed.
+
+## Milestone 3: guard_edit.py, guard_bash.py, on_bash_done.py, guard_stop.py, hooks.json (2026-09-03)
+
+Docs re-fetched before writing (hooks reference, plugins). They confirm the spike findings: PreToolUse answers with
+`hookSpecificOutput.permissionDecision`; PostToolUse, PostToolUseFailure and Stop use top-level `decision`/`reason` and
+`hookSpecificOutput.additionalContext`; PostToolUse input carries `tool_response`, PostToolUseFailure carries `error`; Claude Code
+overrides a Stop hook after 8 consecutive blocks. Nothing in PROMPT.md contradicted the docs this time.
+
+- Every hook is written test-first (`tests/test_guard_*.py`, `test_on_bash_done.py`; 106 red, then green) against the captured
+  inputs in `tests/fixtures/hook_inputs/` with `cwd`/`file_path`/`command` overridden to point at a throwaway repo, so the
+  payload shapes are real and only the paths are synthetic.
+- An allowed call prints nothing. Printing `permissionDecision: "allow"` would skip the user's own permission prompt in
+  default mode, so Rehorse only ever narrows what the model may do, never widens it.
+- `state.active(cwd)` is the one definition of "dormant": no repo, or no active task, and every hook returns silently. Without
+  an active task Rehorse must not interfere with ordinary Claude Code use of the same machine.
+- `guard_edit.py` denies `.rehorse/` outside worktrees (the spec listed it as an orchestrator exception): `state.json` is
+  changed only through `state.py`, and nothing else under `.rehorse/` is model-written. `rehorse-reports/` stays writable from
+  either checkout and does not bump `edit_seq`, because a report edit is not code and must not demand a test run.
+- `edit_seq` is bumped in PreToolUse, before the edit runs, so an Edit that then fails (old_string missing) still counts.
+  Conservative by design: a spurious "run tests" beats a missed one.
+- `guard_bash.py` tokenizes with `shlex(punctuation_chars=True)` and recurses into `-c "..."`/`eval` strings; a first draft that
+  split the raw string on `&&` broke on `sh -c "cd wt && git push"`. It also denies `git commit` outside the worktree (the
+  spec's "anything writing to the real branch"), `git pull` (fetch + merge), branch delete/move, `git worktree` changes, and
+  `core.hooksPath` overrides next to `--no-verify`. `rm -rf` protection covers the repo root, its parents, `.rehorse/`,
+  `worktrees/` and worktree roots, but not files inside a worktree (build outputs must stay deletable).
+- The merge token is accepted from the hook's environment or as `REHORSE_MERGE_TOKEN=<tok> git ...` inside the command,
+  because a hook inherits Claude Code's environment, not the Bash tool's, so `merge.py` cannot set an env var the hook sees.
+  It never lifts the `rm -rf` rule.
+- `on_bash_done.py` also requires the run to happen inside the worktree (`cwd` after a leading `cd`): a test run in the main
+  checkout tests the wrong tree and would falsely release the Stop guard. It sets `baseline` in `spec` and `red_check` in
+  `tests` itself, from runner output, rather than trusting a skill to copy numbers into state.
+- `guard_stop.py` blocks only in `implement`, with the exact `cd <worktree> && <test_cmd>`; blocks 1-7 block, the 8th moves
+  the task to `needs-attention` with a `systemMessage` so the walk-away user sees it.
+- `hooks.json` wires SessionStart to `state.py --summary` now (it exists); PreCompact and SubagentStop wait for `handoff.py` and
+  `progress.py` in milestone 4. Every hook has `timeout: 30`.
+
+### Live check (Claude Code 2.1.260, `claude --plugin-dir <Rehorse> --debug-file <log> -p ... --dangerously-skip-permissions`)
+
+Toy repo (`app.py` + two pytest tests), task `t-20260903-add-subtract-function` created with `state.py new` and `worktree.py
+create`, advanced to `implement`. Hook lines below are from Claude Code's own debug log; `<toy>` stands for the scratch path.
+
+1. Denied edit outside the worktree (main checkout `app.py`); the model quoted the reason and stopped, file unchanged.
+   `Hook PreToolUse (python3 ${CLAUDE_PLUGIN_ROOT}/scripts/guard_edit.py) returned permissionDecision: deny (reason: REHORSE: edits outside the active worktree are denied. Task t-20260903-add-subtract-function rehearses in <toy>/.rehorse/worktrees/t-20260903-add-subtract-function; edit <toy>/.rehorse/worktrees/t-20260903-add-subtract-function/app.py instead.)`
+2. Denied test-path edit during implement (`<wt>/tests/test_app.py`); the model quoted the reason and stopped, file unchanged.
+   `Hook PreToolUse (python3 ${CLAUDE_PLUGIN_ROOT}/scripts/guard_edit.py) returned permissionDecision: deny (reason: REHORSE: phase implement: test paths are locked (tests/test_app.py). Edit implementation files only; if a test is wrong, say so in your step summary instead of changing it.)`
+3. Denied `git merge rehorse/<id>` in the main checkout; the model quoted the reason, ran the allowed `git status --short`; `main` still at `9c2250f init`.
+   `Hook PreToolUse (python3 ${CLAUDE_PLUGIN_ROOT}/scripts/guard_bash.py) returned permissionDecision: deny (reason: REHORSE: \`git merge\` is denied while task t-20260903-add-subtract-function is rehearsing: only /rehorse:merge and /rehorse:discard, run by the user, touch the real branch. Work inside <wt> and commit there; to undo a file use \`git restore <file>\`.)`
+4. Blocked stop that releases after a test run. A general-purpose subagent edited `<wt>/app.py` (allowed: `agent_id` present, non-test path; `edit_seq` 0 -> 1) without running tests; the main thread's Stop was blocked, it ran the named command once, the run was recorded, and the next Stop was allowed (`stop_blocks` back to 0). Final answer: "Tests ran as the Stop hook requested. Result: 2 passed, 0 failed."
+   `Hook Stop (Stop) success: {"decision": "block", "reason": "REHORSE: 1 edit(s) since the last recorded test run (block 1 of 7). Run this exact command before stopping: cd <wt> && /Users/neelesh/Desktop/Rehorse/.venv/bin/python -m pytest -q"}`
+   `Hook PostToolUse (python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_bash_done.py) provided additionalContext (60 chars)` = `REHORSE: recorded test run: 2 passed, 0 failed (edit_seq 1).`
+   state.json after: `phase implement, edit_seq 1, stop_blocks 0, last_test_run {passed 2, failed 0, after_edit_seq 1, command "cd <wt> && ... -m pytest -q"}`; `<wt>/app.py` contains `sub`.
+
+Also observed: the SessionStart summary was injected in every session (`Hook SessionStart (... state.py --summary) provided
+additionalContext (119 chars)`), and in scenario 1 the model noted that `rehorse-reports/PROGRESS.md`, which the summary tells it
+to read, does not exist yet (it arrives with `progress.py` in milestone 4). Allowed hooks print nothing, so they leave no log line.
