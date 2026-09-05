@@ -92,6 +92,22 @@ none: test files unchanged since the tests phase (`e51ad94`).
 /rehorse:discard t-20260904-add-divide    drop the worktree and the branch
 ```
 
+That is a rehearsal that worked. Here is one that did not, from the `rich` eval: `rich-3577` asked for
+`Text.from_ansi` to stop dropping trailing newlines. Rehorse wrote the tests, implemented the fix, and the verifier
+agreed the new output was right — then failed the round anyway, because one test the repo already had,
+`tests/test_ansi.py::test_decode_example`, pinned the old output and now needed one more `\n` in its expected string.
+Test files are locked once the tests phase ends, and a rehearsal cannot go back to that phase, so the one edit left
+was the one Rehorse would not make. It stopped at `needs-attention` and said so: "The fix itself is complete; update
+that one expected string on merge." Eleven minutes of work, handed back with a sentence of homework.
+
+The tests phase can now make that edit, but only deliberately: it may change a test the repo already had when
+`REHORSE_SPEC.md` says the behaviour that test pins is wrong, and it must name the test and the criterion that says so.
+The declaration is recorded, the verifier is shown those tests first and checks the reason against the spec, the report
+counts them under "Existing tests changed", and drift detection stops calling them drift. What has not changed is the
+lock itself: a conflict discovered later, during implementation, still stops the task for you rather than quietly
+rewriting the test that disagrees. That is the trade — the rewrite is a decision someone has to own, so it happens in
+the open, at the one phase whose job is deciding what the tests should say.
+
 Below the numbers the report has a "Try it yourself" section with the worktree path, the test command, how to run
 the project when detectable, and the acceptance criteria no test covers (what to eyeball), plus an optional summary in
 the model's own words, labelled as such. Read it, then decide:
@@ -255,6 +271,11 @@ of the report; a task with a result is skipped on the next run, and a failure in
 Columns: self-green (Rehorse reached its report with a green run: its own claim, not the grade), rehorse-outcome
 (the phase it stopped in: green, needs-attention, error), upstream-tests-pass (the grade), verifier verdict
 and rounds, wall time, session turns, report.
+
+Ten `rich` tasks have run (`eval/results.md`): nine pass the upstream PR's tests, eight reached a green report of
+their own, and none errored. The two that did not finish are worth more than the eight that did — `rich-3577` is the
+pinned-test stop described above, and `rich-3871` was stopped by its own verifier after three rounds for a regression
+the upstream tests never cover, which is why its row says `needs-attention` next to `upstream-tests-pass: yes`.
 
 ## License
 

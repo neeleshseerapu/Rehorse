@@ -18,6 +18,13 @@ All notable changes to Rehorse are recorded here. Format: [Keep a Changelog](htt
 - While the verifier runs, Read, Grep and Glob outside its brief and the worktree are denied, so it never sees the implementer's summaries or earlier reports.
 - The tests phase cannot end until every acceptance criterion in the spec is mapped to a test in a new test file; the mapping comes from the tests subagent's reply and is checked against the files.
 - A plan step that needed no edits is reported as already satisfied by the step that did the work.
+- The tests phase may change a test the repo already had only when the spec says the behaviour it pins is wrong, and only
+  by declaring it: the reply names the test and the criterion, the hook refuses the stop otherwise, and `state.py` refuses
+  the transition to implementation for the same reason. Declared changes are shown to the verifier ahead of the diff,
+  counted in the report as "Existing tests changed" with the reason for each, and no longer reported as test-file drift.
+- A verifier `fail` must cite the acceptance criterion it violates; one that cites none is recorded as `concerns`, and the
+  hook says so. `concerns` is for a specific risk worth reading before merging, not for style notes or for coverage the
+  verifier itself added.
 - `/rehorse:merge` reports how many verifier tests are merged with the change; the verifier is asked for the fewest tests that demonstrate each finding.
 - Red is judged by failing test ids, not counts: the baseline's failing tests are recorded (pytest runs with `-rfE`) and the tests phase ends only when a test fails that was not failing at baseline. Pre-existing failures are listed in the report as ignored; runners that print no ids fall back to counts with a warning.
 - Regression guards: a new test marked `# rehorse: guard` (or `// rehorse: guard`) is expected to pass before the implementation; the report says "N guard(s) expected to pass; M unexpected pass(es)" and warns only when M > 0. A failing guard does not count as red.
