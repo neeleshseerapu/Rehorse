@@ -50,21 +50,34 @@ def test_tasks_with_a_result_file_are_skipped_unless_rerun(tmp_path):
 
 def test_results_table_and_one_line_summary():
     rows = [{"id": "rich-2942", "merged_green": True, "upstream_pass": True, "verdict": "pass", "rounds": 1, "wall_s": 601.4, "turns": 23,
-             "report": "results/rich-2942.report.md"},
+             "report": "results/rich-2942.report.md", "phase": "report"},
             {"id": "rich-3881", "merged_green": True, "upstream_pass": False, "verdict": "concerns", "rounds": 2, "wall_s": 88, "turns": 9,
-             "report": "results/rich-3881.report.md"},
+             "report": "results/rich-3881.report.md", "phase": "report"},
             {"id": "rich-3479", "merged_green": False, "upstream_pass": False, "verdict": None, "rounds": 0, "wall_s": 12, "turns": None,
-             "report": None, "error": "setup_cmd failed (exit 1)"}]
+             "report": None, "phase": None, "error": "setup_cmd failed (exit 1)"}]
     md = run_eval.render(rows, {"rich-2942": 1, "rich-3881": 2})
-    assert "| task | tier | merged-green | upstream-tests-pass | verifier | rounds | wall | turns | report |" in md
-    assert "| rich-2942 | 1 | yes | **yes** | pass | 1 | 10m01s | 23 | [report](results/rich-2942.report.md) |" in md
-    assert "| rich-3881 | 2 | yes | no | concerns | 2 | 1m28s | 9 | [report](results/rich-3881.report.md) |" in md
-    assert "| rich-3479 | – | no | no | – | 0 | 12s | – | setup_cmd failed (exit 1) |" in md
+    assert "| task | tier | self-green | rehorse-outcome | upstream-tests-pass | verifier | rounds | wall | turns | report |" in md
+    assert "| rich-2942 | 1 | yes | green | **yes** | pass | 1 | 10m01s | 23 | [report](results/rich-2942.report.md) |" in md
+    assert "| rich-3881 | 2 | yes | green | no | concerns | 2 | 1m28s | 9 | [report](results/rich-3881.report.md) |" in md
+    assert "| rich-3479 | – | no | error | no | – | 0 | 12s | – | setup_cmd failed (exit 1) |" in md
     method = md[md.index("## Methodology"):md.index("## Results")]
     for phrase in ("merge commit's first parent", "*merge commit*", "never from\n  the PR head", "replacing\n  Rehorse's edits",
                    "never count toward the grade", "`poetry.lock`", "`attrs`", "Python 3.13"):
         assert phrase in method, phrase
-    assert md.rstrip().endswith("1 of 3 tasks pass the upstream PR's tests; 2 self-reported green; 1 errored.")
+    summary = "1 of 3 tasks pass the upstream PR's tests; 2 self-reported green; 1 errored."
+    assert summary in md and md.index(summary) < md.index("| task | tier |"), "the headline reads before the table, not after it"
+    assert "verify round-trips" in md[md.index(summary):md.index("| task | tier |")]
+
+
+def test_rehorse_outcome_names_the_phase_the_task_stopped_in():
+    """green / needs-attention / error, from state's phase. A run stopped anywhere else shows that phase, so a stalled
+    task cannot read as a clean stop."""
+    assert run_eval.outcome_label({"phase": "report", "merged_green": True}) == "green"
+    assert run_eval.outcome_label({"phase": "needs-attention", "merged_green": False}) == "needs-attention"
+    assert run_eval.outcome_label({"phase": "report", "merged_green": False, "error": "claude exit 1"}) == "error"
+    assert run_eval.outcome_label({"phase": "implement", "merged_green": False}) == "implement"
+    assert run_eval.outcome_label({"phase": "report", "merged_green": False}) == "report (not green)"
+    assert run_eval.outcome_label({}) == "error"
 
 
 def git(repo, *a):

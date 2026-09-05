@@ -589,3 +589,24 @@ pygments 2.19.2 from the lock. Results row: merged-green yes, upstream-tests-pas
   than the PR head, upstream files replacing Rehorse's edits so its own tests never count, and the environment pins and
   Python 3.13 constraint, so the table cannot be read without its rules. The `tier` column comes from `tasks.json` at
   render time (not copied into result files), so re-tiering a task never leaves a stale value.
+
+## The rich eval, ten tasks: reading the table (2026-09-05)
+
+- **`merged-green` is now `self-green`, and `rehorse-outcome` is a column of its own.** The old name claimed a merge
+  that never happens in the eval (nothing is ever merged; the column was always Rehorse's self-report), and one
+  yes/no column could not tell a task that stopped at `needs-attention` from one whose session crashed: both read
+  `no`. `outcome_label()` reads state's phase, never the report's prose, and renders `green` / `needs-attention` /
+  `error`; any other phase renders as itself (`implement`), so a task that stalled mid-run cannot be read as a clean
+  stop. The result files keep the `merged_green` key, so results written before the rename still render.
+- **The headline sentence moved above the table**, with a line under it saying wall time is dominated by verify
+  round-trips rather than by the size of the fix: the two slowest rows (34m23s at 3 rounds, 22m30s at 2) are the two
+  the verifier sent back, and every one-round row is under 16 minutes. Reading the table without that, the wall column
+  looks like a difficulty measure, which it is not.
+- **`rich-3881` was re-run** after fixes 1 and 2 (red by test ids, guard markers) landed, since its first result was
+  graded before either existed; the first result is kept at `eval/results/archive/rich-3881.pre-fix1.*`. Same fix,
+  same upstream pass, self-green both times — but the verdict went `pass` (5m46s, 20 turns) to `concerns` (8m12s, 21
+  turns) on identical code. The concern the second verifier raised is exactly the behavioural consequence the *first*
+  run's model wrote in its own Summary and its verifier let through: forcing markup on makes a `str` error message
+  echoing user input markup-parsed on a `markup=False` console, so a typed `[/]` can raise `MarkupError` out of
+  `Prompt.ask`. So the verdict difference is run-to-run variance in the verifier, not a change in the code, and the
+  variance ran in the safer direction.

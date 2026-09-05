@@ -27,7 +27,9 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import testcmd  # noqa: E402
 
 RESULTS = os.path.join(HERE, "results")
-COLUMNS = ["task", "tier", "merged-green", "upstream-tests-pass", "verifier", "rounds", "wall", "turns", "report"]
+COLUMNS = ["task", "tier", "self-green", "rehorse-outcome", "upstream-tests-pass", "verifier", "rounds", "wall", "turns", "report"]
+WALL_NOTE = ("Wall time is dominated by verify round-trips, not by the size of the fix: every failing verdict sends the task back to\n"
+             "implement and buys another verifier round, so the number of rounds sets the slowest rows.")
 METHODOLOGY = """## Methodology
 
 - **Tasks** are closed GitHub issues whose merged PR touched 1-5 files, at least one of them a test file and at least
@@ -36,13 +38,14 @@ METHODOLOGY = """## Methodology
 - **Grade.** The PR's test files are taken from the PR's *merge commit* (what landed on the base branch), never from
   the PR head, whose branch can predate the base. They are checked out whole into the rehearsal worktree, replacing
   Rehorse's edits to the same files, and run with the task's test command; `upstream-tests-pass` is that run green.
-  Rehorse's own tests therefore never count toward the grade; `merged-green` is only Rehorse's self-report (phase
-  `report` reached with 0 failed). `verifier` is its verdict and how many rounds it took.
+  Rehorse's own tests therefore never count toward the grade; `self-green` is only Rehorse's self-report (phase
+  `report` reached with 0 failed), and `rehorse-outcome` is the phase it stopped in. `verifier` is its verdict and how
+  many rounds it took.
 - **Environment.** Each task gets a fresh clone and its own venv (`setup_cmd`). For `rich`, `pygments` is pinned to the
   version in the repo's `poetry.lock` (the syntax tests are golden ANSI output that drift with pygments) and `attrs`, a
   dev dependency the tests import, is installed. The machine runs Python 3.13, so tasks are chosen from bases that
   support it (`rich` 14.x, 2025 and later): earlier bases fail at baseline on 3.13-only repr changes, and a baseline
-  that is not green would make `merged-green` unreachable regardless of Rehorse.
+  that is not green would make `self-green` unreachable regardless of Rehorse.
 """
 
 
@@ -159,16 +162,29 @@ def fmt_wall(s):
     return "%dm%02ds" % divmod(s, 60) if s >= 60 else "%ds" % s
 
 
+def outcome_label(row):
+    """Where Rehorse itself stopped: green / needs-attention / error, from the phase in state (never the report's prose).
+    A run that stopped anywhere else shows that phase, so a stalled task cannot be read as a clean stop."""
+    if row.get("error"):
+        return "error"
+    phase = row.get("phase")
+    if phase == "report":
+        return "green" if row.get("merged_green") else "report (not green)"
+    return phase or "error"
+
+
 def render(rows, tiers=None):
-    lines = ["# Eval results", "", METHODOLOGY, "## Results", "", "| " + " | ".join(COLUMNS) + " |", "|" + "---|" * len(COLUMNS)]
+    n = len(rows)
+    summary = "%d of %d tasks pass the upstream PR's tests; %d self-reported green; %d errored." % (
+        sum(r["upstream_pass"] for r in rows), n, sum(r["merged_green"] for r in rows), sum(1 for r in rows if r.get("error")))
+    lines = ["# Eval results", "", METHODOLOGY, "## Results", "", summary, "", WALL_NOTE, "",
+             "| " + " | ".join(COLUMNS) + " |", "|" + "---|" * len(COLUMNS)]
     for r in rows:
         report = "[report](%s)" % r["report"] if r.get("report") else r.get("error") or "–"
-        lines.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
-            r["id"], (tiers or {}).get(r["id"], "–"), "yes" if r["merged_green"] else "no", "**yes**" if r["upstream_pass"] else "no",
-            r.get("verdict") or "–", r.get("rounds", 0), fmt_wall(r.get("wall_s")), r["turns"] if r.get("turns") is not None else "–", report))
-    n = len(rows)
-    lines += ["", "%d of %d tasks pass the upstream PR's tests; %d self-reported green; %d errored." % (
-        sum(r["upstream_pass"] for r in rows), n, sum(r["merged_green"] for r in rows), sum(1 for r in rows if r.get("error")))]
+        lines.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+            r["id"], (tiers or {}).get(r["id"], "–"), "yes" if r["merged_green"] else "no", outcome_label(r),
+            "**yes**" if r["upstream_pass"] else "no", r.get("verdict") or "–", r.get("rounds", 0), fmt_wall(r.get("wall_s")),
+            r["turns"] if r.get("turns") is not None else "–", report))
     return "\n".join(lines) + "\n"
 
 

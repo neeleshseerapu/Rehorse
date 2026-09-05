@@ -252,7 +252,8 @@ task `run_eval.py` clones the repo at `base_sha` into `/tmp/rehorse-eval/<id>`, 
 venv), runs `claude -p "/rehorse:build \"<issue>\""` with this plugin and permissions bypassed, then checks the PR's
 test files out into the rehearsal worktree and runs them. One JSON result per task lands in `eval/results/` with a copy
 of the report; a task with a result is skipped on the next run, and a failure in one task is a row, not an abort.
-Columns: merged-green (Rehorse reached its report with a green run), upstream-tests-pass (the grade), verifier verdict
+Columns: self-green (Rehorse reached its report with a green run: its own claim, not the grade), rehorse-outcome
+(the phase it stopped in: green, needs-attention, error), upstream-tests-pass (the grade), verifier verdict
 and rounds, wall time, session turns, report.
 
 ## License
