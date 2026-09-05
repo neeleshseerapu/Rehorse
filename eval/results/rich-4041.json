@@ -1,0 +1,40 @@
+{
+ "id": "rich-4041",
+ "merged_green": true,
+ "upstream_pass": true,
+ "verdict": "pass",
+ "rounds": 1,
+ "wall_s": 302.8,
+ "turns": 18,
+ "report": "results/rich-4041.report.md",
+ "session_id": "50a2c043-80d1-4d04-91e0-9fd15b0e77db",
+ "cost_usd": 2.3356815,
+ "is_error": false,
+ "phase": "report",
+ "attention": null,
+ "baseline": {
+  "passed": 954,
+  "failed": 0,
+  "failing": []
+ },
+ "last_test_run": {
+  "passed": 961,
+  "failed": 0,
+  "at": "2026-09-04T15:12:54",
+  "build_failed": false,
+  "after_edit_seq": 5,
+  "command": "/private/tmp/rehorse-eval/rich-4041/.venv/bin/python -m pytest -q --tb=short -rfE 2>&1 | tail -6",
+  "output": "  Please convert to a list or tuple.\n  See https://docs.pytest.org/en/stable/deprecations.html#parametrize-iterators\n    metafunc.parametrize(*marker.args, **marker.kwargs, _param_mark=marker)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n961 passed, 25 skipped, 1 warning in 3.41s"
+ },
+ "grade": {
+  "upstream_pass": true,
+  "counts": {
+   "passed": 4,
+   "failed": 0
+  },
+  "command": ".venv/bin/python -m pytest -q --tb=short tests/test_file_proxy.py",
+  "where": "/tmp/rehorse-eval/rich-4041/.rehorse/worktrees/t-20260904-fileproxy-isatty-delegates-to-proxied-file",
+  "tests_from": "19c67b9a3479841e9133bea94607c89ee931d3fc",
+  "output_tail": "....                                                                     [100%]\n4 passed in 0.02s\n"
+ }
+}

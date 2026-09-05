@@ -1,0 +1,40 @@
+{
+ "id": "rich-3796",
+ "merged_green": true,
+ "upstream_pass": true,
+ "verdict": "concerns",
+ "rounds": 1,
+ "wall_s": 569.7,
+ "turns": 22,
+ "report": "results/rich-3796.report.md",
+ "session_id": "60aeace4-afd0-4e04-9a93-38241d52927d",
+ "cost_usd": 2.7196529999999997,
+ "is_error": false,
+ "phase": "report",
+ "attention": null,
+ "baseline": {
+  "passed": 927,
+  "failed": 0,
+  "failing": []
+ },
+ "last_test_run": {
+  "passed": 941,
+  "failed": 0,
+  "at": "2026-09-04T21:28:57",
+  "build_failed": false,
+  "after_edit_seq": 8,
+  "command": "/private/tmp/rehorse-eval/rich-3796/.venv/bin/python -m pytest -q --tb=short -rfE 2>&1 | tail -25",
+  "output": "........................................................................ [  7%]\n........................................................................ [ 14%]\n........................................................................ [ 22%]\n........................................................................ [ 29%]\n.........................................................s....sss....... [ 37%]\n........................................................................ [ 44%]\n........................................................................ [ 52%]\n....................s................................................... [ 59%]\n........................................................................ [ 67%]\n........................................................................ [ 74%]\n........................................................................ [ 81%]\n........................................................................ [ 89%]\n...............................................s........s.s............. [ 96%]\n.............sssssssssssssssss                                           [100%]\n=============================== warnings summary ===============================\n../../../.venv/lib/python3.13/site-packages/_pytest/python.py:124\n  /private/tmp/rehorse-eval/rich-3796/.venv/lib/python3.13/site-packages/_pytest/python.py:124: PytestRemovedIn10Warning: Passing a non-Collection iterable to parametrize is deprecated.\n  Test: tests/test_panel.py::test_render_panel, argvalues type: zip\n  Please convert to a list or tuple.\n  See https://docs.pytest.org/en/stable/deprecations.html#parametrize-iterators\n    metafunc.parametrize(*marker.args, **marker.kwargs, _param_mark=marker)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n941 passed, 25 skipped, 1 warning in 3.42s"
+ },
+ "grade": {
+  "upstream_pass": true,
+  "counts": {
+   "passed": 11,
+   "failed": 0
+  },
+  "command": ".venv/bin/python -m pytest -q --tb=short tests/test_live.py",
+  "where": "/tmp/rehorse-eval/rich-3796/.rehorse/worktrees/t-20260904-live-empty-render-spurious-newline",
+  "tests_from": "e9a5680682e0dbaf9e0f3f0fc2a771612307bc3d",
+  "output_tail": "...........                                                              [100%]\n11 passed in 2.11s\n"
+ }
+}

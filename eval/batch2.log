@@ -1,3 +1,14 @@
+5 task(s) to run
+== rich-3881: [BUG] PromptBase.on_validate_error should explicitly enable markup
+   merged-green True, upstream True, verifier concerns, 8m12s, 21 turn(s)
+== rich-3841: [BUG] Trailing background color is trimmed when soft wrapping is enabled
+   merged-green True, upstream True, verifier concerns, 12m10s, 27 turn(s)
+== rich-3727: [BUG] `Syntax` wrapping doesn't account for padding
+   merged-green True, upstream True, verifier concerns, 11m39s, 23 turn(s)
+== rich-3796: [BUG] Live with empty render leaves behind a spurious newline
+   merged-green True, upstream True, verifier concerns, 9m29s, 22 turn(s)
+== rich-3708: [BUG] Rich enters infinite loop in certain cases when printing exceptions
+   merged-green True, upstream True, verifier concerns, 15m59s, 23 turn(s)
 # Eval results
 
 ## Methodology
@@ -28,7 +39,9 @@
 | rich-3841 | 2 | yes | **yes** | concerns | 1 | 12m10s | 27 | [report](results/rich-3841.report.md) |
 | rich-3871 | 2 | no | **yes** | fail | 3 | 34m23s | 35 | [report](results/rich-3871.report.md) |
 | rich-3881 | 1 | yes | **yes** | concerns | 1 | 8m12s | 21 | [report](results/rich-3881.report.md) |
+| rich-3881 | 1 | yes | **yes** | pass | 1 | 5m46s | 20 | [report](results/rich-3881.report.md) |
 | rich-4038 | 2 | yes | **yes** | pass | 2 | 22m30s | 30 | [report](results/rich-4038.report.md) |
 | rich-4041 | 1 | yes | **yes** | pass | 1 | 5m02s | 18 | [report](results/rich-4041.report.md) |
 
-9 of 10 tasks pass the upstream PR's tests; 8 self-reported green; 0 errored.
+10 of 11 tasks pass the upstream PR's tests; 9 self-reported green; 0 errored.
+

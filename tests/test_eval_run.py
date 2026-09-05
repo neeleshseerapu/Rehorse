@@ -145,3 +145,15 @@ def test_grade_records_an_unparseable_run_as_not_passing(origin_and_clone):
     task = dict(TASK, pr_url="https://example.invalid/o/r/pull/7", pr_test_files=["tests/test_app.py"], test_cmd="false")
     r = run_eval.grade(task, str(clone), str(wt))
     assert r["upstream_pass"] is False and r["counts"] is None
+
+
+def test_only_top_level_id_json_files_are_rows(tmp_path):
+    """An archived copy (rich-1.pre-fix1.json) or a file under archive/ is not a result: it would double a task's row."""
+    row = json.dumps({"id": "rich-1", "merged_green": True, "upstream_pass": True, "verdict": "pass", "rounds": 1, "wall_s": 1, "turns": 1,
+                      "report": None})
+    (tmp_path / "rich-1.json").write_text(row)
+    (tmp_path / "rich-1.pre-fix1.json").write_text(row)
+    (tmp_path / "archive").mkdir()
+    (tmp_path / "archive" / "rich-2.json").write_text(row)
+    (tmp_path / "notes.md").write_text("not a result")
+    assert [os.path.basename(p) for p in run_eval.result_files(str(tmp_path))] == ["rich-1.json"]

@@ -1,0 +1,39 @@
+{
+ "id": "rich-3881",
+ "merged_green": true,
+ "upstream_pass": true,
+ "verdict": "pass",
+ "rounds": 1,
+ "wall_s": 346.8,
+ "turns": 20,
+ "report": "results/rich-3881.report.md",
+ "session_id": "38059057-4a25-4d01-8a2f-0df9226ab920",
+ "cost_usd": 2.6206777499999987,
+ "is_error": false,
+ "phase": "report",
+ "attention": null,
+ "baseline": {
+  "passed": 931,
+  "failed": 0
+ },
+ "last_test_run": {
+  "passed": 941,
+  "failed": 0,
+  "at": "2026-09-04T13:50:59",
+  "build_failed": false,
+  "after_edit_seq": 5,
+  "command": "/private/tmp/rehorse-eval/rich-3881/.venv/bin/python -m pytest -q --tb=short 2>&1 | tail -6",
+  "output": "  Please convert to a list or tuple.\n  See https://docs.pytest.org/en/stable/deprecations.html#parametrize-iterators\n    metafunc.parametrize(*marker.args, **marker.kwargs, _param_mark=marker)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n941 passed, 25 skipped, 1 warning in 3.46s"
+ },
+ "grade": {
+  "upstream_pass": true,
+  "counts": {
+   "passed": 8,
+   "failed": 0
+  },
+  "command": ".venv/bin/python -m pytest -q --tb=short tests/test_prompt.py",
+  "where": "/tmp/rehorse-eval/rich-3881/.rehorse/worktrees/t-20260904-prompt-validate-error-markup",
+  "tests_from": "abd5a2afc41ff1196fe4d901b8784bb08acf3140",
+  "output_tail": "........                                                                 [100%]\n8 passed in 0.04s\n"
+ }
+}

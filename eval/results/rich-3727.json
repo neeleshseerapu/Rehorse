@@ -1,0 +1,40 @@
+{
+ "id": "rich-3727",
+ "merged_green": true,
+ "upstream_pass": true,
+ "verdict": "concerns",
+ "rounds": 1,
+ "wall_s": 699.4,
+ "turns": 23,
+ "report": "results/rich-3727.report.md",
+ "session_id": "7698c12b-3e40-442f-abee-ea1c62840e47",
+ "cost_usd": 3.152772250000001,
+ "is_error": false,
+ "phase": "report",
+ "attention": null,
+ "baseline": {
+  "passed": 852,
+  "failed": 0,
+  "failing": []
+ },
+ "last_test_run": {
+  "passed": 868,
+  "failed": 0,
+  "at": "2026-09-04T21:19:15",
+  "build_failed": false,
+  "after_edit_seq": 4,
+  "command": "/private/tmp/rehorse-eval/rich-3727/.venv/bin/python -m pytest -q --tb=short -rfE 2>&1 | tail -20",
+  "output": "........................................................................ [ 32%]\n............s....sss.................................................... [ 40%]\n........................................................................ [ 48%]\n.....................................s.................................. [ 56%]\n........................................................................ [ 64%]\n........................................................................ [ 72%]\n........................................................................ [ 80%]\n........................................................................ [ 88%]\n.......................................................................s [ 96%]\n........s.s.sssssssssssssssss                                            [100%]\n=============================== warnings summary ===============================\n../../../.venv/lib/python3.13/site-packages/_pytest/python.py:124\n  /private/tmp/rehorse-eval/rich-3727/.venv/lib/python3.13/site-packages/_pytest/python.py:124: PytestRemovedIn10Warning: Passing a non-Collection iterable to parametrize is deprecated.\n  Test: tests/test_panel.py::test_render_panel, argvalues type: zip\n  Please convert to a list or tuple.\n  See https://docs.pytest.org/en/stable/deprecations.html#parametrize-iterators\n    metafunc.parametrize(*marker.args, **marker.kwargs, _param_mark=marker)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n868 passed, 25 skipped, 1 warning in 3.45s"
+ },
+ "grade": {
+  "upstream_pass": true,
+  "counts": {
+   "passed": 25,
+   "failed": 0
+  },
+  "command": ".venv/bin/python -m pytest -q --tb=short tests/test_syntax.py",
+  "where": "/tmp/rehorse-eval/rich-3727/.rehorse/worktrees/t-20260904-syntax-wrapping-ignores-padding",
+  "tests_from": "b6aae7c342b23656e8d4559909c8a2efd3a4d7c1",
+  "output_tail": ".........................                                                [100%]\n25 passed in 0.15s\n"
+ }
+}

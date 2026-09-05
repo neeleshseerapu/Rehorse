@@ -13,6 +13,7 @@ Grading is by the upstream PR's tests, never Rehorse's own: the PR's test files 
 into the rehearsal worktree and run with the task's test command; `upstream_pass` is that run being green.
 """
 import argparse
+import glob
 import json
 import os
 import shutil
@@ -171,8 +172,14 @@ def render(rows, tiers=None):
     return "\n".join(lines) + "\n"
 
 
+def result_files(results_dir):
+    """The rows are exactly the <task id>.json files directly in results/: an archived copy (`<id>.pre-fix1.json`) or
+    anything under archive/ is history, not a result, and a second file for one id would double its row."""
+    return sorted(p for p in glob.glob(os.path.join(results_dir, "*.json")) if "." not in os.path.basename(p)[:-len(".json")])
+
+
 def write_results(results_dir, tasks_path=None):
-    rows = [json.load(open(os.path.join(results_dir, f))) for f in sorted(os.listdir(results_dir)) if f.endswith(".json")]
+    rows = [json.load(open(p)) for p in result_files(results_dir)]
     tasks_path = tasks_path or os.path.join(HERE, "tasks.json")
     tiers = {t["id"]: t.get("tier", "–") for t in json.load(open(tasks_path))} if os.path.exists(tasks_path) else {}
     with open(os.path.join(HERE, "results.md"), "w") as f:
