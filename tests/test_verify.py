@@ -278,3 +278,14 @@ def test_a_fail_that_cites_a_criterion_is_kept_and_the_criterion_is_recorded(rep
     t = task_state(repo)
     assert t["verify_history"][0]["verdict"] == "fail"
     assert t["verify_history"][0]["findings"][0]["criterion"] == "2. sub raises TypeError on strings"
+
+
+def test_brief_names_the_existing_tests_the_change_rewrote(repo):
+    """The riskiest part of a diff is a test that used to say something else; the verifier is told which, and why."""
+    verify_task(repo, expected_test_changes=[{"test": "tests/test_sub.py::test_sub", "why": "criterion 2 says the old result was wrong"}])
+    out = run_script("verify", ["brief"], cwd=str(repo))
+    assert out.returncode == 0, out.stderr
+    brief = open(str(repo / ".rehorse" / "verify" / "t-1-round1.md")).read()
+    assert "## Existing tests the change rewrote" in brief
+    assert "tests/test_sub.py::test_sub" in brief and "criterion 2 says the old result was wrong" in brief
+    assert brief.index("## Existing tests the change rewrote") > brief.index("## Diff")

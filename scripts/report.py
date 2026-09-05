@@ -35,11 +35,28 @@ def row(label, c):
 
 
 def drift(wt, task):
-    """Test files changed after the tests phase ended (tests_sha..HEAD): the implementer weakening its own tests."""
+    """Test files changed after the tests phase ended (tests_sha..HEAD): the implementer weakening its own tests.
+
+    A file is not drift when every test that changed in it was declared in the tests phase as an expected change: that
+    change is recorded, justified and shown to the verifier. One undeclared test in the file makes the file drift again."""
     if not task.get("tests_sha"):
         return None
     names = worktree.git(wt, "diff", "--name-only", task["tests_sha"] + "..HEAD").split()
-    return [n for n in names if testcmd.is_test_path(n, task["test_paths"]) and "rehorse_verify_" not in os.path.basename(n)]
+    names = [n for n in names if testcmd.is_test_path(n, task["test_paths"]) and "rehorse_verify_" not in os.path.basename(n)]
+    declared = {d["test"] for d in task.get("expected_test_changes") or []}
+    return [n for n in names if not declared or set(changed_in(wt, task["tests_sha"], n)) - declared]
+
+
+def changed_in(wt, since, path):
+    """Ids of the tests in `path` whose body differs from `since`; [path] when the file cannot be read as tests."""
+    import coverage  # lazy: only the drift check needs the parsers
+    before = coverage.test_bodies(worktree.git(wt, "show", "%s:%s" % (since, path), check=False))
+    try:
+        after = coverage.test_bodies(open(os.path.join(wt, path), errors="ignore").read())
+    except OSError:
+        after = {}
+    ids = {"%s::%s" % (path, t) for t in set(before) | set(after) if before.get(t) != after.get(t)}
+    return sorted(ids) or [path]
 
 
 def banner(task):
@@ -86,6 +103,15 @@ def red_lines(task):
 def findings_text(v):
     return "\n".join("- [%s] %s:%s %s" % (f["severity"], f["file"], "?" if f["line"] is None else f["line"], f["description"])
                      for f in v["findings"]) or "- (none)"
+
+
+def changes_block(task, heading="## Existing tests the change rewrote"):  # the default heading is what the verifier brief shows too
+    """The tests the tests phase rewrote and why, as report lines: the riskiest part of a diff, so it is never implicit."""
+    changes = task.get("expected_test_changes") or []
+    if not changes:  # one line, not a section: the report has a one-screen budget and nothing happened here
+        return ["Existing tests changed: none — every test in the diff is new.", ""]
+    return [heading, "", "Existing tests changed: %d (declared in the tests phase, with the reason each was allowed)." % len(changes), "",
+            *["- `%s` — %s" % (c["test"], c["why"]) for c in changes], ""]
 
 
 def coverage_table(cov):
@@ -140,7 +166,8 @@ def render(root, task, name):
     elif d:
         drift_text = "**DRIFT**: test files changed after the tests phase: " + ", ".join(d)
     else:
-        drift_text = "none: test files unchanged since the tests phase (`%s`)." % task["tests_sha"][:7]
+        drift_text = "none: test files unchanged since the tests phase (`%s`)%s." % (
+            task["tests_sha"][:7], ", beyond the changes the tests phase declared as expected" if task.get("expected_test_changes") else "")
     plan = ["- [%s] %d. %s%s" % ("x" if p["done"] else " ", n, p["title"], "" if not p["done"] else
                                  " — already satisfied by step %d (no edits)" % p["satisfied_by"] if p.get("satisfied_by") else
                                  " — " + " ".join((p["summary"] or "").splitlines()))
@@ -159,6 +186,7 @@ def render(root, task, name):
         "Command: `%s`" % task["test_cmd"], "",
         *red_lines(task),
         *guard_line(task),
+        *changes_block(task),
         "## Changes (base..HEAD)", "", "```", stat or "(no commits)", "```", "",
         *verifier,
         "## Test-file drift", "", drift_text, "",

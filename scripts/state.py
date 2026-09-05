@@ -59,7 +59,7 @@ def new_task(state, tid):
             "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None, "test_cmd": None, "test_paths": [],
             "baseline": None, "red_check": None, "red_kind": None, "weak_tests": 0, "guards": [], "last_test_run": None, "tests_sha": None, "summary": None,
             "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "report_path": None, "linked_deps": [],
-            "verifier": None, "verify_round": 0, "verify_run": None, "verify_history": [], "coverage": []}
+            "verifier": None, "verify_round": 0, "verify_run": None, "verify_history": [], "coverage": [], "expected_test_changes": []}
     state["tasks"][tid] = task
     state["active_task"] = tid
     return task
@@ -67,7 +67,7 @@ def new_task(state, tid):
 
 def gate(task, to, root=None):
     """Evidence a transition needs, or None: red before implement (a failing new test, or a failed build) and, given a root to
-    read the spec from, every acceptance criterion mapped to a new test (coverage.py); a verdict before report."""
+    read the spec from, every criterion mapped to a new test and no existing test rewritten unasked (coverage.py); a verdict before report."""
     r = task.get("red_check") or {"passed": 0, "failed": 0}
     if (task["phase"], to) == ("tests", "implement") and not (task.get("red_kind") == "build_failed" or r.get("new_failed", 0)):
         return ("no red run recorded; run the test command inside the worktree after the tests are written (at least one must fail)"
@@ -76,8 +76,9 @@ def gate(task, to, root=None):
                 "no new failure: the %d failing test(s) also fail at baseline; write a test that fails because the feature is missing" % r["failed"])
     if (task["phase"], to) == ("tests", "implement") and root:
         import coverage  # lazy: the SessionStart path must not pay for git
-        if coverage.uncovered(root, task):
-            return "acceptance criteria without a new test: %s" % "; ".join(coverage.uncovered(root, task))
+        un, rewritten = coverage.uncovered(root, task), coverage.undeclared_changes(root, task, task.get("expected_test_changes") or [])
+        return ("acceptance criteria without a new test: %s" % "; ".join(un) if un else
+                "existing test(s) changed with no reason recorded: %s" % ", ".join(rewritten) if rewritten else None)
     if (task["phase"], to) == ("verify", "report") and not task.get("verifier"):
         return "no verifier verdict recorded; run `verify.py brief` and spawn the rehorse-verifier subagent with its output"
 

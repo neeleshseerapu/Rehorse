@@ -3,6 +3,7 @@ worktree is committed; in the tests phase also requires the reply's coverage blo
 new test; a `CONTRADICTS SPEC:` line sends the task to needs-attention."""
 import json
 import os
+import shutil
 
 import pytest
 from conftest import commit_in, git, hook_input, hook_out, run_script, task_in, task_state
@@ -191,3 +192,83 @@ def test_step_closed_on_an_unchanged_head_is_marked_satisfied_by_the_step_that_d
     assert plan[0]["commit"] == sha and plan[0].get("satisfied_by") is None
     assert plan[1]["done"] and plan[1]["commit"] == sha and plan[1]["satisfied_by"] == 1
     assert "2. B — already satisfied by step 1" in progress_md(repo)
+
+
+# ---- tests phase: an existing test may only be changed when the reply says why ---------------------------------------
+
+FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "repo_with_pinned_wrong_behaviour")
+PINNED_BLOCK = ('```json\n{"coverage": [{"criterion": 1, "ref": "tests/test_app.py::test_truncate_fits_the_width"}, '
+                '{"criterion": 2, "ref": "tests/test_app.py::test_short_text_is_returned_unchanged"}], '
+                '"expected_test_changes": [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", '
+                '"why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]}\n```')
+
+
+@pytest.fixture
+def pinned_repo(tmp_path):
+    """The fixture repo whose existing assertion is the bug: fixing it correctly means changing that test."""
+    repo = tmp_path / "repo"
+    shutil.copytree(FIXTURE, repo)
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@example.com")
+    git(repo, "config", "user.name", "t")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "init")
+    return repo
+
+
+def pinned_task(repo, tests):
+    """The tests phase of that repo, having rewritten the pinned assertion and added a test for criterion 1."""
+    wt = plan_task(repo, "tests", edit_seq=1, last_test_run={"passed": 1, "failed": 1, "after_edit_seq": 1, "output": ""})
+    shutil.copy(os.path.join(FIXTURE, "REHORSE_SPEC.md"), os.path.join(wt, "REHORSE_SPEC.md"))
+    commit_in(wt, "tests/test_app.py", tests, "tests: red for t-1")
+    return wt
+
+
+ORIGINAL = open(os.path.join(FIXTURE, "tests", "test_app.py")).read()
+NEW_TEST = "\n\ndef test_truncate_fits_the_width():\n    assert len(truncate(\"abcdefgh\", 5)) == 5\n"
+# the pinned assertion rewritten to what criterion 1 requires, plus one new test: only the first needs declaring
+REWRITTEN = ORIGINAL.replace('== "abcde…"', '== "abcd…"') + NEW_TEST
+
+
+def test_changing_an_existing_test_without_saying_why_is_blocked_naming_it(pinned_repo):
+    pinned_task(pinned_repo, REWRITTEN)
+    out = step_done(pinned_repo, "Rewrote the pinned assertion.\nOne fails.\n" + PINNED_BLOCK.replace(
+        '"expected_test_changes": [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", '
+        '"why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]', '"expected_test_changes": []'))
+    assert out["decision"] == "block"
+    assert "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis" in out["reason"]
+    assert "expected_test_changes" in out["reason"] and "REHORSE_SPEC.md" in out["reason"]
+    assert task_state(pinned_repo)["expected_test_changes"] == []
+
+
+def test_a_declared_change_is_recorded_with_its_reason_and_allowed(pinned_repo):
+    pinned_task(pinned_repo, REWRITTEN)
+    assert step_done(pinned_repo, "Rewrote the pinned assertion.\nOne fails.\n" + PINNED_BLOCK) is None
+    t = task_state(pinned_repo)
+    assert t["expected_test_changes"] == [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis",
+                                           "why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]
+    assert task_state(pinned_repo)["coverage"], "the coverage mapping is still recorded alongside it"
+
+
+def test_adding_tests_without_touching_the_existing_ones_needs_no_declaration(pinned_repo):
+    pinned_task(pinned_repo, ORIGINAL + NEW_TEST)
+    assert step_done(pinned_repo, "Added one test.\nIt fails.\n" + PINNED_BLOCK.replace(
+        '"expected_test_changes": [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", '
+        '"why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]', '"expected_test_changes": []')) is None
+    assert task_state(pinned_repo)["expected_test_changes"] == []
+
+
+def test_advance_also_refuses_an_undeclared_rewrite_so_the_orchestrator_cannot_skip_the_gate(pinned_repo):
+    """The subagent's stop hook is not the only door: state.py re-checks, as it does for coverage."""
+    pinned_task(pinned_repo, REWRITTEN)
+    s = state.load(str(pinned_repo))
+    s["tasks"]["t-1"]["coverage"] = [{"criterion": "1", "ref": "tests/test_app.py::test_truncate_fits_the_width"},
+                                     {"criterion": "2", "ref": "tests/test_app.py::test_short_text_is_returned_unchanged"}]
+    state.save(str(pinned_repo), s)  # coverage satisfied, so the rewrite is the only thing left to object to
+    r = run_script("state", ["advance", "implement"], cwd=str(pinned_repo))
+    assert r.returncode != 0 and "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis" in (r.stdout + r.stderr)
+    s = state.load(str(pinned_repo))
+    s["tasks"]["t-1"]["expected_test_changes"] = [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", "why": "criterion 1"}]
+    state.save(str(pinned_repo), s)
+    r = run_script("state", ["advance", "implement"], cwd=str(pinned_repo))
+    assert r.returncode == 0, r.stdout + r.stderr

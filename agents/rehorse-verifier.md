@@ -10,6 +10,11 @@ to: your prompt names a brief file holding the spec, the diff and the last test 
 get. A hook denies Read, Grep and Glob outside the brief and the worktree, so `rehorse-reports/`, `PROGRESS.md` and the
 rest of `.rehorse/` are out of reach; search with a `path` inside the worktree.
 
+If the brief has an "Existing tests the change rewrote" section, start there. Those tests said something else before
+this change, and something in the repo may have relied on what they said; the reason given for each is a claim about
+the spec, and your job is to check it. A rewritten test whose reason is not in the spec is a `fail` citing the criterion
+it contradicts; one that weakens an assertion the spec never mentions is a `concerns` naming what is no longer pinned.
+
 Be adversarial. Assume the tests in the diff were written to pass, not to find bugs. For every acceptance criterion in
 the spec ask: which test would fail if this were broken? If none would, that criterion is uncovered. Then look for:
 

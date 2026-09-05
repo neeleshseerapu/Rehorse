@@ -3,7 +3,8 @@
 
 In order: a reply line starting `CONTRADICTS SPEC:` -> needs-attention (the user decides); edits newer than the last test
 run -> block, naming the command; uncommitted worktree -> block, naming the commit; in the tests phase, no coverage block
-or an acceptance criterion with no new test -> block, naming them (the mapping is recorded as task["coverage"]); else the
+or an acceptance criterion with no new test -> block, naming them (the mapping is recorded as task["coverage"]), and an
+existing test changed with no reason in the reply -> block, naming it (declared ones become task["expected_test_changes"]); else the
 plan step is marked done with the reply's first two lines and the commit; when HEAD did not move since an earlier step,
 the step is recorded as satisfied_by that step (no edits) rather than as work. The 8th consecutive block -> needs-attention.
 """
@@ -19,6 +20,8 @@ import worktree
 AGENT = "rehorse-step"
 COVERAGE_HINT = ('end your reply with a ```json block {"coverage": [{"criterion": "<acceptance criterion or its number>", '
                  '"ref": "<test file>::<test name>"}]} mapping every acceptance criterion in REHORSE_SPEC.md to a test you added')
+CHANGED_HINT = ('Either restore it, or, if REHORSE_SPEC.md says the behaviour it pins is wrong, add to the same json block '
+                '"expected_test_changes": [{"test": "<file>::<test>", "why": "<one line: which criterion says so>"}] for each')
 
 
 def main():
@@ -53,6 +56,12 @@ def main():
         if un:
             return guard_stop.block(root, s, task, "acceptance criteria without a new test: %s. Add tests for them (test paths only), run "
                                     "the test command, commit, and stop again with the updated coverage block." % "; ".join(un), "step-done")
+        declared = coverage.declared_changes(coverage.json_block(message))
+        undeclared = coverage.undeclared_changes(root, task, declared)
+        if undeclared:  # rewriting a test the repo already had is a spec decision, not a tests-phase liberty
+            return guard_stop.block(root, s, task, "existing test(s) changed with no reason given: %s. %s, then run the test command, "
+                                    "commit, and stop again." % (", ".join(undeclared), CHANGED_HINT), "step-done")
+        task["expected_test_changes"] = [d for d in declared if d["test"] in set(coverage.changed_existing_tests(root, task))]
     task["stop_blocks"] = 0
     if title:
         head = worktree.git(wt, "rev-parse", "HEAD").strip()[:7]

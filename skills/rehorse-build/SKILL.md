@@ -76,10 +76,16 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    phase). A regression guard you expect to pass now gets `# rehorse: guard` (or `// rehorse: guard`) on the line
    above its definition; every other new test must fail. Run: cd <worktree> && <test_cmd>   (failures are expected;
    that is the point).
+   Add tests; do not rewrite the ones already in the repo. The one exception is a test whose expectation REHORSE_SPEC.md
+   says is wrong — then change it and declare it, quoting the criterion that says so. Anything else you disagree with
+   stays as it is and goes in your reply.
    Commit: cd <worktree> && git add -A && git commit -m "tests: red for <id>"
    Reply with two lines, (1) which tests you added and where, (2) what fails and why, then a ```json block
-   {"coverage": [{"criterion": "<criterion or its number>", "ref": "<test file>::<test name>"}]} with one entry per
-   acceptance criterion in REHORSE_SPEC.md. The hook records it and refuses the stop while a criterion has no test.
+   {"coverage": [{"criterion": "<criterion or its number>", "ref": "<test file>::<test name>"}],
+    "expected_test_changes": [{"test": "<file>::<test>", "why": "<one line: which criterion says the old one was wrong>"}]}
+   with one entry per acceptance criterion in REHORSE_SPEC.md, and one expected_test_changes entry per existing test you
+   changed (omit it when you changed none). The hook records both and refuses the stop while a criterion has no test or
+   an existing test changed with no reason given.
    ```
 
 2. Run `cd <worktree> && <test_cmd>` yourself; the hook records `red_check`. **At least one test that was not failing at

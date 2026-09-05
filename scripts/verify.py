@@ -48,7 +48,7 @@ def brief(root, task):
              "Test command: cd %s && %s" % (wt, task["test_cmd"]), "The only file you may write: %s/%s" % (wt, vfile), "",
              "## Spec (REHORSE_SPEC.md)", "", spec.strip(), "", "## Diff (base %s..HEAD)" % (task["base_sha"] or "")[:7], "",
              "```diff", diff.strip() or "(no commits)", "```", "", "## Last test output", "", "```",
-             ((task.get("last_test_run") or {}).get("output") or "(none recorded)").strip(), "```", ""]
+             ((task.get("last_test_run") or {}).get("output") or "(none recorded)").strip(), "```", "", *report.changes_block(task), ""]
     for v in task.get("verify_history") or []:
         lines += ["## Round %d: your earlier verdict was %s; check whether each finding is fixed" % (v["round"], v["verdict"].upper()),
                   "", report.findings_text(v), ""]

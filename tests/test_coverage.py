@@ -88,3 +88,47 @@ def test_changed_tests_are_the_new_or_changed_test_files_committed_or_dirty(repo
     open(os.path.join(wt, "tests", "test_dirty.py"), "w").write("def test_x():\n    pass\n")
     open(os.path.join(wt, "app.py"), "w").write("changed but not a test\n")
     assert coverage.changed_tests(str(repo), task_state(repo)) == {"tests/test_dirty.py", "tests/test_new.py"}
+
+
+# ---- existing tests the tests phase changed --------------------------------------------------------------------------
+
+BASE_TESTS = ("from app import truncate\n\n\ndef test_short():\n    assert truncate('abc', 5) == 'abc'\n\n\n"
+              "def test_long():\n    assert truncate('abcdefgh', 5) == 'abcde…'\n")
+
+
+def changed_task(repo, new_tests):
+    """A tests-phase task whose base commit holds BASE_TESTS and whose worktree now holds `new_tests`."""
+    wt = task_in(repo, "tests")
+    base = state.load(str(repo))["tasks"]["t-1"]["base_sha"]
+    commit_in(wt, "tests/test_app.py", BASE_TESTS, "base tests")
+    s = state.load(str(repo))
+    s["tasks"]["t-1"]["base_sha"] = git(wt, "rev-parse", "HEAD").strip()
+    state.save(str(repo), s)
+    assert base
+    commit_in(wt, "tests/test_app.py", new_tests, "tests: red for t-1")
+    return wt
+
+
+def test_changed_existing_tests_lists_only_tests_that_existed_and_changed(repo):
+    """A new test is not a change; an edited assertion and a deleted test both are."""
+    edited = BASE_TESTS.replace("'abcde…'", "'abcd…'") + "\n\ndef test_new():\n    assert truncate('ab', 1) == 'a…'\n"
+    changed_task(repo, edited)
+    task = task_state(repo)
+    assert coverage.changed_existing_tests(str(repo), task) == ["tests/test_app.py::test_long"]
+
+
+def test_an_untouched_test_file_and_a_brand_new_file_report_no_changes(repo):
+    changed_task(repo, BASE_TESTS + "\n\ndef test_new():\n    assert truncate('ab', 1) == 'a…'\n")
+    assert coverage.changed_existing_tests(str(repo), task_state(repo)) == []
+
+
+def test_a_deleted_test_counts_as_changed(repo):
+    changed_task(repo, "from app import truncate\n\n\ndef test_short():\n    assert truncate('abc', 5) == 'abc'\n")
+    assert coverage.changed_existing_tests(str(repo), task_state(repo)) == ["tests/test_app.py::test_long"]
+
+
+def test_declared_changes_are_the_reply_blocks_entries_with_a_reason():
+    block = {"expected_test_changes": [{"test": "tests/test_app.py::test_long", "why": "the spec says the pinned width is wrong"},
+                                       {"test": "tests/test_app.py::test_x"}, {"why": "no test named"}, "junk"]}
+    assert coverage.declared_changes(block) == [{"test": "tests/test_app.py::test_long", "why": "the spec says the pinned width is wrong"}]
+    assert coverage.declared_changes({}) == [] and coverage.declared_changes(None) == []

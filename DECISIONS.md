@@ -651,3 +651,40 @@ never build that table; this is the eval's two columns measuring different thing
   must name a specific risk with file, line and test, that style and naming notes are not concerns, and that "the diff
   did not test this, so I added a test" is a `pass`. `findings_text` moved from `verify.py` to `report.py` to pay for
   the new lines: `verify.py` is a hook script and stays at its 150-line cap.
+
+## Existing tests may be changed only when the spec says the pinned behaviour is wrong (2026-09-05)
+
+The tests phase could always edit any test path, so it could rewrite an assertion the repo already relied on and
+nothing recorded that it had. rich-3871's verifier caught exactly this three rounds running (`tests/test_columns.py`
+snapshot rewritten; "the new values are semantically correct but the edit is outside the sanctioned scope") and had no
+way to tell a justified rewrite from a quiet one. Now the rewrite is legal, declared, and carried to the reader.
+
+- **Detection is textual and lives in `coverage.py`** (no line cap there): `test_bodies()` splits a file into
+  `<id> -> lines` with the parsers `guards()` already uses, dropping each body's blank tail so adding a test after
+  another does not read as changing it; `changed_existing_tests()` compares every changed test file against its
+  content at `base_sha` and returns the ids that differ or vanished. Tests the phase *added* are not changes. It is
+  mechanical on purpose, in the same spirit as the coverage gate: a reformatting counts as a change, which is why the
+  answer to it is "give a reason", not "prove intent".
+- **Declared in the reply, gated at the stop.** The tests-phase agent's json block gains
+  `"expected_test_changes": [{"test": "<file>::<test>", "why": "<one line>"}]`; `step_done.py` blocks the stop while a
+  changed existing test has no entry, naming the test and telling the agent to restore it or declare it with the
+  criterion that says so. Declarations for tests that did not actually change are dropped rather than recorded, so
+  `task["expected_test_changes"]` only ever holds real ones. `state.gate` re-checks it on `tests -> implement` for the
+  same reason the coverage gate is re-checked there: the SubagentStop hook is not the only door into implement, and a
+  guarantee that only fires for subagents is prose. The implement-phase lock is untouched — test paths stay locked once
+  the tests are in — so this widens nothing.
+- **The verifier is told first.** `report.changes_block()` renders the section for both the report and the brief, and
+  `verify.brief()` puts it after the diff; the verifier prompt now opens on it: those tests said something else before,
+  the reason given is a claim about the spec, and checking that claim is the job. A rewrite whose reason is not in the
+  spec is a `fail` citing the criterion it contradicts; one that weakens an assertion the spec never mentions is a
+  `concerns` naming what is no longer pinned.
+- **The report says `Existing tests changed: N` with the reason for each**, one line when there were none (the report
+  has a one-screen budget and nothing happened), and **drift treats declared changes as expected**: `drift()` now asks
+  which test ids actually changed in each file since `tests_sha` and excuses the file only when every one of them was
+  declared. One undeclared test in the file makes it drift again, so the excuse cannot be borrowed.
+- **Fixture** `tests/fixtures/repo_with_pinned_wrong_behaviour/`: `truncate()` writes its ellipsis outside the width
+  budget, and `test_long_text_is_cut_with_an_ellipsis` pins that off-by-one, so a correct fix *must* change that
+  assertion. The tests drive the real hook over it — undeclared rewrite blocked and named, declared rewrite recorded
+  with its reason, a new test alongside untouched ones needing no declaration. Writing them caught a real property of
+  the detector: changing the quote style of an untouched test is a change, and the fixture-derived test data now says
+  so honestly rather than working around it.

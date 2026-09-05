@@ -260,3 +260,30 @@ def test_report_lists_preexisting_failures_separately_and_ignores_them(repo):
 def test_report_warns_when_red_was_judged_by_counts(repo):
     verified_task(repo, red_check={"passed": 1, "failed": 1, "new_failed": 1, "ids_unavailable": True})
     assert "no test ids in the runner output; red was judged by counts" in render(repo)
+
+
+CHANGE = [{"test": "tests/test_sub.py::test_sub", "why": "criterion 2 says the old result was wrong"}]
+
+
+def test_declared_existing_test_changes_are_rendered_with_their_reasons(repo):
+    verified_task(repo, expected_test_changes=CHANGE)
+    text = render(repo)
+    assert "Existing tests changed: 1" in text
+    assert "tests/test_sub.py::test_sub" in text and "criterion 2 says the old result was wrong" in text
+
+
+def test_no_declared_changes_says_none(repo):
+    verified_task(repo)
+    assert "Existing tests changed: none" in render(repo)
+
+
+def test_a_declared_change_is_not_drift_but_an_undeclared_one_still_is(repo):
+    """Drift is the implementer weakening the tests; a change the tests phase declared and justified is expected."""
+    wt = verified_task(repo, expected_test_changes=CHANGE)
+    commit_in(wt, "tests/test_sub.py", "from app import sub\n\ndef test_sub():\n    assert sub(3, 1) == 2  # tweaked\n", "declared change")
+    text = render(repo)
+    assert "DRIFT" not in text and "expected" in text.lower()
+    commit_in(wt, "tests/test_sub.py", "from app import sub\n\ndef test_sub():\n    assert sub(3, 1) == 2  # tweaked\n\n\n"
+              "def test_other():\n    assert 0\n", "undeclared change")
+    commit_in(wt, "tests/test_sub.py", "from app import sub\n\ndef test_other():\n    assert 0\n", "drop test_sub too")
+    assert "DRIFT" in render(repo)

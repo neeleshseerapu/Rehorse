@@ -105,6 +105,64 @@ def guards(wt, files):
     return sorted(out)
 
 
+def test_bodies(text):
+    """<id> -> the lines of each test definition in one file's text: its definition up to the next one, blank tail dropped
+    (the lines between two tests belong to neither, so adding a test after one must not read as changing it)."""
+    out, cur, cls = {}, None, None
+    for line in text.splitlines():
+        m = CLASS_RE.match(line)
+        if m:
+            cls = m.group(1)
+        d = TEST_DEF_RE.match(line)
+        if d:
+            name = next(g for g in d.groups() if g)
+            cur = "%s::%s" % (cls, name) if cls and line[:1].isspace() else name
+            out[cur] = []
+        if cur:
+            out[cur].append(line.rstrip())
+    return {k: _drop_blank_tail(v) for k, v in out.items()}
+
+
+def _drop_blank_tail(lines):
+    while lines and not lines[-1]:
+        lines = lines[:-1]
+    return lines
+
+
+def changed_existing_tests(root, task):
+    """Ids (<file>::[<Class>::]<test>) of tests that existed at base_sha and whose body the tests phase changed or removed.
+
+    A test the phase added is not a change: only the ones already in the repo, whose expectations someone else relies on.
+    Mechanical on purpose — it compares the text of each definition, so a reformatting counts; that is the point of asking
+    for a reason rather than trying to judge intent here."""
+    wt = os.path.realpath(os.path.join(root, task["worktree"]))
+    out = []
+    for f in sorted(changed_tests(root, task)):
+        before = worktree.git(wt, "show", "%s:%s" % (task["base_sha"], f), check=False)
+        if not before:
+            continue  # a file the phase added: nothing in it existed before
+        try:
+            after = open(os.path.join(wt, f), errors="ignore").read()
+        except OSError:
+            after = ""
+        now = test_bodies(after)
+        out += ["%s::%s" % (f, tid) for tid, body in test_bodies(before).items() if now.get(tid) != body]
+    return sorted(out)
+
+
+def declared_changes(block):
+    """The reply block's expected_test_changes: entries naming a test and giving a one-line reason. Junk is dropped."""
+    entries = (block or {}).get("expected_test_changes") or []
+    return [{"test": str(e["test"]), "why": " ".join(str(e["why"]).split())}
+            for e in entries if isinstance(e, dict) and e.get("test") and e.get("why")]
+
+
+def undeclared_changes(root, task, declared):
+    """Changed existing tests with no reason given: the tests phase may not quietly rewrite what the repo already pinned."""
+    named = {d["test"] for d in declared}
+    return [t for t in changed_existing_tests(root, task) if t not in named]
+
+
 def uncovered(root, task):
     """Criteria with no verified test, as '<n>. <criterion>: <why>' lines. Empty means the gate is satisfied."""
     wt = os.path.realpath(os.path.join(root, task["worktree"]))
