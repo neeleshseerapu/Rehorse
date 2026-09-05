@@ -182,9 +182,10 @@ def test_hooks_json_routes_subagent_stop_by_agent_name():
 
 # ---- round-trip: a failing verdict (or failing verifier tests) sends the task back to implement, at most twice ------------
 
-FAIL = ('```json\n{"verdict": "fail", "findings": [{"severity": "high", "file": "app.py", "line": 5, "description": "strings are '
-        'concatenated, not rejected"}, {"severity": "low", "file": "app.py", "line": 1, "description": "no docstring"}], '
-        '"tests_added": ["tests/test_rehorse_verify_t-1.py::test_strings"], "coverage": []}\n```')
+FAIL = ('```json\n{"verdict": "fail", "findings": [{"severity": "high", "file": "app.py", "line": 5, "criterion": "2. sub raises '
+        'TypeError on strings", "description": "strings are concatenated, not rejected"}, {"severity": "low", "file": "app.py", '
+        '"line": 1, "description": "no docstring"}], "tests_added": ["tests/test_rehorse_verify_t-1.py::test_strings"], "coverage": []}\n```')
+UNCITED_FAIL = FAIL.replace('"criterion": "2. sub raises TypeError on strings", ', "")
 
 
 def test_fail_verdict_returns_the_task_to_implement_with_the_findings_as_new_steps(repo):
@@ -212,12 +213,17 @@ def test_failing_verifier_tests_return_the_task_even_on_a_concerns_verdict(repo)
     assert [p["title"] for p in t["plan"]][1:] == ["Make the verifier's tests pass: tests/test_rehorse_verify_t-1.py (2 failing)"]
 
 
-def test_fail_verdict_without_findings_still_returns_with_a_generic_step(repo):
+def test_fail_verdict_without_findings_is_a_concern_and_only_failing_tests_return_the_task(repo):
+    """A fail with nothing listed cites no criterion, so it is a concern; the round-trip is then earned by failing tests alone."""
     verify_task(repo)
     ran(repo)
     stop(repo, '```json\n{"verdict": "fail"}\n```')
+    assert task_state(repo)["verifier"]["verdict"] == "concerns" and task_state(repo)["phase"] == "verify"
+    ran(repo, passed=3, failed=1)
+    stop(repo, '```json\n{"verdict": "fail"}\n```')
     t = task_state(repo)
-    assert t["phase"] == "implement" and len(t["plan"]) == 2 and "FAIL verdict" in t["plan"][1]["title"] and "round 1" in t["plan"][1]["title"]
+    assert t["phase"] == "implement" and [p["title"] for p in t["plan"]][1:] == [
+        "Make the verifier's tests pass: tests/test_rehorse_verify_t-1.py (1 failing)"]
 
 
 def test_pass_or_concerns_with_green_verifier_tests_stays_in_verify(repo):
@@ -248,6 +254,27 @@ def test_round_trip_step_titles_are_capped_but_keep_the_location(repo):
     long = "x" * 400
     verify_task(repo)
     ran(repo)
-    stop(repo, '```json\n{"verdict": "fail", "findings": [{"severity": "high", "file": "app.py", "line": 6, "description": "%s"}]}\n```' % long)
+    stop(repo, '```json\n{"verdict": "fail", "findings": [{"severity": "high", "file": "app.py", "line": 6, '
+         '"criterion": "1. sub(3, 1) == 2", "description": "%s"}]}\n```' % long)
     title = task_state(repo)["plan"][1]["title"]
     assert title.startswith("Fix (verifier round 1): xxxx") and title.endswith("... (app.py:6)") and len(title) < 240
+
+
+def test_a_fail_that_cites_no_acceptance_criterion_is_recorded_as_concerns(repo):
+    """A fail must name the criterion it violates; an objection that cannot point at one is a concern, not a stop."""
+    verify_task(repo)
+    ran(repo, passed=3, failed=0)
+    out = stop(repo, UNCITED_FAIL)
+    t = task_state(repo)
+    assert t["verifier"]["verdict"] == "concerns" and t["phase"] == "verify"  # no round-trip: nothing failed and nothing was violated
+    assert "concerns" in out["systemMessage"].lower() and "criterion" in out["systemMessage"]
+    assert [f["description"] for f in t["verifier"]["findings"]][0] == "strings are concatenated, not rejected"
+
+
+def test_a_fail_that_cites_a_criterion_is_kept_and_the_criterion_is_recorded(repo):
+    verify_task(repo)
+    ran(repo, passed=3, failed=0)
+    stop(repo, FAIL)
+    t = task_state(repo)
+    assert t["verify_history"][0]["verdict"] == "fail"
+    assert t["verify_history"][0]["findings"][0]["criterion"] == "2. sub raises TypeError on strings"

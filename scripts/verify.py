@@ -4,8 +4,9 @@ and for round 2+ the verifier's own earlier findings; never the implementer's tr
 prompt for the rehorse-verifier subagent, so what the verifier sees is decided here, not by the orchestrator.
 `verify.py --verdict` is the SubagentStop hook for that agent: it blocks the stop until the verifier ran the test command
 after its last edit, committed its test file, and ended its reply with the JSON verdict block; then it records the verdict
-in state. The orchestrator never copies a verdict by hand, so it cannot soften one. A `fail` verdict, or a failing verifier
-test, sends the task back to implement with the findings appended as plan steps (the verifier's file is then locked like every
+in state. The orchestrator never copies a verdict by hand, so it cannot soften one, and a `fail` whose findings cite no
+acceptance criterion is recorded as `concerns`: a stop points at the spec, not at the verifier's taste. A `fail`, or a failing
+verifier test, sends the task back to implement with the findings as plan steps (the verifier's file is then locked like every
 test); the third failing round sets needs-attention instead. The report shows the round count and earlier rounds' findings.
 """
 import datetime
@@ -16,6 +17,7 @@ import sys
 
 import guard_stop
 import progress
+import report
 import state
 import testcmd
 import worktree
@@ -26,13 +28,9 @@ EVIDENCE = ("test", "build_only", "none")
 MAX_ROUNDS = 3
 DIFF_CAP, TITLE_CAP = 200000, 180  # diff size in the brief; a finding's description as a step title (full text stays in state)
 SHAPE = ('{"verdict": "pass|concerns|fail", "findings": [{"severity": "high|medium|low", "file": "<path>", "line": 0, '
-         '"description": "..."}], "tests_added": ["<file>::<test>"], "coverage": [{"criterion": "<acceptance criterion>", '
+         '"criterion": "<the acceptance criterion this violates; required for a fail>", "description": "..."}], '
+         '"tests_added": ["<file>::<test>"], "coverage": [{"criterion": "<acceptance criterion>", '
          '"evidence": "test|build_only|none", "ref": "<test id or file>"}]}')
-
-
-def findings_text(v):
-    return "\n".join("- [%s] %s:%s %s" % (f["severity"], f["file"], "?" if f["line"] is None else f["line"], f["description"])
-                     for f in v["findings"]) or "- (none)"
 
 
 def brief(root, task):
@@ -53,7 +51,7 @@ def brief(root, task):
              ((task.get("last_test_run") or {}).get("output") or "(none recorded)").strip(), "```", ""]
     for v in task.get("verify_history") or []:
         lines += ["## Round %d: your earlier verdict was %s; check whether each finding is fixed" % (v["round"], v["verdict"].upper()),
-                  "", findings_text(v), ""]
+                  "", report.findings_text(v), ""]
     path = os.path.join(root, ".rehorse", "verify", "%s-round%d.md" % (tid, n))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
@@ -76,22 +74,24 @@ def parse(text):
     if not isinstance(v, dict) or str(v.get("verdict", "")).lower() not in VERDICTS:
         return None
     findings = [{"severity": str(f.get("severity") or "medium").lower(), "file": str(f.get("file") or ""), "line": f.get("line"),
-                 "description": str(f.get("description") or "")} for f in v.get("findings") or [] if isinstance(f, dict)]
+                 "criterion": str(f.get("criterion") or ""), "description": str(f.get("description") or "")} for f in v.get("findings") or []
+                if isinstance(f, dict)]
     coverage = [{"criterion": str(c.get("criterion") or ""), "evidence": c.get("evidence") if c.get("evidence") in EVIDENCE else "none",
                  "ref": str(c.get("ref") or "")} for c in v.get("coverage") or [] if isinstance(c, dict)]
-    return {"verdict": v["verdict"].lower(), "findings": findings, "coverage": coverage,
+    down = v["verdict"].lower() == "fail" and not any(f["criterion"] for f in findings)  # a fail names the criterion it violates
+    return {"verdict": "concerns" if down else v["verdict"].lower(), "downgraded": down, "findings": findings, "coverage": coverage,
             "tests_added": [str(t) for t in v.get("tests_added") or []]}
 
 
 def round_trip_steps(v, run, vfile, n):
-    """Plan steps for the implementer: one per high finding (every finding when the verdict is fail and none is high), one to
-    make the verifier's failing tests pass, and a generic step when a fail verdict came with nothing else."""
+    """Plan steps for the implementer: one per high finding (every finding when the verdict is fail and none is high), and one
+    to make the verifier's failing tests pass."""
     found = [f for f in v["findings"] if f["severity"] == "high"] or (v["findings"] if v["verdict"] == "fail" else [])
     steps = ["Fix (verifier round %d): %s (%s:%s)" % (n, f["description"][:TITLE_CAP] + ("..." if len(f["description"]) > TITLE_CAP else ""),
                                                       f["file"], "?" if f["line"] is None else f["line"]) for f in found]
     if run["failed"]:
         steps.append("Make the verifier's tests pass: %s (%d failing)" % (vfile, run["failed"]))
-    return steps or ["Address the verifier's FAIL verdict from round %d (no findings listed: re-read REHORSE_SPEC.md against the diff)" % n]
+    return steps
 
 
 def verdict(hook):
@@ -113,8 +113,8 @@ def verdict(hook):
                                 "(verdict must be pass|concerns|fail): %s" % SHAPE, "verify")
     run = task["verify_run"]
     task.update(verify_round=n, stop_blocks=0, verifier=dict(v, round=n, tests=run, at=datetime.datetime.now().isoformat(timespec="seconds")))
-    msg = "REHORSE: verifier round %d: %s, %d finding(s); its run: %d passed, %d failed." % (n, v["verdict"].upper(), len(v["findings"]),
-                                                                                             run["passed"], run["failed"])
+    msg = "REHORSE: verifier round %d: %s%s, %d finding(s); its run: %d passed, %d failed." % (
+        n, v["verdict"].upper(), " (fail recorded as concerns: no finding cited a criterion)" if v["downgraded"] else "", len(v["findings"]), run["passed"], run["failed"])
     failing = v["verdict"] == "fail" or run["failed"] > 0
     if failing and n >= MAX_ROUNDS:
         why = "verifier failed %d rounds; round %d found: %s" % (n, n, "; ".join(f["description"] for f in v["findings"][:3]) or "its tests fail")

@@ -34,17 +34,31 @@ End your reply with exactly one ```json block, and nothing after it:
 ```json
 {
   "verdict": "pass | concerns | fail",
-  "findings": [{"severity": "high | medium | low", "file": "path/in/worktree", "line": 12, "description": "what is wrong and how you know"}],
+  "findings": [{"severity": "high | medium | low", "file": "path/in/worktree", "line": 12,
+                "criterion": "<the acceptance criterion this violates, quoted; required for a fail, omit otherwise>",
+                "description": "what is wrong and how you know"}],
   "tests_added": ["tests/<file>::<test_name>"],
   "coverage": [{"criterion": "<acceptance criterion, quoted from the spec>", "evidence": "test | build_only | none", "ref": "<test id, or the file that only compiles it>"}]
 }
 ```
 
-- `fail`: a criterion is not met, or one of your tests fails. `concerns`: everything you could test passes but
-  something is untested, unclear, or changed outside the spec. `pass`: every criterion has a test and you found nothing.
+- `fail`: an acceptance criterion is not met. The finding that says so must carry a `criterion` field quoting the one
+  it violates, and name the test that shows the violation. If you cannot point at a criterion, it is not a `fail`,
+  however sure you are that the code could be better: say `concerns` and let the user decide. A `fail` whose findings
+  cite no criterion is recorded as `concerns` by the hook, so citing one is how a stop is earned, not paperwork.
+  (A failing test of yours sends the task back to the implementer whatever the verdict, so accuracy here costs you
+  nothing.)
+- `concerns`: everything you could test passes, and you have a specific risk the user should read before merging —
+  behaviour that changed outside the spec, an edge case the change gets wrong, a criterion whose only test would pass
+  on the unfixed code. Name it with the file, the line and the test. A note about style or naming is not a concern,
+  and neither is the fact that your own new test now covers a branch the diff missed: that is what `tests_added` and
+  the coverage table are for. If the only thing you can say is "the diff did not test this, so I added a test", the
+  verdict is `pass`.
+- `pass`: every criterion has a test, and you found nothing the user needs to read before merging.
 - `coverage` lists every acceptance criterion in the spec, in order. `test` means a test exercises it; `build_only`
   means the code for it compiles or imports but no test exercises it; `none` means neither.
 - A finding names a real file and line, and its description is one sentence (it becomes a plan step title for the
   implementer; name the test that shows it). A worry without a location is not a finding; put it in the description
-  of the coverage entry it belongs to.
+  of the coverage entry it belongs to. Judge the change against the spec and against the code as it was at the base
+  commit, not against how you would have written it.
 - Fix nothing. Explain nothing after the block.

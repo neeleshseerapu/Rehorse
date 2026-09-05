@@ -83,6 +83,11 @@ def red_lines(task):
     return out + [""] if out else []
 
 
+def findings_text(v):
+    return "\n".join("- [%s] %s:%s %s" % (f["severity"], f["file"], "?" if f["line"] is None else f["line"], f["description"])
+                     for f in v["findings"]) or "- (none)"
+
+
 def coverage_table(cov):
     if not cov:
         return ["(no coverage map returned)"]
@@ -104,15 +109,15 @@ def verifier_section(task, name):
     n = len(v["findings"])
     lines = ["## Verifier: %s (round %d of %d)" % (v["verdict"].upper(), v["round"], verify.MAX_ROUNDS), "",
              "Its run: %s. Tests added: %s" % (progress.counts(v.get("tests")).replace(" / ", ", "), tests_added(v["tests_added"])), "",
-             "Findings:" if n else "Findings: none", *([verify.findings_text({"findings": v["findings"][:MAX_FINDINGS]})] if n else [])]
+             "Findings:" if n else "Findings: none", *([findings_text({"findings": v["findings"][:MAX_FINDINGS]})] if n else [])]
     if n > MAX_FINDINGS:
         lines.append("- ... %d more in %s/verifier/%s" % (n - MAX_FINDINGS, REPORTS, name))
     lines += ["", *coverage_table(v["coverage"]), ""]
     for h in task.get("verify_history") or []:
         lines += ["Round %d: %s (%d finding(s); its run %s)" % (h["round"], h["verdict"].upper(), len(h["findings"]), progress.counts(h.get("tests"))),
-                  verify.findings_text(h), ""]
+                  findings_text(h), ""]
     full = "\n".join(["# Verifier findings: %s (round %d, verdict %s)" % (task["id"], v["round"], v["verdict"]), "",
-                      verify.findings_text(v), "", *coverage_table(v["coverage"]), ""]) if n > MAX_FINDINGS else None
+                      findings_text(v), "", *coverage_table(v["coverage"]), ""]) if n > MAX_FINDINGS else None
     return lines, full
 
 

@@ -610,3 +610,44 @@ pygments 2.19.2 from the lock. Results row: merged-green yes, upstream-tests-pas
   echoing user input markup-parsed on a `markup=False` console, so a typed `[/]` can raise `MarkupError` out of
   `Prompt.ask`. So the verdict difference is run-to-run variance in the verifier, not a change in the code, and the
   variance ran in the safer direction.
+
+## rich-3871: which failed, the verifier or the implementer (2026-09-05)
+
+The task stopped at `needs-attention` after three `fail` verdicts while the upstream PR's tests pass, so the question
+was whether (a) the verifier's test contradicted the spec, and the implementer should have replied `CONTRADICTS SPEC:`,
+or (b) the objection was real but not a spec violation, so it should have been `concerns`. **Neither: the verifier was
+right all three times, and the implementer is what failed.** Criterion 4 of that task's spec reads "Default tables
+(`Table(...)` with `pad_edge=True`, `collapse_padding=False`) keep their current column widths and rendered output —
+the fix must be a no-op whenever `pad_edge` is `True`." Rounds 2 and 3 both cite it by name. Checked, not taken on
+trust: the round-3 test `test_default_expanded_ratio_table_keeps_base_widths_and_content` still fails on the final
+code (`[6, 4, 3]` / `' xxx   x…  … '`), and the same three-column `expand=True` table run against the base commit
+`fe55a13` gives `[5, 5, 3]` / `' xxx  xxx  … '` — exactly what the test asserts. So a default `pad_edge=True` table
+really did change, which criterion 4 forbids, and `fail` was the right verdict. The upstream tests pass because they
+never build that table; this is the eval's two columns measuring different things, not a contradiction.
+
+- **What the implementer did wrong** (not fixed here; `IDEAS.md`). Round 1's finding was about `pad_edge=False`
+  expanded tables, and step 2 chose to fix it in `ratio_distribute` — shared width allocation used by *every* expanded
+  table — rather than in the caller's `flex_minimum`. That widened the blast radius from the spec's case to all of
+  them, and rounds 2 and 3 are the same regression twice: step 4 narrowed the clamp to `sum(minimums) <= total`, which
+  does not exclude the failing case (its minimums do fit). Steps 3 and 5, both "make the verifier's tests pass", were
+  closed with no edits as already satisfied — true of the tests that existed at that moment, and each new round then
+  found another case. The step agent's own summary reports brute-force proof that the *unsatisfiable* branch is
+  unchanged: real work, aimed at the wrong half of the behaviour.
+- **A `fail` must cite the acceptance criterion it violates; anything else is `concerns`** — encoded in the hook, not
+  only in the prompt. A finding may carry `criterion`, and `verify.parse()` records a `fail` whose findings all lack
+  it as `concerns` with `downgraded: True`, which the SubagentStop message says out loud. Downgrade rather than block
+  (the other option) because the rule is about what a verdict *means*: an objection that cannot point at the spec is
+  information for the user, not grounds to stop the model. Nothing is lost by it — a failing verifier test still sends
+  the task back to implement whatever the verdict — so the only thing the rule removes is a round-trip bought by taste.
+  rich-3871's own recurring `medium` (the `tests/test_columns.py` snapshot was rewritten) is exactly that shape: real,
+  worth reading, and not a criterion violation. The generic "Address the verifier's FAIL verdict (no findings listed)"
+  step is gone with it: a `fail` now always arrives with a finding, so the step was unreachable.
+- **What separates `concerns` from `pass`**, from reading all ten runs' verdicts: six of ten were `concerns`, and they
+  split into two kinds. Real risks — rich-3841's fix leaves the reported bug in place for `justify="center"`,
+  rich-3708's group member whose `__cause__` is the group still dies with `RecursionError`, rich-3727's negative
+  `code_width` collapsing a render, rich-3881's `MarkupError` escaping `Prompt.ask` — each names something the user
+  should read before merging. Against that, "no test in the diff reaches this branch, so my test now pins it"
+  (rich-3569, rich-3708) is the verifier reporting its own coverage work as a finding. The prompt now says a concern
+  must name a specific risk with file, line and test, that style and naming notes are not concerns, and that "the diff
+  did not test this, so I added a test" is a `pass`. `findings_text` moved from `verify.py` to `report.py` to pay for
+  the new lines: `verify.py` is a hook script and stays at its 150-line cap.
