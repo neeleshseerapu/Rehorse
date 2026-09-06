@@ -1,3 +1,8 @@
+2 task(s) to run
+== rich-3577: [BUG] Trailing line break removed by Text.from_ansi().
+   merged-green True, upstream False, verifier pass, 15m53s, 42 turn(s)
+== rich-3871: [BUG] Table padding is miscalculated in first column
+   merged-green False, upstream True, verifier None, 9m17s, 17 turn(s)
 # Eval results
 
 ## Methodology
@@ -32,7 +37,8 @@ implement and buys another verifier round, so the number of rounds sets the slow
 | rich-3727 | 2 | yes | green | **yes** | concerns | 1 | 11m39s | 23 | [report](results/rich-3727.report.md) |
 | rich-3796 | 3 | yes | green | **yes** | concerns | 1 | 9m29s | 22 | [report](results/rich-3796.report.md) |
 | rich-3841 | 2 | yes | green | **yes** | concerns | 1 | 12m10s | 27 | [report](results/rich-3841.report.md) |
-| rich-3871 | 2 | no | needs-attention | **yes** | – | 0 | 9m17s | 17 | [report](results/rich-3871.report.md) |
+| rich-3871 | 2 | no | needs-attention | **yes** | – | 0 | 9m17s | 17 | – |
 | rich-3881 | 1 | yes | green | **yes** | concerns | 1 | 8m12s | 21 | [report](results/rich-3881.report.md) |
 | rich-4038 | 2 | yes | green | **yes** | pass | 2 | 22m30s | 30 | [report](results/rich-4038.report.md) |
 | rich-4041 | 1 | yes | green | **yes** | pass | 1 | 5m02s | 18 | [report](results/rich-4041.report.md) |
+

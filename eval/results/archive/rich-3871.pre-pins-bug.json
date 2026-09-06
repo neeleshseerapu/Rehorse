@@ -1,0 +1,40 @@
+{
+ "id": "rich-3871",
+ "merged_green": false,
+ "upstream_pass": true,
+ "verdict": "fail",
+ "rounds": 3,
+ "wall_s": 2063.0,
+ "turns": 35,
+ "report": "results/rich-3871.report.md",
+ "session_id": "11045391-c359-40b9-81e4-024c3314357f",
+ "cost_usd": 9.265702499999996,
+ "is_error": false,
+ "phase": "needs-attention",
+ "attention": "verifier failed 3 rounds; round 3 found: The `clamp_to_reserved` branch still re-allocates flexible widths for default `pad_edge=True` tables whose minimums fit, so a three-column `expand=True` table at width 13 now truncates column 1 to 'x\u2026' while column 0 gains a blank cell, violating criterion 4's no-op requirement (tests/test_rehorse_verify_t-20260904-fix-table-grid-first-column-padding.py::test_default_expanded_ratio_table_keeps_base_widths_and_content).; The pre-existing Columns snapshot was rewritten by the change although the spec's assumptions require such a test to be reported rather than edited, leaving no record of the old output (the intended behaviour is pinned instead by test_columns_of_fixed_width_are_separated_by_exactly_one_cell).; The exhaustive criterion-1 test compares `_get_padding_width` against `_get_cells`, the very code the fix mirrors, so it cannot detect a rule both sides get wrong; only the output-level oracle in test_rendered_row_matches_padding_rules_for_all_combinations checks the printed result.",
+ "baseline": {
+  "passed": 929,
+  "failed": 0,
+  "failing": []
+ },
+ "last_test_run": {
+  "passed": 944,
+  "failed": 1,
+  "at": "2026-09-04T20:13:17",
+  "build_failed": false,
+  "after_edit_seq": 10,
+  "command": "/private/tmp/rehorse-eval/rich-3871/.venv/bin/python -m pytest -q --tb=short -rfE 2>&1 | tail -30",
+  "output": "........................................................................ [ 44%]\n........................................................................ [ 51%]\n.............s.......................................................... [ 59%]\n...............F........................................................ [ 66%]\n........................................................................ [ 74%]\n........................................................................ [ 81%]\n........................................................................ [ 89%]\n...................................................s........s.s......... [ 96%]\n.................sssssssssssssssss                                       [100%]\n=================================== FAILURES ===================================\n_______ test_default_expanded_ratio_table_keeps_base_widths_and_content ________\ntests/test_rehorse_verify_t-20260904-fix-table-grid-first-column-padding.py:258: in test_default_expanded_ratio_table_keeps_base_widths_and_content\n    assert (widths, line) == ([5, 5, 3], \" xxx  xxx  \u2026 \"), (\nE   AssertionError: default pad_edge=True table changed: widths=[6, 4, 3], line=' xxx   x\u2026  \u2026 '\nE   assert ([6, 4, 3], ' xxx   x\u2026  \u2026 ') == ([5, 5, 3], ' xxx  xxx  \u2026 ')\nE     \nE     At index 0 diff: [6, 4, 3] != [5, 5, 3]\nE     Use -v to get more diff\n=============================== warnings summary ===============================\n../../../.venv/lib/python3.13/site-packages/_pytest/python.py:124\n  /private/tmp/rehorse-eval/rich-3871/.venv/lib/python3.13/site-packages/_pytest/python.py:124: PytestRemovedIn10Warning: Passing a non-Collection iterable to parametrize is deprecated.\n  Test: tests/test_panel.py::test_render_panel, argvalues type: zip\n  Please convert to a list or tuple.\n  See https://docs.pytest.org/en/stable/deprecations.html#parametrize-iterators\n    metafunc.parametrize(*marker.args, **marker.kwargs, _param_mark=marker)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_rehorse_verify_t-20260904-fix-table-grid-first-column-padding.py::test_default_expanded_ratio_table_keeps_base_widths_and_content\n1 failed, 944 passed, 25 skipped, 1 warning in 3.43s"
+ },
+ "grade": {
+  "upstream_pass": true,
+  "counts": {
+   "passed": 22,
+   "failed": 0
+  },
+  "command": ".venv/bin/python -m pytest -q --tb=short tests/test_columns.py tests/test_table.py",
+  "where": "/tmp/rehorse-eval/rich-3871/.rehorse/worktrees/t-20260904-fix-table-grid-first-column-padding",
+  "tests_from": "9e18b96652f37293121b04017fb6aa95af21b013",
+  "output_tail": "......................                                                   [100%]\n22 passed in 0.06s\n"
+ }
+}
