@@ -4,6 +4,9 @@ All notable changes to Rehorse are recorded here. Format: [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+- The README is under 100 lines and 700 words, with the eval reduced to one paragraph that links `eval/results.md`; `tests/test_readme.py` enforces both, and the per-section limits with them.
+
 ## [0.2.0-alpha] - 2026-09-05
 
 First tagged release: the plugin is complete through milestone 6 (skills, hooks, verifier, eval harness) and has been
