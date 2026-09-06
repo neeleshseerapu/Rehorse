@@ -207,7 +207,7 @@ If 8 fails on the "subagent tool calls pass through hooks" half, the step-based 
 3. Hooks: `guard_edit.py`, `guard_bash.py`, `on_bash_done.py`, `guard_stop.py` + tests; `hooks.json` wired.
 4. Skills: build / status / merge / discard; `report.py`, `progress.py`, `handoff.py`; step-based implement via subagents; end-to-end on a toy repo with a tiny pytest suite, including a forced compaction and a resume from a fresh session.
 5. Red-before-green check and test-path lock; verifier agent; report includes verdict and drift.
-6. `eval/`: tasks.json for `rich` (10 tasks), `run_eval.py`, first results table.
+6. `eval/`: tasks.json for `rich` (10 tasks), `run_eval.py`, first results table. **Done 2026-09-05, tagged `v0.2.0-alpha`**: 9 of 10 pass the upstream PR's tests, 9 self-green, 10 reports, 0 errors; the design changes the runs forced are in `DECISIONS.md`.
 7. `fastapi` and `zod` tasks; results in README; demo recording of "type one command, walk away, come back to a report."
 8. Publish: plugin marketplace entry, install instructions, CONTRIBUTING with an AI-disclosure section.
 

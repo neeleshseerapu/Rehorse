@@ -1,7 +1,7 @@
 {
   "name": "rehorse",
   "description": "Auto mode you can walk away from: every task rehearses on a git worktree, goes red-then-green, is checked by an independent verifier, and stops with a report. Hooks, not prose, keep it off your real branch.",
-  "version": "0.1.0",
+  "version": "0.2.0-alpha",
   "author": {
     "name": "Neelesh Seerapu"
   },

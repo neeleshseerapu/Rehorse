@@ -923,3 +923,34 @@ reader had no way to tell those two halves apart, and neither did the verifier.
   the tests phase dutifully invented coverage entries "11." and "12." for things nobody had asked for. Only items at
   the section's outermost indent are criteria now. The gate got weaker in exactly the way it should: it stopped
   demanding tests for half-sentences.
+
+## Milestone 6 closed: what ten real tasks changed (2026-09-05)
+
+Ten `rich` issues, each a closed bug whose merged PR touched a test file and a non-test file, graded by that PR's own
+tests and never by Rehorse's. **Nine of ten pass the upstream tests; nine reached a green report; ten have a report;
+none errored.** The two that did not go green are the reason the milestone was worth doing — an eval whose only output
+is a pass rate would have taught nothing, and every design change below came from reading one run's artifacts, not
+from the column.
+
+- **The number that moved most is not the pass rate, it is `10/10 reports`.** It was 9 at the start of the day.
+  `rich-3871` stopped inside a hook, which set the phase and printed a `systemMessage` and left the user a
+  `PROGRESS.md` line — the one run that most needed explaining was the one that explained itself least. A stop now
+  writes its own report.
+- **The eval measures two different things and they disagree on purpose.** `upstream-tests-pass` is the grade;
+  `rehorse-outcome` is what Rehorse itself claimed. `rich-3871` is `needs-attention` next to `upstream-tests-pass:
+  yes`, because its verifier caught a default-table regression that the upstream tests never build a table to see. A
+  harness that collapsed those two columns into one would have recorded that run as a success and thrown away the
+  finding.
+- **Five design changes, each traceable to one run.** A test the repo already had may be rewritten, declared, with the
+  criterion that says so (`rich-3577`, tests phase). A verifier finding that such a test pins the bug routes back to
+  the tests phase rather than to the implementer, who cannot edit it (`rich-3577`, verify). A step's
+  `CONTRADICTS SPEC:` takes the same route (`rich-3871`, re-run). A fix for a verifier finding stays in the caller the
+  finding named (`rich-3871`, archived three-round run). A run narrowed to part of the suite is a diagnostic, not a
+  test run (`rich-3871`, its last recorded "test run" was one test). Plus two rules about what a claim must point at
+  before it can move a task: a `fail` cites the criterion it violates, and a `pins_bug` or a contradiction names the
+  test.
+- **What is still only one repo deep.** Every one of those changes was designed against pytest, against one project's
+  conventions, in one language. `fastapi` and `zod` are in `eval/tasks.json` and have not run. Nothing here is known to
+  survive a runner whose output is shaped differently, and the honest name for that state is alpha.
+- **`v0.2.0-alpha` is tagged here.** The CHANGELOG's Unreleased notes move under it with today's date; `Unreleased`
+  stays, empty, for milestone 7.

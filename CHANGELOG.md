@@ -4,6 +4,12 @@ All notable changes to Rehorse are recorded here. Format: [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.2.0-alpha] - 2026-09-05
+
+First tagged release: the plugin is complete through milestone 6 (skills, hooks, verifier, eval harness) and has been
+run end to end against ten real `rich` issues. Alpha because the eval is one Python repo deep — `fastapi` and `zod`
+have not run, so nothing here is known to hold for a second language.
+
 ### Added
 - `/rehorse:build "<task>"`: rehearses a task on its own git worktree and branch, writes failing tests first, implements in committed steps, and stops with a one-screen report in `rehorse-reports/`. It never merges.
 - `/rehorse:merge` and `/rehorse:discard`: the only ways work reaches your branch or is dropped. Only a command you type can authorize them.
