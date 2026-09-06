@@ -10,16 +10,22 @@ import json
 import os
 import sys
 
+import report
 import state
 
 CAP = 8
 
 
 def attention(root, s, task, why):
-    """Drop the task to needs-attention and let the stop through, with a systemMessage the walk-away user will see."""
+    """Drop the task to needs-attention and let the stop through, with a systemMessage the walk-away user will see.
+
+    The report is rendered here rather than asked of the model: this is where a walked-away user picks the task up, and
+    the turn that would have written one is the turn now ending."""
     state.advance(s, task["id"], state.ATTENTION, reason=why)
     state.save(root, s)
-    json.dump({"systemMessage": "REHORSE: task %s moved to needs-attention: %s. Run /rehorse:status." % (task["id"], why)}, sys.stdout)
+    path = report.write_stop(root, s, task)
+    json.dump({"systemMessage": "REHORSE: task %s moved to needs-attention: %s.%s Run /rehorse:status." % (
+        task["id"], why, " Report: %s." % path if path else "")}, sys.stdout)
     return 0
 
 

@@ -16,6 +16,7 @@ import os
 import sys
 
 import coverage
+import report
 import state
 import testcmd
 import worktree
@@ -71,8 +72,8 @@ def main():
             msg += " %d failing at baseline (ignored in the red check)." % counts["failed"]
         if counts["passed"] + counts["failed"] == 0:
             state.advance(s, task["id"], state.ATTENTION, reason="baseline ran 0 tests with `%s`" % command)
-            msg = ("baseline ran 0 tests, so task %s moved to needs-attention. Fix the test command or test discovery, "
-                   "then resume via /rehorse:status." % task["id"])
+            msg = ("baseline ran 0 tests, so task %s moved to needs-attention (report: %s). Fix the test command or "
+                   "test discovery, then resume via /rehorse:status." % (task["id"], report.write_stop(root, s, task)))
     elif task["phase"] == "tests":
         task["red_check"] = dict(counts)
         base = task.get("baseline") or {"passed": 0, "failed": 0}

@@ -4,8 +4,9 @@
 yourself -> merge/discard commands). More than MAX_FINDINGS findings go to rehorse-reports/verifier/<same-name>.md, linked.
 
 Runs after verify (advances verify -> report itself) or on a task in needs-attention (renders the reason as the banner,
-phase unchanged). Writes the report and PROGRESS.md in the main checkout, where the user looks, then commits copies of
-both on the rehearsal branch so /rehorse:merge carries the evidence into the real branch. Prints the report path.
+phase unchanged); write_stop() is how the hooks render that second one, so no stop leaves the user without a report.
+Writes the report and PROGRESS.md in the main checkout, where the user looks, then commits copies of both on the
+rehearsal branch so /rehorse:merge carries the evidence into the real branch. Prints the report path.
 CLI: report.py [--task ID] [--summary "<text>"]   (the summary is the orchestrator's own words; it is labelled as such)
 """
 import os
@@ -211,6 +212,39 @@ def render(root, task, name):
     return "\n".join(lines), full
 
 
+def write(root, s, task):
+    """Render the report, write it and PROGRESS.md in the main checkout, commit both on the rehearsal branch, record the
+    path in state, and return it."""
+    name = report_name(task)
+    task["report_path"] = "%s/%s" % (REPORTS, name)
+    path = os.path.join(root, REPORTS, name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    text, full = render(root, task, name)
+    with open(path, "w") as f:
+        f.write(text)
+    files = [name, "PROGRESS.md"]
+    if full:
+        os.makedirs(os.path.join(root, REPORTS, "verifier"), exist_ok=True)
+        with open(os.path.join(root, REPORTS, "verifier", name), "w") as f:
+            f.write(full)
+        files.append("verifier/" + name)
+    state.save(root, s)
+    progress.render(root, s)
+    commit_evidence(root, task, files)
+    return path
+
+
+def write_stop(root, s, task):
+    """The report for a task a hook just dropped to needs-attention. The stop is where the walk-away user picks the task
+    up, and the model's turn is over by then, so the hook renders it rather than asking for it: every stop leaves a
+    report, with the reason as its banner. Returns the path, or None -- any phase can stop, including ones with no plan,
+    no red check and no verdict, and a report that cannot be rendered must not also break the stop."""
+    try:
+        return write(root, s, task)
+    except Exception:  # noqa: BLE001 - see above: the stop matters more than the artifact
+        return None
+
+
 def commit_evidence(root, task, files):
     """Copy the report and the PROGRESS.md snapshot into the worktree and commit them on the rehearsal branch."""
     wt = progress.wt_path(root, task)
@@ -239,23 +273,7 @@ def main(argv):
         state.advance(s, task["id"], "report")
     elif task["phase"] not in ("report", state.ATTENTION):
         sys.exit("report.py: task %s is in phase %s; the report is rendered after verify." % (task["id"], task["phase"]))
-    name = report_name(task)
-    task["report_path"] = "%s/%s" % (REPORTS, name)
-    path = os.path.join(root, REPORTS, name)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    text, full = render(root, task, name)
-    with open(path, "w") as f:
-        f.write(text)
-    files = [name, "PROGRESS.md"]
-    if full:
-        os.makedirs(os.path.join(root, REPORTS, "verifier"), exist_ok=True)
-        with open(os.path.join(root, REPORTS, "verifier", name), "w") as f:
-            f.write(full)
-        files.append("verifier/" + name)
-    state.save(root, s)
-    progress.render(root, s)
-    commit_evidence(root, task, files)
-    print(path)
+    print(write(root, s, task))
     return 0
 
 

@@ -6,7 +6,7 @@ import os
 import shutil
 
 import pytest
-from conftest import PINNED_FIXTURE as FIXTURE, commit_in, hook_input, hook_out, run_script, task_in, task_state
+from conftest import PINNED_FIXTURE as FIXTURE, commit_in, git, hook_input, hook_out, run_script, task_in, task_state
 
 import progress
 import state
@@ -275,3 +275,33 @@ def test_a_second_tests_phase_keeps_the_first_rounds_declarations(pinned_repo):
     assert set(recorded) == {"tests/test_app.py::test_long_text_is_cut_with_an_ellipsis",
                              "tests/test_app.py::test_short_text_is_returned_unchanged"}
     assert recorded["tests/test_app.py::test_long_text_is_cut_with_an_ellipsis"].startswith("it pins the off-by-one")
+
+
+def test_a_contradicts_spec_stop_during_implement_leaves_the_user_a_report(repo):
+    """The rich-3871 shape, from its own captured hook input: a step agent finds an existing test that pins the bug,
+    stops the task, and the turn ends there. Nobody is left to run report.py, so the hook renders it: the report exists,
+    its banner is the reason, and the systemMessage points at it."""
+    wt = plan_task(repo, plan=[{"title": "Make _get_padding_width honor pad_edge", "done": False, "summary": None, "commit": None}],
+                   edit_seq=8, last_test_run={"passed": 931, "failed": 1, "after_edit_seq": 8, "output": ""})
+    payload = dict(hook_input("subagentstop_step_contradicts"), cwd=str(repo))
+    out = hook_out(run_script("step_done", stdin=payload, cwd=str(repo)))
+    t = task_state(repo)
+    line = t["attention"]["reason"]
+    assert line.startswith("CONTRADICTS SPEC: `tests/test_columns.py::test_render`")
+    assert t["phase"] == "needs-attention" and t["attention"]["prior_phase"] == "implement"
+    report_path = repo / t["report_path"]
+    assert report_path.exists(), "a needs-attention stop must never leave the user without a report"
+    text = report_path.read_text()
+    assert "## NEEDS ATTENTION: %s (was in implement)" % line in text
+    assert "## Verifier: not run" in text and "cd %s" % wt in text  # the unfinished phases still render
+    assert str(report_path) in out["systemMessage"] and "needs-attention" in out["systemMessage"]
+
+
+def test_the_report_of_a_stop_is_committed_on_the_rehearsal_branch_like_any_other(repo):
+    """The evidence trail does not depend on how the task ended: /rehorse:merge carries a stop's report too."""
+    plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None}],
+              edit_seq=1, last_test_run={"passed": 1, "failed": 0, "after_edit_seq": 1, "output": ""})
+    step_done(repo, "Cannot proceed.\nCONTRADICTS SPEC: tests/test_app.py::test_add pins the bug (criterion 1)")
+    name = os.path.basename(task_state(repo)["report_path"])
+    committed = git(repo / ".rehorse" / "worktrees" / "t-1", "show", "--stat", "HEAD")
+    assert "rehorse: report for t-1" in committed and name in committed

@@ -792,3 +792,38 @@ helper" from "the model reached for the shared helper because it was there".
   nothing about the other half of the rich-3871 diagnosis — the two "make the verifier's tests pass" steps closed with
   no edits, each true of the tests that existed at that moment and proving nothing about the next round's cases. That
   half stays in `IDEAS.md`.
+
+## rich-3871's second run stopped legitimately, and the stop is what had no report (2026-09-05)
+
+The re-run of `rich-3871` (after the two changes above landed) stopped in a different place than the run the
+post-mortem covers: `needs-attention` at 17 turns, **zero verifier rounds**, still in `implement`, plan step 1 of 1
+open. The gate was `step_done.py`'s first branch — the SubagentStop hook for `rehorse-step`, which sends a reply line
+starting `CONTRADICTS SPEC:` straight to `needs-attention` before any other check. The line, recorded verbatim as
+`attention.reason`:
+
+> CONTRADICTS SPEC: `tests/test_columns.py::test_render` (its "fixed width" section) asserts the doubled first-column
+> pad and trailing last-column pad, contradicting acceptance criteria 1, 2 and 5 (and the spec's own note that such a
+> snapshot "encodes the bug"); satisfying it would require reverting the fix, so criterion 6 cannot hold unchanged for
+> that snapshot.
+
+- **The stop was right, and so was the claim.** Upstream's merged PR #3935 rewrites exactly that snapshot: every line
+  of the "fixed width" section loses one leading pad on column 1 and one trailing pad on the last. The implementer
+  named the right test, the right sections and the right reason, and it had no legal move — test paths are locked in
+  `implement`.
+- **It is the `rich-3577` shape one phase early, and it does not get `rich-3577`'s answer.** The tests phase could not
+  have caught it: at red, `test_columns.py::test_render` still passed (`red_check.preexisting: 0`); it only broke once
+  the fix landed. A verifier finding of the same shape carries `pins_bug` and routes back to the tests phase. The
+  implementer's does not, and that asymmetry is the point: the lock exists to constrain the implementer, so the party
+  asking for a locked test to be rewritten is the party the lock is aimed at. Its exit stays "stop and hand the user
+  the decision". No gate or prompt changed here.
+- **What the stop did get wrong: it left no report.** `report.py` has rendered the `needs-attention` banner since
+  milestone 4, but only when something runs it, and on a hook-initiated stop the turn that would have run it is the
+  turn ending. `rich-3871` therefore reached the user as a `PROGRESS.md` line and a `systemMessage` — the eval row's
+  report column is the visible hole. So `report.write_stop()` now renders, writes and commits the report inside
+  `guard_stop.attention()` and on `on_bash_done.py`'s zero-test baseline, which between them are every route into the
+  phase (the Stop and SubagentStop caps, a step's `CONTRADICTS SPEC:`, a third failing verifier round, and a baseline
+  that ran nothing). A walk-away user now finds the same artifact whichever way the task ended.
+- **`write_stop()` swallows its own failure.** Any phase can stop, including `spec` with no plan, no red check and no
+  verdict, and a report that cannot be rendered must not also break the stop — so it returns the path or `None`, and
+  the `systemMessage` names the path only when there is one. The earliest possible stop, a zero-test baseline, was
+  checked against a real hook input and renders.

@@ -162,8 +162,9 @@ when *you* type the command, and the scripts refuse without it.
 
 If a session is interrupted, compacted, or you open a new one, Rehorse injects a one-line state summary and
 continues from PROGRESS.md. If the model gets stuck (for example, it keeps trying to stop without running tests), the
-task drops to `needs-attention` with the reason instead of ending silently; `/rehorse:status` shows it and
-`/rehorse:build resume` continues.
+task drops to `needs-attention` with the reason instead of ending silently, and the hook that stopped it writes
+the report on its way out, with the reason as the banner — a stop leaves you the same artifact a finished
+rehearsal does. `/rehorse:status` shows it and `/rehorse:build resume` continues.
 
 ### What Rehorse writes in your repo
 
