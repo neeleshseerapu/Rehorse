@@ -74,6 +74,22 @@ def test_plan_refuses_a_dirty_worktree_with_the_exact_git_command(repo):
     assert task_state(repo)["plan"] == []
 
 
+def test_plan_refuses_once_a_verifier_round_has_added_steps(repo):
+    """A re-plan resets the plan, so after a round trip it would silently drop the steps the verifier's findings bought
+    (and, after a test revision, the orchestrator is walked back through the tests phase where `plan` normally follows)."""
+    sha = commit_in(plan_task(repo), "tests/test_new.py", "def test_x():\n    assert 0\n", "tests: red")
+    s = state.load(str(repo))
+    s["tasks"]["t-1"].update(plan=[{"title": "Fix (verifier round 1): x", "done": False, "summary": None, "commit": None}],
+                             verify_history=[{"round": 1, "verdict": "fail", "findings": [], "tests_added": [], "coverage": []}])
+    state.save(str(repo), s)
+    r = run_script("progress", ["plan", "A", "B"], cwd=str(repo))
+    assert r.returncode != 0 and "round-trip steps" in r.stderr and "progress.py add" in r.stderr
+    t = task_state(repo)
+    assert [p["title"] for p in t["plan"]] == ["Fix (verifier round 1): x"] and t["tests_sha"] != sha
+    assert run_script("progress", ["add", "B"], cwd=str(repo)).returncode == 0  # appending is still allowed
+    assert len(task_state(repo)["plan"]) == 2
+
+
 def test_plan_is_implement_only_and_limited_to_six_steps(repo):
     plan_task(repo, "tests")
     assert run_script("progress", ["plan", "A"], cwd=str(repo)).returncode != 0

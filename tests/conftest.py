@@ -79,6 +79,26 @@ def commit_in(wt, rel_path, content, message):
     return git(wt, "rev-parse", "HEAD").strip()
 
 
+PINNED_FIXTURE = os.path.join(ROOT, "tests", "fixtures", "repo_with_pinned_wrong_behaviour")
+
+
+@pytest.fixture
+def pinned_repo(tmp_path):
+    """The fixture repo whose existing assertion is the bug: fixing truncate() correctly means changing that test.
+
+    The rich-3577 shape. Used from both ends: the tests phase declaring the rewrite up front (test_step_done.py) and
+    the verifier discovering it after the fact (test_verify.py)."""
+    import shutil
+    repo = tmp_path / "repo"
+    shutil.copytree(PINNED_FIXTURE, repo)
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@example.com")
+    git(repo, "config", "user.name", "t")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "init")
+    return repo
+
+
 @pytest.fixture
 def venv_repo(tmp_path):
     """Copy of tests/fixtures/repo_with_venv with a real (pip-less) virtualenv of its own."""

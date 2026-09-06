@@ -121,3 +121,12 @@ def test_after_a_round_trip_the_verifiers_file_is_locked_like_every_test(repo):
     wt = task_in(repo, "implement")
     reason = denied(edit(repo, wt + "/tests/test_rehorse_verify_t-1.py", subagent=True))
     assert "locked" in reason and "step summary" in reason
+
+
+def test_the_tests_phase_may_not_touch_the_verifiers_file_either(repo):
+    """A test-revision round trip walks the task back into `tests`, the one phase where every test path is writable.
+    The verifier's own file is the one test in the worktree that phase must not be able to weaken."""
+    wt = task_in(repo, "tests")
+    reason = denied(edit(repo, wt + "/tests/test_rehorse_verify_t-1.py", subagent=True))
+    assert "verifier" in reason and "phase tests" in reason
+    assert edit(repo, wt + "/tests/test_app.py", subagent=True) is None  # every other test is still the phase's to write

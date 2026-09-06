@@ -41,6 +41,7 @@ End your reply with exactly one ```json block, and nothing after it:
   "verdict": "pass | concerns | fail",
   "findings": [{"severity": "high | medium | low", "file": "path/in/worktree", "line": 12,
                 "criterion": "<the acceptance criterion this violates, quoted; required for a fail, omit otherwise>",
+                "test": "<file>::<test>", "pins_bug": false,
                 "description": "what is wrong and how you know"}],
   "tests_added": ["tests/<file>::<test_name>"],
   "coverage": [{"criterion": "<acceptance criterion, quoted from the spec>", "evidence": "test | build_only | none", "ref": "<test id, or the file that only compiles it>"}]
@@ -59,6 +60,14 @@ End your reply with exactly one ```json block, and nothing after it:
   and neither is the fact that your own new test now covers a branch the diff missed: that is what `tests_added` and
   the coverage table are for. If the only thing you can say is "the diff did not test this, so I added a test", the
   verdict is `pass`.
+- `pins_bug`: set it, with `test` naming the existing test, when the thing standing between this change and the spec
+  is **a test the repo already had, asserting the behaviour the spec calls the bug**. The symptom is a change that
+  looks correct to you and a suite that cannot go green, because an old assertion still pins the old answer. Say so in
+  this finding rather than reporting the failure as the implementer's: it cannot fix this one, since test files are
+  locked once the tests phase ends, and the round would come back saying the same thing. The task goes back to the
+  tests phase instead, where that test is rewritten with a written reason, and it costs a round like any other. Use it
+  only when the spec really does contradict the old assertion — quote the criterion in `criterion` — and never for a
+  test you merely disagree with, or to get an inconvenient test out of the way.
 - `pass`: every criterion has a test, and you found nothing the user needs to read before merging.
 - `coverage` lists every acceptance criterion in the spec, in order. `test` means a test exercises it; `build_only`
   means the code for it compiles or imports but no test exercises it; `none` means neither.

@@ -21,6 +21,10 @@ NEXT = {"setup": "no test command was detected: delegate the minimal test harnes
         "tests": "delegate the failing tests to a rehorse-step subagent (test paths only), run the test command in the worktree "
                  "(red_check: at least one failure), then `state.py advance implement` and `progress.py plan \"...\"`.",
         "report": "done; the user decides: /rehorse:merge %(id)s or /rehorse:discard %(id)s."}
+REVISION_NEXT = ("the verifier sent this back to tests: %s pins behaviour the spec calls a bug. Delegate the rewrite to a "
+                 "rehorse-step subagent (test paths only), declaring it in the reply's expected_test_changes with the criterion "
+                 "that says so, then `state.py advance implement` and continue at the existing plan step — the plan is already "
+                 "set, so do not run `progress.py plan`.")
 VERIFY_NEXT = ("run `verify.py brief` and spawn a rehorse-verifier subagent (subagent_type rehorse:rehorse-verifier) with its "
                "output as the whole prompt.", "verdict %(verdict)s (round %(round)d): `report.py --summary \"...\"`.")
 
@@ -36,6 +40,8 @@ def next_action(task):
             task["attention"]["reason"], task["attention"]["prior_phase"], task["id"])
     if task["phase"] == "verify":
         return VERIFY_NEXT[1] % v if v else VERIFY_NEXT[0]
+    if task["phase"] == "tests" and (task.get("verify_history") or [{}])[-1].get("revision"):
+        return REVISION_NEXT % ", ".join(r["test"] for r in task["verify_history"][-1]["revision"])
     if task["phase"] != "implement":
         return NEXT.get(task["phase"], task["phase"]) % task
     return ("split the spec into 1-%d steps: `progress.py plan \"step\" ...`." % MAX_STEPS if not plan else
@@ -78,6 +84,9 @@ def render(root, s):
 def set_plan(root, s, task, titles):
     if task["phase"] != "implement":
         raise ValueError("the plan is set in phase implement (task is in %s)" % task["phase"])
+    if task.get("verify_history"):  # a re-plan here would silently drop the steps a verifier round bought
+        raise ValueError("task %s has been through verify %d time(s); `plan` would drop the round-trip steps it earned. The plan is "
+                         "already set: run the remaining steps, or append with `progress.py add \"...\"`" % (task["id"], len(task["verify_history"])))
     if not 1 <= len(titles) <= MAX_STEPS:
         raise ValueError("a plan has 1-%d steps, got %d" % (MAX_STEPS, len(titles)))
     dirty = worktree.dirty(root, task["id"])

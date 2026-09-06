@@ -19,6 +19,7 @@ import worktree
 REPORTS = "rehorse-reports/"
 PLUGIN = os.environ.get("CLAUDE_PLUGIN_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEST_HINT = "under a test dir or named test_*.py, *_test.py, conftest.py, *.test.ts"
+VERIFY_RE = re.compile(r"rehorse_verify_")  # any round's verifier file, not just this task's: none of them is the phase's to edit
 
 
 def check(root, task, inside, rel, from_subagent):
@@ -33,6 +34,9 @@ def check(root, task, inside, rel, from_subagent):
             task["id"], wt, target)
     is_test = testcmd.is_test_path(rel, task.get("test_paths") or [])
     phase = task["phase"]
+    if phase == "tests" and is_test and VERIFY_RE.search(os.path.basename(rel)):
+        return ("phase tests: %s is the verifier's own file. A test-revision round may rewrite a test the repo already "
+                "had, with a reason; it may not touch the tests the verifier wrote to catch this change." % rel)
     if phase == "tests" and not is_test:
         return ("phase tests: only test files may be edited (%s). Write the failing tests first; %s is an implementation "
                 "file and unlocks in the implement phase, after red_check." % (TEST_HINT, rel))

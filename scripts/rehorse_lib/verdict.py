@@ -12,7 +12,8 @@ EVIDENCE = ("test", "build_only", "none")
 MAX_ROUNDS = 3
 TITLE_CAP = 180  # a finding's description as a step title; the full text stays in state
 SHAPE = ('{"verdict": "pass|concerns|fail", "findings": [{"severity": "high|medium|low", "file": "<path>", "line": 0, '
-         '"criterion": "<the acceptance criterion this violates; required for a fail>", "description": "..."}], '
+         '"criterion": "<the acceptance criterion this violates; required for a fail>", '
+         '"test": "<file>::<test>", "pins_bug": false, "description": "..."}], '
          '"tests_added": ["<file>::<test>"], "coverage": [{"criterion": "<acceptance criterion>", '
          '"evidence": "test|build_only|none", "ref": "<test id or file>"}]}')
 
@@ -27,8 +28,9 @@ def parse(text):
     if not isinstance(v, dict) or str(v.get("verdict", "")).lower() not in VERDICTS:
         return None
     findings = [{"severity": str(f.get("severity") or "medium").lower(), "file": str(f.get("file") or ""), "line": f.get("line"),
-                 "criterion": str(f.get("criterion") or ""), "description": str(f.get("description") or "")} for f in v.get("findings") or []
-                if isinstance(f, dict)]
+                 "criterion": str(f.get("criterion") or ""), "test": str(f.get("test") or ""),
+                 "pins_bug": bool(f.get("pins_bug")) and bool(f.get("test")),  # a claim about a test nobody named cannot be routed
+                 "description": str(f.get("description") or "")} for f in v.get("findings") or [] if isinstance(f, dict)]
     coverage = [{"criterion": str(c.get("criterion") or ""), "evidence": c.get("evidence") if c.get("evidence") in EVIDENCE else "none",
                  "ref": str(c.get("ref") or "")} for c in v.get("coverage") or [] if isinstance(c, dict)]
     down = v["verdict"].lower() == "fail" and not any(f["criterion"] for f in findings)  # a fail names the criterion it violates
@@ -36,12 +38,24 @@ def parse(text):
             "tests_added": [str(t) for t in v.get("tests_added") or []]}
 
 
+def revisions(v):
+    """Findings that say an existing test pins the very behaviour the spec calls a bug, each naming that test.
+
+    The implementer cannot answer one of these. Test paths are locked once the tests phase ends, so the only edit that
+    would satisfy the finding is an edit the hooks deny, and the round would come back saying the same thing. The
+    round trip therefore goes to `tests`, the one phase whose job is deciding what the tests should say and where a
+    rewrite is declared, justified against a criterion and recorded. `pins_bug` counts only with a test id: a claim
+    about a test nobody named cannot be routed anywhere (parse() drops the flag), so it stays an ordinary finding."""
+    return [f for f in v["findings"] if f["pins_bug"]]
+
+
 def round_trip_steps(v, run, vfile, n):
     """Plan steps for the implementer: one per high finding (every finding when the verdict is fail and none is high), and one
-    to make the verifier's failing tests pass."""
+    to make the verifier's failing tests pass. A pins_bug finding is answered by the tests phase, so it buys no step here."""
     found = [f for f in v["findings"] if f["severity"] == "high"] or (v["findings"] if v["verdict"] == "fail" else [])
     steps = ["Fix (verifier round %d): %s (%s:%s)" % (n, f["description"][:TITLE_CAP] + ("..." if len(f["description"]) > TITLE_CAP else ""),
-                                                      f["file"], "?" if f["line"] is None else f["line"]) for f in found]
+                                                      f["file"], "?" if f["line"] is None else f["line"])
+             for f in found if not f["pins_bug"]]
     if run["failed"]:
         steps.append("Make the verifier's tests pass: %s (%d failing)" % (vfile, run["failed"]))
     return steps

@@ -6,7 +6,8 @@ after its last edit, committed its test file, and ended its reply with the JSON 
 in state. The orchestrator never copies a verdict by hand, so it cannot soften one, and a `fail` whose findings cite no
 acceptance criterion is recorded as `concerns`: a stop points at the spec, not at the verifier's taste. A `fail`, or a failing
 verifier test, sends the task back to implement with the findings as plan steps (the verifier's file is then locked like every
-test); the third failing round sets needs-attention instead. The report shows the round count and earlier rounds' findings.
+test); a finding that says an existing test pins the very behaviour the spec calls a bug goes back to `tests` instead,
+where rewriting a test is a declared decision. The third failing round sets needs-attention whichever way it would have gone. The report shows the round count and earlier rounds' findings.
 The verdict vocabulary, the parser and the round-trip steps live in rehorse_lib/verdict.py.
 """
 import datetime
@@ -43,8 +44,10 @@ def verdict(hook):
     if not v:
         return guard_stop.block(root, s, task, "no verdict found. End your reply with exactly one ```json block of this shape "
                                 "(verdict must be pass|concerns|fail): %s" % vd.SHAPE, "verify")
-    run = task["verify_run"]
-    task.update(verify_round=n, stop_blocks=0, verifier=dict(v, round=n, tests=run, at=datetime.datetime.now().isoformat(timespec="seconds")))
+    run, rev = task["verify_run"], vd.revisions(v)
+    task.update(verify_round=n, stop_blocks=0, verifier=dict(
+        v, round=n, tests=run, at=datetime.datetime.now().isoformat(timespec="seconds"),
+        revision=[{"test": f["test"], "why": f["description"]} for f in rev]))
     msg = "REHORSE: verifier round %d: %s%s, %d finding(s); its run: %d passed, %d failed." % (
         n, v["verdict"].upper(), " (fail recorded as concerns: no finding cited a criterion)" if v["downgraded"] else "", len(v["findings"]), run["passed"], run["failed"])
     failing = v["verdict"] == "fail" or run["failed"] > 0
@@ -55,9 +58,11 @@ def verdict(hook):
         return 0
     if failing:
         steps = vd.round_trip_steps(v, run, testcmd.verify_file(task, wt), n)
-        state.advance(s, tid, "implement")  # archives the verdict into verify_history and clears verify_run
+        state.advance(s, tid, "tests" if rev else "implement")  # archives the verdict into verify_history and clears verify_run
         task["plan"] += [{"title": t, "done": False, "summary": None, "commit": None} for t in steps]
-        msg += " Back to implement with %d new step(s); round %d of %d follows once they are green." % (len(steps), n + 1, MAX_ROUNDS)
+        msg += (" Back to tests to revise %s (an existing test pinning behaviour the spec calls a bug): rewrite it and declare "
+                "why, then implement" % ", ".join(f["test"] for f in rev) if rev else " Back to implement") + \
+               " with %d new step(s); round %d of %d follows once they are green." % (len(steps), n + 1, MAX_ROUNDS)
     state.save(root, s)
     progress.render(root, s)
     json.dump({"systemMessage": msg}, sys.stdout)

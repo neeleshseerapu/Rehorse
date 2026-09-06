@@ -103,10 +103,17 @@ that one expected string on merge." Eleven minutes of work, handed back with a s
 The tests phase can now make that edit, but only deliberately: it may change a test the repo already had when
 `REHORSE_SPEC.md` says the behaviour that test pins is wrong, and it must name the test and the criterion that says so.
 The declaration is recorded, the verifier is shown those tests first and checks the reason against the spec, the report
-counts them under "Existing tests changed", and drift detection stops calling them drift. What has not changed is the
-lock itself: a conflict discovered later, during implementation, still stops the task for you rather than quietly
-rewriting the test that disagrees. That is the trade — the rewrite is a decision someone has to own, so it happens in
-the open, at the one phase whose job is deciding what the tests should say.
+counts them under "Existing tests changed", and drift detection stops calling them drift.
+
+That fixes the case the tests phase spots up front. The harder half is the one `rich-3577` actually hit, where nobody
+notices until the fix is written and the suite will not go green. So the verifier can now say it: a finding marked
+`pins_bug`, naming the test, sends the task **back to the tests phase** rather than to the implementer — who could
+only answer it by editing a locked file. The test is rewritten there with a declared reason, implementation resumes at
+the step it was on, and verification runs again; the whole trip costs one of the three rounds, like any other. The
+report says which round that was, which test it rewrote and why. What has not changed is the lock itself: the
+implementer still may not touch a test, and a step that finds one contradicting the spec still stops the task for you.
+The rewrite is a decision someone has to own, so it happens in the open, at the one phase whose job is deciding what
+the tests should say — and never to the verifier's own tests, which that phase may not edit at all.
 
 Below the numbers the report has a "Try it yourself" section with the worktree path, the test command, how to run
 the project when detectable, and the acceptance criteria no test covers (what to eyeball), plus an optional summary in

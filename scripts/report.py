@@ -115,6 +115,15 @@ def changes_block(task, heading="## Existing tests the change rewrote"):  # the 
             *["- `%s` — %s" % (c["test"], c["why"]) for c in changes], ""]
 
 
+def revision_line(task, h):
+    """A round that went back to the tests phase, not to the implementer: which test pinned the bug, and why it was
+    allowed to change. The reason is the one the tests phase recorded when it made the edit, falling back to the
+    verifier's own words while that phase has not run yet."""
+    rev = h.get("revision") or []
+    why = {c["test"]: c["why"] for c in task.get("expected_test_changes") or []}
+    return ["Round %d: test revision (%s)" % (h["round"], "; ".join("%s, %s" % (r["test"], why.get(r["test"]) or r["why"]) for r in rev))] if rev else []
+
+
 def coverage_table(cov):
     if not cov:
         return ["(no coverage map returned)"]
@@ -142,7 +151,7 @@ def verifier_section(task, name):
     lines += ["", *coverage_table(v["coverage"]), ""]
     for h in task.get("verify_history") or []:
         lines += ["Round %d: %s (%d finding(s); its run %s)" % (h["round"], h["verdict"].upper(), len(h["findings"]), progress.counts(h.get("tests"))),
-                  findings_text(h), ""]
+                  *revision_line(task, h), findings_text(h), ""]
     full = "\n".join(["# Verifier findings: %s (round %d, verdict %s)" % (task["id"], v["round"], v["verdict"]), "",
                       findings_text(v), "", *coverage_table(v["coverage"]), ""]) if n > MAX_FINDINGS else None
     return lines, full

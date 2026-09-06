@@ -287,3 +287,28 @@ def test_a_declared_change_is_not_drift_but_an_undeclared_one_still_is(repo):
               "def test_other():\n    assert 0\n", "undeclared change")
     commit_in(wt, "tests/test_sub.py", "from app import sub\n\ndef test_other():\n    assert 0\n", "drop test_sub too")
     assert "DRIFT" in render(repo)
+
+
+REVISION_ROUND = [{"round": 1, "verdict": "fail", "tests_added": [], "coverage": [], "tests": {"passed": 3, "failed": 1},
+                   "revision": [{"test": "tests/test_sub.py::test_sub", "why": "this existing test still asserts the old result"}],
+                   "findings": [{"severity": "high", "file": "tests/test_sub.py", "line": 4, "criterion": "2",
+                                 "test": "tests/test_sub.py::test_sub", "pins_bug": True,
+                                 "description": "this existing test still asserts the old result"}]}]
+
+
+def test_a_round_that_went_back_to_the_tests_phase_says_so_with_the_test_and_the_reason(repo):
+    """Three rounds all reading "FAIL" hide the one thing the reader needs: one of them was not the implementer's fault."""
+    verified_task(repo, verify_history=REVISION_ROUND, expected_test_changes=CHANGE)
+    text = render(repo)
+    assert "Round 1: test revision (tests/test_sub.py::test_sub, criterion 2 says the old result was wrong)" in text
+
+
+def test_the_revision_reason_falls_back_to_the_finding_when_nothing_was_recorded(repo):
+    """The recorded justification is what the tests phase actually claimed; before it exists, the verifier's words stand."""
+    verified_task(repo, verify_history=REVISION_ROUND)
+    assert "Round 1: test revision (tests/test_sub.py::test_sub, this existing test still asserts the old result)" in render(repo)
+
+
+def test_an_ordinary_round_shows_no_revision_line(repo):
+    verified_task(repo, verify_history=[dict(REVISION_ROUND[0], revision=[])])
+    assert "test revision" not in render(repo)

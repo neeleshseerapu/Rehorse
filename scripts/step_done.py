@@ -57,6 +57,8 @@ def main():
             return guard_stop.block(root, s, task, "acceptance criteria without a new test: %s. Add tests for them (test paths only), run "
                                     "the test command, commit, and stop again with the updated coverage block." % "; ".join(un), "step-done")
         declared = coverage.declared_changes(coverage.json_block(message))
+        fresh = {d["test"] for d in declared}  # a revision round re-enters this phase; reasons already recorded stand,
+        declared += [d for d in task.get("expected_test_changes") or [] if d["test"] not in fresh]  # a new one wins
         undeclared = coverage.undeclared_changes(root, task, declared)
         if undeclared:  # rewriting a test the repo already had is a spec decision, not a tests-phase liberty
             return guard_stop.block(root, s, task, "existing test(s) changed with no reason given: %s. %s, then run the test command, "

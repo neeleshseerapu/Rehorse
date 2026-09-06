@@ -718,3 +718,47 @@ telling the model what to do instead.
   (so a new hook is capped the moment it is wired, and nothing else is capped by accident) and walks every file under
   `scripts/` with `ast`, checking each import against `sys.stdlib_module_names` plus the sibling modules. The
   stdlib-only constraint had been prose since day one and had never actually been checked.
+
+## A pinned test discovered at verify time goes back to the tests phase (2026-09-05)
+
+The previous change let the *tests* phase rewrite a test the repo already had, when the spec says the behaviour that
+test pins is wrong. That covers the case someone notices up front. `rich-3577` is the other half: nobody noticed until
+`Text.from_ansi` was fixed and `tests/test_ansi.py::test_decode_example` — which pinned the old output — started
+failing. The verifier saw it, was right about it, and the task stopped at `needs-attention` with a sentence of
+homework, because the one edit left was the one edit the implementer is forbidden to make.
+
+- **The round trip needed a second destination.** A `fail` sent the task to `implement`, and that is the wrong room
+  for this finding: test paths are locked once the tests phase ends, so the only edit that would satisfy it is one
+  `guard_edit.py` denies, and the round would come back saying the same thing. So a finding may now carry
+  `pins_bug: true` with a `test` id, and `verify.py` advances `verify -> tests` instead. The implement-phase lock is
+  untouched — this widens no permission, it routes the work to the phase that already had the permission and the
+  declaration machinery (`expected_test_changes`, the recorded reason, the verifier being shown it first).
+- **`pins_bug` counts only with a test id.** `parse()` drops the flag when no test is named: a claim about a test
+  nobody named cannot be routed anywhere, so it stays an ordinary finding for the implementer rather than becoming a
+  round trip to a phase with nothing to do. Same spirit as the criterion rule — a verdict that cannot point at
+  something is information, not a lever.
+- **It buys no implement step, and it costs a round.** `round_trip_steps()` skips `pins_bug` findings (rewriting the
+  test *is* the answer, and a step telling the implementer to do it would be a step that ends in a denial), but a
+  round with a failing verifier run still gets "Make the verifier's tests pass". The `MAX_ROUNDS` check runs before
+  the routing, so a third round stops the task whichever way it would have gone: the cap is about how many times the
+  model may be sent back, not about who is at fault.
+- **Two holes the new transition opened, both closed with hooks rather than prose.** (1) The tests phase is the one
+  phase where every test path is writable, and after a round trip the verifier's own `rehorse_verify_*` file is
+  sitting in the worktree; `guard_edit.py` now denies it there, so the phase can revise what the repo pinned but not
+  what the verifier wrote to catch this change. (2) The tests phase normally ends in `progress.py plan`, which
+  *resets* the plan — running it here would silently drop the steps the round trip just bought, so `set_plan` refuses
+  once `verify_history` is non-empty and points at `progress.py add`. The Next: line says both things too, but the
+  refusals are what make them true.
+- **Declarations now survive a second pass.** `changed_existing_tests()` compares against `base_sha`, so on the
+  revision round it still returns the rewrite the *first* tests phase declared. `step_done.py` was replacing
+  `expected_test_changes` wholesale, which would have blocked the stop over a test whose reason was already recorded
+  and whose reason the new agent has no way to know. It now merges, newest reason winning.
+- **The report names the round.** Three rounds all reading "FAIL" hide the one thing the reader needs — that one of
+  them was not the implementer's fault. `report.revision_line()` renders "Round N: test revision (test id, reason)",
+  preferring the justification the tests phase actually recorded over the verifier's wording, since that is the claim
+  the user is being asked to accept.
+- **Fixture and test.** `tests/fixtures/repo_with_pinned_wrong_behaviour/` (the rich-3577 shape: `truncate()` writes
+  its ellipsis outside the width budget and an existing test pins the off-by-one) moved to `conftest.py` and is now
+  driven from both ends. The new end-to-end test runs real pytest at each stage: the correct fix leaves the suite at
+  2 passed / 1 failed on the pinned test, the verifier's `pins_bug` verdict walks the task to `tests`, the declared
+  rewrite passes `step_done.py` and the `state.py` gate, and the suite ends 3 passed / 0 failed.

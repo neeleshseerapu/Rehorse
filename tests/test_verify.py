@@ -3,7 +3,7 @@ SubagentStop hook that records its verdict only once it ran the tests, committed
 import json
 import os
 
-from conftest import commit_in, git, hook_input, hook_out, run_script, task_in, task_state
+from conftest import VERDICT, commit_in, hook_input, hook_out, run_script, task_in, task_state
 
 import state
 
@@ -289,3 +289,157 @@ def test_brief_names_the_existing_tests_the_change_rewrote(repo):
     assert "## Existing tests the change rewrote" in brief
     assert "tests/test_sub.py::test_sub" in brief and "criterion 2 says the old result was wrong" in brief
     assert brief.index("## Existing tests the change rewrote") > brief.index("## Diff")
+
+
+# ---- a finding that says an existing test pins the bug sends the round trip back to the tests phase --------------
+
+PINS = ('```json\n{"verdict": "fail", "findings": [{"severity": "high", "file": "tests/test_app.py", "line": 8, '
+        '"criterion": "1. truncate(\\"abcdefgh\\", 5) returns \\"abcd…\\"", "test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", '
+        '"pins_bug": true, "description": "the fix is right; this existing test still asserts the six-cell result the spec calls the bug"}], '
+        '"tests_added": [], "coverage": []}\n```')
+
+
+def test_a_pins_bug_finding_returns_the_task_to_tests_not_implement(repo):
+    """The implementer cannot answer this one: test paths are locked in implement, so the only fix left is one the
+    hooks deny. The tests phase is where rewriting a test is a declared decision, so that is where it goes."""
+    verify_task(repo)
+    ran(repo, passed=3, failed=1)
+    out = stop(repo, PINS)
+    t = task_state(repo)
+    assert t["phase"] == "tests", "a pinned-bug finding goes back to the phase that may change tests"
+    assert "tests" in out["systemMessage"] and "test_long_text_is_cut_with_an_ellipsis" in out["systemMessage"]
+    assert t["verify_round"] == 1 and t["verifier"] is None and t["verify_run"] is None
+    h = t["verify_history"][0]
+    assert h["round"] == 1 and h["verdict"] == "fail"
+    assert h["revision"] == [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis",
+                             "why": "the fix is right; this existing test still asserts the six-cell result the spec calls the bug"}]
+
+
+def test_the_pins_bug_finding_buys_no_implement_step_but_the_failing_verifier_tests_still_do(repo):
+    """Rewriting the test is the tests phase's job; making the verifier's tests pass is still the implementer's."""
+    verify_task(repo)
+    ran(repo, passed=3, failed=1)
+    stop(repo, PINS)
+    titles = [p["title"] for p in task_state(repo)["plan"]]
+    assert titles == ["Add sub()", "Make the verifier's tests pass: tests/test_rehorse_verify_t-1.py (1 failing)"]
+    assert not any("Fix (verifier round 1)" in t for t in titles)
+
+
+def test_a_revision_round_counts_against_the_cap_like_any_other(repo):
+    history = [{"round": n, "verdict": "fail", "findings": [], "tests_added": [], "coverage": [], "tests": {"passed": 3, "failed": 1}} for n in (1, 2)]
+    verify_task(repo, verify_round=2, verify_history=history)
+    ran(repo, passed=3, failed=1)
+    out = stop(repo, PINS)
+    t = task_state(repo)
+    assert t["phase"] == "needs-attention" and t["verify_round"] == 3, "the third round stops the task, revision or not"
+    assert "needs-attention" in out["systemMessage"]
+
+
+def test_pins_bug_without_a_test_id_is_not_a_revision(repo):
+    """A claim about a test nobody named cannot be routed; it stays an ordinary finding for the implementer."""
+    verify_task(repo)
+    ran(repo, passed=3, failed=1)
+    stop(repo, PINS.replace('"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", ', ""))
+    t = task_state(repo)
+    assert t["phase"] == "implement" and t["verify_history"][0].get("revision") in (None, [])
+    assert any(p["title"].startswith("Fix (verifier round 1)") for p in t["plan"])
+
+
+def test_a_mixed_round_goes_to_tests_and_still_carries_the_other_findings_as_steps(repo):
+    verify_task(repo)
+    ran(repo, passed=3, failed=0)
+    other = ('{"severity": "high", "file": "app.py", "line": 5, "criterion": "2. sub raises TypeError on strings", '
+             '"description": "strings are concatenated, not rejected"}, ')
+    stop(repo, PINS.replace('"findings": [', '"findings": [' + other))
+    t = task_state(repo)
+    assert t["phase"] == "tests"
+    assert [p["title"] for p in t["plan"]][1:] == ["Fix (verifier round 1): strings are concatenated, not rejected (app.py:5)"]
+
+
+def test_progress_tells_the_orchestrator_to_revise_the_test_rather_than_replan(repo):
+    """The tests phase normally ends in `progress.py plan`, which resets the plan — that would silently drop the steps
+    this round trip just bought. The Next: line says so; set_plan refusing it is the guarantee (test_progress.py)."""
+    verify_task(repo)
+    ran(repo, passed=3, failed=1)
+    stop(repo, PINS)
+    nxt = (repo / "rehorse-reports" / "PROGRESS.md").read_text().split("Next:")[1]
+    assert "test_long_text_is_cut_with_an_ellipsis" in nxt and "expected_test_changes" in nxt
+    assert "do not run `progress.py plan`" in nxt and "advance implement" in nxt
+
+
+# ---- end to end over the rich-3577 shape: an existing test pins the buggy output ---------------------------------
+
+PINNED_TEST = "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis"
+PINNED_VERDICT = ('The fix itself is right.\n```json\n{"verdict": "fail", "findings": [{"severity": "high", '
+                  '"file": "tests/test_app.py", "line": 8, "criterion": "1. `truncate(\\"abcdefgh\\", 5)` returns `\\"abcd…\\"`", '
+                  '"test": "%s", "pins_bug": true, "description": "truncate() now matches criterion 1, but this test still '
+                  'asserts the six-cell result the spec calls the bug, so the suite cannot go green"}], '
+                  '"tests_added": [], "coverage": []}\n```' % PINNED_TEST)
+REVISION_BLOCK = ('```json\n{"coverage": [{"criterion": 1, "ref": "tests/test_app.py::test_truncate_fits_the_width"}, '
+                  '{"criterion": 2, "ref": "tests/test_app.py::test_short_text_is_returned_unchanged"}], '
+                  '"expected_test_changes": [{"test": "%s", "why": "criterion 1 says the ellipsis is inside the budget, so '
+                  'the six-cell expectation is the bug"}]}\n```' % PINNED_TEST)
+
+
+def pytest_in(wt):
+    """A real run of the fixture's suite in the worktree: (passed, failed)."""
+    import re as _re
+    import subprocess
+    import sys
+    out = subprocess.run([sys.executable, "-m", "pytest", "-q"], cwd=wt, capture_output=True, text=True).stdout
+    return (int((_re.search(r"(\d+) passed", out) or [0, 0])[1]), int((_re.search(r"(\d+) failed", out) or [0, 0])[1]))
+
+
+def test_the_verifier_can_send_a_pinned_test_back_to_the_tests_phase_and_the_task_goes_green(pinned_repo):
+    """rich-3577 end to end. The tests phase missed that an existing test pinned the bug, so the correct fix left the
+    suite red on a test the implementer is forbidden to touch. That run stopped at needs-attention with a sentence of
+    homework; now the verifier names the test, the task walks back to `tests`, the rewrite is declared, and it goes green."""
+    wt = task_in(pinned_repo, "implement", baseline={"passed": 2, "failed": 0},
+                 red_check={"passed": 2, "failed": 1, "new_failed": 1}, test_paths=["tests/"])
+    new_test = "\n\ndef test_truncate_fits_the_width():\n    assert truncate(\"abcdefgh\", 5) == \"abcd…\"\n"
+    tests_sha = commit_in(wt, "tests/test_app.py", open(os.path.join(wt, "tests", "test_app.py")).read() + new_test, "tests: red for t-1")
+    commit_in(wt, "app.py", "def truncate(text, width):\n    if len(text) <= width:\n        return text\n"
+                            "    return text[:width - 1] + \"…\"\n", "step 1: keep the ellipsis inside the budget")
+    assert pytest_in(wt) == (2, 1), "the correct fix leaves the pinned test failing: that is the whole problem"
+
+    s = state.load(str(pinned_repo))
+    s["tasks"]["t-1"].update(tests_sha=tests_sha, edit_seq=2, verify_run={"passed": 2, "failed": 1},
+                             last_test_run={"passed": 2, "failed": 1, "after_edit_seq": 2, "output": "1 failed, 2 passed"},
+                             plan=[{"title": "keep the ellipsis inside the budget", "done": True, "summary": "Fixed.", "commit": "abc"}], step=1)
+    state.advance(s, "t-1", "verify")
+    state.save(str(pinned_repo), s)
+
+    out = stop(pinned_repo, PINNED_VERDICT)
+    assert task_state(pinned_repo)["phase"] == "tests" and PINNED_TEST in out["systemMessage"]
+
+    # the tests phase rewrites the pinned assertion and declares why; the hook records it
+    commit_in(wt, "tests/test_app.py", open(os.path.join(wt, "tests", "test_app.py")).read().replace('== "abcde…"', '== "abcd…"'),
+              "tests: revise the pinned assertion")
+    s = state.load(str(pinned_repo))
+    s["tasks"]["t-1"]["last_test_run"]["after_edit_seq"] = s["tasks"]["t-1"]["edit_seq"]
+    state.save(str(pinned_repo), s)
+    payload = dict(hook_input("subagentstop_step"), cwd=str(pinned_repo), agent_type="rehorse:rehorse-step",
+                   last_assistant_message="Revised the pinned assertion.\nGreen.\n" + REVISION_BLOCK)
+    assert hook_out(run_script("step_done", stdin=payload, cwd=str(pinned_repo))) is None
+    assert task_state(pinned_repo)["expected_test_changes"] == [
+        {"test": PINNED_TEST, "why": "criterion 1 says the ellipsis is inside the budget, so the six-cell expectation is the bug"}]
+
+    r = run_script("state", ["advance", "implement"], cwd=str(pinned_repo))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert pytest_in(wt) == (3, 0), "the suite is green once the test that pinned the bug says what the spec says"
+
+
+def test_the_report_of_that_task_names_the_revision_and_counts_the_changed_test(pinned_repo):
+    """What the user reads afterwards: which round was a test revision, and which existing test it rewrote."""
+    wt = task_in(pinned_repo, "verify", baseline={"passed": 2, "failed": 0}, test_paths=["tests/"],
+                 last_test_run={"passed": 3, "failed": 0, "after_edit_seq": 0, "output": "3 passed"},
+                 expected_test_changes=[{"test": PINNED_TEST, "why": "criterion 1 says the ellipsis is inside the budget"}],
+                 verify_history=[{"round": 1, "verdict": "fail", "findings": [], "tests_added": [], "coverage": [],
+                                  "tests": {"passed": 2, "failed": 1}, "revision": [{"test": PINNED_TEST, "why": "from the verifier"}]}],
+                 verifier=dict(VERDICT, round=2))
+    r = run_script("report", cwd=str(pinned_repo))
+    assert r.returncode == 0, r.stderr
+    text = open(r.stdout.strip()).read()
+    assert "Round 1: test revision (%s, criterion 1 says the ellipsis is inside the budget)" % PINNED_TEST in text
+    assert "Existing tests changed: 1" in text and "GREEN" in text
+    assert wt  # the worktree the report describes

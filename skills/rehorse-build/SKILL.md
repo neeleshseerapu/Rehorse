@@ -115,7 +115,7 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    ```
 
    Steps titled `Fix (verifier round N): ...` and `Make the verifier's tests pass: ...` come from the verifier (§4); the
-   verifier's own test file is locked like every other test. A `CONTRADICTS SPEC:` reply moves the task to
+   verifier's own test file is locked like every other test (in the tests phase too). A `CONTRADICTS SPEC:` reply moves the task to
    `needs-attention` (the hook does it): quote the line to the user and stop.
 
    The SubagentStop hook marks the step done in PROGRESS.md only when tests ran after the last edit and the worktree is
@@ -137,11 +137,24 @@ Record its command and move on: `testcmd.py set "<command>"`, then
 2. Its SubagentStop hook records the verdict only after it ran the tests and committed; you never copy a verdict.
    Run `progress.py render` and read this task's section: the **Verifier** line and the **Next:** line. If no verdict
    was recorded, spawn it again with the hook's reason.
-3. Do what **Next:** says. Three outcomes:
+3. Do what **Next:** says. Four outcomes:
    - phase still `verify`, verdict recorded (`pass`, or `concerns`, or a `fail` the user must judge): `report.py` (§5).
    - phase `implement` again: the verdict was `fail` or the verifier's tests fail. The hook appended the findings as new
      plan steps and archived the verdict. Continue at §3.2 with the new steps, then `state.py advance verify` and run
      this section again (round 2, then 3 at most; the brief carries the earlier findings).
+   - phase `tests` again: a finding said an existing test pins the behaviour the spec calls a bug, and the implementer
+     cannot touch a test. Spawn one `rehorse-step` subagent with the §2 tests prompt, replacing its first paragraph with:
+
+     ```
+     Rehorse phase: tests, revision after verifier round <n>. Read <worktree>/REHORSE_SPEC.md first.
+     The verifier says <test id> asserts the behaviour the spec calls the bug: <the finding's description>.
+     Change that test to what the criterion requires and nothing else — do not touch any other test, do not touch
+     implementation files (they are locked in this phase), and do not touch the verifier's own rehorse_verify_* file.
+     ```
+
+     Its reply needs the same coverage block plus an `expected_test_changes` entry for that test naming the criterion;
+     the hook refuses the stop without one. Then `state.py advance implement` and continue at the plan step you were on
+     — **do not run `progress.py plan`**, which would drop the steps this round bought (it refuses, and says so).
    - phase `needs-attention`: three rounds failed. Run `report.py --summary "..."` (it renders the reason and the
      findings), print the report, quote the reason to the user, and stop. The user resumes with `/rehorse:build resume`
      (which renders the FAIL report for a merge/discard decision) or discards.

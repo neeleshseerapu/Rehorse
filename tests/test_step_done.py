@@ -6,7 +6,7 @@ import os
 import shutil
 
 import pytest
-from conftest import commit_in, git, hook_input, hook_out, run_script, task_in, task_state
+from conftest import PINNED_FIXTURE as FIXTURE, commit_in, hook_input, hook_out, run_script, task_in, task_state
 
 import progress
 import state
@@ -196,24 +196,10 @@ def test_step_closed_on_an_unchanged_head_is_marked_satisfied_by_the_step_that_d
 
 # ---- tests phase: an existing test may only be changed when the reply says why ---------------------------------------
 
-FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "repo_with_pinned_wrong_behaviour")
 PINNED_BLOCK = ('```json\n{"coverage": [{"criterion": 1, "ref": "tests/test_app.py::test_truncate_fits_the_width"}, '
                 '{"criterion": 2, "ref": "tests/test_app.py::test_short_text_is_returned_unchanged"}], '
                 '"expected_test_changes": [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", '
                 '"why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]}\n```')
-
-
-@pytest.fixture
-def pinned_repo(tmp_path):
-    """The fixture repo whose existing assertion is the bug: fixing it correctly means changing that test."""
-    repo = tmp_path / "repo"
-    shutil.copytree(FIXTURE, repo)
-    git(repo, "init", "-q", "-b", "main")
-    git(repo, "config", "user.email", "t@example.com")
-    git(repo, "config", "user.name", "t")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-q", "-m", "init")
-    return repo
 
 
 def pinned_task(repo, tests):
@@ -272,3 +258,20 @@ def test_advance_also_refuses_an_undeclared_rewrite_so_the_orchestrator_cannot_s
     state.save(str(pinned_repo), s)
     r = run_script("state", ["advance", "implement"], cwd=str(pinned_repo))
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_second_tests_phase_keeps_the_first_rounds_declarations(pinned_repo):
+    """A test-revision round trip re-enters the tests phase, and changed_existing_tests() still sees every rewrite made
+    since base_sha. The reply only has to declare what it changed this round; reasons already recorded stand."""
+    wt = pinned_task(pinned_repo, REWRITTEN)
+    assert step_done(pinned_repo, "Rewrote the pinned assertion.\nOne fails.\n" + PINNED_BLOCK) is None
+    commit_in(wt, "tests/test_app.py", REWRITTEN.replace('truncate("abc", 5) == "abc"', 'truncate("abc", 9) == "abc"'), "tests: round 2")
+    later = PINNED_BLOCK.replace(
+        '{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", '
+        '"why": "it pins the off-by-one the spec calls the bug (criterion 1)"}',
+        '{"test": "tests/test_app.py::test_short_text_is_returned_unchanged", "why": "criterion 2 says any width over the length"}')
+    assert step_done(pinned_repo, "Widened the short-text case.\nOne fails.\n" + later) is None
+    recorded = {c["test"]: c["why"] for c in task_state(pinned_repo)["expected_test_changes"]}
+    assert set(recorded) == {"tests/test_app.py::test_long_text_is_cut_with_an_ellipsis",
+                             "tests/test_app.py::test_short_text_is_returned_unchanged"}
+    assert recorded["tests/test_app.py::test_long_text_is_cut_with_an_ellipsis"].startswith("it pins the off-by-one")
