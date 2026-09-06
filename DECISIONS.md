@@ -827,3 +827,45 @@ starting `CONTRADICTS SPEC:` straight to `needs-attention` before any other chec
   verdict, and a report that cannot be rendered must not also break the stop — so it returns the path or `None`, and
   the `systemMessage` names the path only when there is one. The earliest possible stop, a zero-test baseline, was
   checked against a real hook input and renders.
+
+## A step's `CONTRADICTS SPEC:` routes to the tests phase, like a verifier `pins_bug` finding (2026-09-05)
+
+This reverses the conclusion recorded above it. That entry argued the stop was legitimate *because* the implementer is
+the party the test lock is aimed at, so its only exit should be to hand the user the decision. The argument is sound
+about who may edit a test. It is wrong about what the implementer was asking for.
+
+- **The asymmetry it defended was between claimants; the one that matters is between claims and edits.** A step saying
+  `CONTRADICTS SPEC:` is not asking to edit a test. It is reporting that an existing test and `REHORSE_SPEC.md`
+  disagree — the same report a verifier makes with `pins_bug`, about the same kind of test, discovered at the same
+  point in the run. Routing one to a second opinion and the other to the user was a distinction drawn on who noticed,
+  not on what was noticed. Both now go to `tests`, and the lock is untouched in both: the implementer still cannot
+  edit a test, and the edit still happens only in the phase that has the permission, the declaration machinery
+  (`expected_test_changes`, the criterion, the recorded reason) and the verifier looking at the result afterwards.
+- **What replaces the old safeguard is a fresh agent, not the user.** The worry the old entry named — the implementer
+  talking its way past a test it could not satisfy — is real. The answer is that it does not get the edit; it gets a
+  second opinion. The tests agent has read the spec and that test and nothing else about the argument, and is told, in
+  `agents/rehorse-step.md` and the §4 prompt, that it is judging a claim rather than carrying it out. If it agrees, it
+  rewrites the test and must name the criterion, which `state.py advance implement` refuses without. If it disagrees,
+  it replies `CONTRADICTS SPEC:` itself, and *that* is what reaches the user — with both claims in the banner, each in
+  the words of the agent that made it. The user is still the one who settles a disagreement; they are no longer the
+  one who settles an agreement.
+- **A claim about a test nobody named is routable nowhere.** `verdict.contradiction()` reads the id out of the line
+  (`<file>::[<Class>::]<test>`) rather than asking for another json block — this is the reply a step writes when it has
+  already decided it cannot finish, and one more required structure is one more thing to get wrong at exactly that
+  moment. With no id the task stops with the line, the same rule that makes `parse()` drop a `pins_bug` flag naming no
+  test.
+- **One round, one cap, one list.** The trip is recorded in `verify_history` beside the verifier's rounds
+  (`verdict: "contradicts spec"`, `from: "implement"`), because they are the same event and one list means one cap
+  counts them, one report section shows them, and `progress.py plan` already refuses to reset a plan once a round trip
+  has been recorded — which is what keeps the open step the task must resume at from being dropped. On the last round
+  the claim stops the task instead of buying a trip, exactly as a third failing verdict does.
+- **A hole this exposed in the route that already shipped.** A revision round re-enters `tests` with the
+  implementation present, so the suite it runs is green, and `on_bash_done.py` was overwriting `red_check` with that
+  green run — after which `state.py advance implement` refuses for want of a red run, and the task deadlocks in the
+  phase it was just sent to. That was reachable on the verifier's `pins_bug` route since the day it landed, and was
+  reproduced against that commit's own `on_bash_done.py` before being called a bug: a green run in phase `tests` with
+  `tests_sha` set rewrote `red_check` to `new_failed: 0`, and `advance implement` then refused with "nothing failed in
+  the red run". The tests covering that route set `red_check` in state directly and never ran the hook, so nothing
+  caught it. Red is evidence
+  the first tests phase earned, and a revision does not re-earn it: `on_bash_done.py` now recomputes `red_check` only
+  while `tests_sha` is unset, which is exactly the first pass through the phase.

@@ -111,7 +111,12 @@ notices until the fix is written and the suite will not go green. So the verifie
 only answer it by editing a locked file. The test is rewritten there with a declared reason, implementation resumes at
 the step it was on, and verification runs again; the whole trip costs one of the three rounds, like any other. The
 report says which round that was, which test it rewrote and why. What has not changed is the lock itself: the
-implementer still may not touch a test, and a step that finds one contradicting the spec still stops the task for you.
+implementer still may not touch a test. It no longer has to stop the run to say one is wrong, though — `rich-3871`'s
+second run ended that way, on a `tests/test_columns.py` snapshot that really did pin the doubled padding, and the fix
+was one edit in a phase the run had already left. A step's `CONTRADICTS SPEC:` naming a test now takes the same trip
+back to the tests phase, for the same one round. What arrives there is a claim, not an instruction: the tests agent
+judges it against the spec, and if it disagrees the task stops with both claims side by side, which is the one
+question no hook can answer.
 The rewrite is a decision someone has to own, so it happens in the open, at the one phase whose job is deciding what
 the tests should say — and never to the verifier's own tests, which that phase may not edit at all.
 

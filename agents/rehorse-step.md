@@ -21,8 +21,16 @@ Rules:
   untested edits or an uncommitted tree; the SubagentStop hook tells you what to run if you try.
 - Never merge, never touch the main checkout, never edit `.rehorse/` or `rehorse-reports/`.
 - If a test you must satisfy (the verifier's `rehorse_verify_*` tests included) contradicts `REHORSE_SPEC.md`, do not
-  work around it and do not weaken the code to fit it: make your reply's last line start with `CONTRADICTS SPEC:`,
-  naming the test and the acceptance criterion. The task then stops for the user to decide.
+  work around it and do not weaken the code to fit it: make your reply's last line start with `CONTRADICTS SPEC:` and
+  **name the test as `<file>::<test>`**, then the acceptance criterion it contradicts. That id is what the hook routes
+  on: with one, the task goes back to the tests phase for a second opinion on the test; without one it stops for the
+  user, because a claim about a test nobody named can be sent nowhere.
+- In the tests phase, a prompt saying a step or the verifier claims an existing test pins behaviour the spec calls a
+  bug is asking you to **judge that claim**, not to carry it out. Read `REHORSE_SPEC.md` and that test yourself. If the
+  claim holds, change that test to what the criterion requires and nothing else, and declare it in
+  `expected_test_changes` with the criterion that says so. If it does not hold, change nothing and make your last line
+  start `CONTRADICTS SPEC:` saying why the claim is wrong; the task then stops and the user sees both claims. Agreeing
+  because you were asked to is the one failure this round trip exists to prevent.
 - A step titled `Fix (verifier round N): ...` names one case, one caller, one test. **Fix it there.** The finding is
   evidence about that case only; it is not evidence that the shared thing underneath is wrong. If the narrowest
   correct fix really is in shared code — a helper, a base class, a width or layout routine that several callers go

@@ -10,6 +10,8 @@ import re
 VERDICTS = ("pass", "concerns", "fail")
 EVIDENCE = ("test", "build_only", "none")
 MAX_ROUNDS = 3
+CONTRADICTS = "CONTRADICTS SPEC:"
+TEST_ID = re.compile(r"[\w./\\-]+\.\w+(?:::[\w\[\]./-]*[\w\]])+")  # <path>.<ext>::[<Class>::]<test>, as the runners print it
 TITLE_CAP = 180  # a finding's description as a step title; the full text stays in state
 SHAPE = ('{"verdict": "pass|concerns|fail", "findings": [{"severity": "high|medium|low", "file": "<path>", "line": 0, '
          '"criterion": "<the acceptance criterion this violates; required for a fail>", '
@@ -36,6 +38,31 @@ def parse(text):
     down = v["verdict"].lower() == "fail" and not any(f["criterion"] for f in findings)  # a fail names the criterion it violates
     return {"verdict": "concerns" if down else v["verdict"].lower(), "downgraded": down, "findings": findings, "coverage": coverage,
             "tests_added": [str(t) for t in v.get("tests_added") or []]}
+
+
+def contradiction(text):
+    """A step reply's `CONTRADICTS SPEC:` line and the test id it names, or None: the step's version of a pins_bug
+    finding. The id is read out of the line rather than asked for in a json block, because this is the reply a step
+    writes when it has decided it cannot finish, and one more required structure is one more thing to get wrong when
+    the model is already off its script. Without an id it is a claim about a test nobody named: routable nowhere, so
+    step_done.py stops the task with it, exactly as parse() drops a pins_bug flag that names no test."""
+    line = next((l.strip() for l in text.splitlines() if l.strip().startswith(CONTRADICTS)), None)
+    if not line:
+        return None
+    m = TEST_ID.search(line)
+    return {"line": line, "test": m.group(0) if m else ""}
+
+
+def contradiction_round(c, n):
+    """The round a step's contradiction buys, in the shape a verifier round is recorded in.
+
+    It goes in verify_history beside the verifier's rounds on purpose: they are the same event -- the task sent back a
+    phase because an existing test and the spec disagree -- and keeping one list means one cap counts them, one report
+    section shows them, and `progress.py plan` already refuses to drop the steps a round trip earned."""
+    return {"round": n, "verdict": "contradicts spec", "from": "implement", "tests": None, "tests_added": [], "coverage": [],
+            "findings": [{"severity": "high", "file": c["test"].split("::")[0], "line": None, "criterion": "", "test": c["test"],
+                          "pins_bug": True, "description": c["line"]}],
+            "revision": [{"test": c["test"], "why": c["line"]}]}
 
 
 def revisions(v):

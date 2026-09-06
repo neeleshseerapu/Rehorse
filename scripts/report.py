@@ -138,21 +138,30 @@ def tests_added(ids):
     return "%d in %s" % (len(ids), ", ".join(sorted({i.split("::")[0] for i in ids})))
 
 
+def rounds(task):
+    """Every round trip already taken: a verifier verdict that sent the task back, or a step's contradiction that did.
+    A contradiction buys no verifier run, so that clause is dropped rather than printed as "not recorded"."""
+    out = []
+    for h in task.get("verify_history") or []:
+        out += ["Round %d: %s (%d finding(s)%s)" % (h["round"], h["verdict"].upper(), len(h["findings"]),
+                                                    "; its run %s" % progress.counts(h["tests"]) if h.get("tests") else ""),
+                *revision_line(task, h), findings_text(h), ""]
+    return out
+
+
 def verifier_section(task, name):
     """Report lines for the verdict; second value is the full findings file's text when the report shows only the first few."""
-    v = task.get("verifier")
-    if not v:
-        return ["## Verifier: not run", "", "no verdict recorded.", ""], None
+    v, hist = task.get("verifier"), task.get("verify_history") or []
+    if not v:  # a task can stop before the verifier ever runs and still have spent rounds; those still belong in the report
+        return ["## Verifier: not run", "", "no verdict recorded." if not hist else
+                "no verdict recorded; %d round trip(s) came first:" % len(hist), "", *rounds(task)], None
     n = len(v["findings"])
     lines = ["## Verifier: %s (round %d of %d)" % (v["verdict"].upper(), v["round"], verdict.MAX_ROUNDS), "",
              "Its run: %s. Tests added: %s" % (progress.counts(v.get("tests")).replace(" / ", ", "), tests_added(v["tests_added"])), "",
              "Findings:" if n else "Findings: none", *([findings_text({"findings": v["findings"][:MAX_FINDINGS]})] if n else [])]
     if n > MAX_FINDINGS:
         lines.append("- ... %d more in %s/verifier/%s" % (n - MAX_FINDINGS, REPORTS, name))
-    lines += ["", *coverage_table(v["coverage"]), ""]
-    for h in task.get("verify_history") or []:
-        lines += ["Round %d: %s (%d finding(s); its run %s)" % (h["round"], h["verdict"].upper(), len(h["findings"]), progress.counts(h.get("tests"))),
-                  *revision_line(task, h), findings_text(h), ""]
+    lines += ["", *coverage_table(v["coverage"]), "", *rounds(task)]
     full = "\n".join(["# Verifier findings: %s (round %d, verdict %s)" % (task["id"], v["round"], v["verdict"]), "",
                       findings_text(v), "", *coverage_table(v["coverage"]), ""]) if n > MAX_FINDINGS else None
     return lines, full

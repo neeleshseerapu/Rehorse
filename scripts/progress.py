@@ -21,10 +21,12 @@ NEXT = {"setup": "no test command was detected: delegate the minimal test harnes
         "tests": "delegate the failing tests to a rehorse-step subagent (test paths only), run the test command in the worktree "
                  "(red_check: at least one failure), then `state.py advance implement` and `progress.py plan \"...\"`.",
         "report": "done; the user decides: /rehorse:merge %(id)s or /rehorse:discard %(id)s."}
-REVISION_NEXT = ("the verifier sent this back to tests: %s pins behaviour the spec calls a bug. Delegate the rewrite to a "
-                 "rehorse-step subagent (test paths only), declaring it in the reply's expected_test_changes with the criterion "
-                 "that says so, then `state.py advance implement` and continue at the existing plan step — the plan is already "
-                 "set, so do not run `progress.py plan`.")
+REVISION_NEXT = ("%s sent this back to tests, claiming an existing test pins behaviour the spec calls a bug: %s. Delegate the "
+                 "decision (not the edit) to a rehorse-step subagent, test paths only: it judges for itself against "
+                 "REHORSE_SPEC.md, and either rewrites that test and declares it in the reply's expected_test_changes with the "
+                 "criterion that says so, or, if the claim is wrong, replies `CONTRADICTS SPEC: <why>` and the task stops for the "
+                 "user with both claims. Then `state.py advance implement` and continue at the existing plan step — the plan is "
+                 "already set, so do not run `progress.py plan`.")
 VERIFY_NEXT = ("run `verify.py brief` and spawn a rehorse-verifier subagent (subagent_type rehorse:rehorse-verifier) with its "
                "output as the whole prompt.", "verdict %(verdict)s (round %(round)d): `report.py --summary \"...\"`.")
 
@@ -40,8 +42,10 @@ def next_action(task):
             task["attention"]["reason"], task["attention"]["prior_phase"], task["id"])
     if task["phase"] == "verify":
         return VERIFY_NEXT[1] % v if v else VERIFY_NEXT[0]
-    if task["phase"] == "tests" and (task.get("verify_history") or [{}])[-1].get("revision"):
-        return REVISION_NEXT % ", ".join(r["test"] for r in task["verify_history"][-1]["revision"])
+    h = (task.get("verify_history") or [{}])[-1]
+    if task["phase"] == "tests" and h.get("revision"):  # who claimed it, and their words: the second opinion needs both
+        return REVISION_NEXT % ("step %d" % (task["step"] + 1) if h.get("from") == "implement" else "the verifier",
+                                "; ".join("%s — %s" % (r["test"], r["why"]) for r in h["revision"]))
     if task["phase"] != "implement":
         return NEXT.get(task["phase"], task["phase"]) % task
     return ("split the spec into 1-%d steps: `progress.py plan \"step\" ...`." % MAX_STEPS if not plan else
@@ -64,7 +68,9 @@ def section(root, task):
                 if p.get("satisfied_by") else " — %s (commit %s)" % (" ".join((p["summary"] or "").splitlines()), p["commit"]))
         lines.append("  - [%s] %d. %s%s" % ("x" if p["done"] else " ", n, p["title"], done))
     for v in (task.get("verify_history") or []) + [task["verifier"]] * bool(task.get("verifier")):
-        lines.append("- Verifier: round %d %s (%d finding(s); its run %s)" % (v["round"], v["verdict"].upper(), len(v["findings"]), counts(v.get("tests"))))
+        lines.append("- %s: round %d %s (%d finding(s)%s)" % (  # a round a step's contradiction bought was not the verifier's
+            "Step" if v.get("from") == "implement" else "Verifier", v["round"], v["verdict"].upper(), len(v["findings"]),
+            "; its run %s" % counts(v["tests"]) if v.get("tests") else ""))
     lines.append("- Next: " + next_action(task))
     return "\n".join(lines) + "\n"
 

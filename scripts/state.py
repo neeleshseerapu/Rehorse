@@ -72,7 +72,7 @@ def advance(state, tid, to, reason=None, root=None):
     task = state["tasks"][tid]
     cur = task["phase"]
     allowed = ([] if cur in TERMINAL else [task["attention"]["prior_phase"], "discarded"] if cur == ATTENTION else
-               PHASES[PHASES.index(cur) + 1:][:1] + ["discarded", ATTENTION] + {"report": ["merged"], "verify": ["implement", "tests"]}.get(cur, []))
+               PHASES[PHASES.index(cur) + 1:][:1] + ["discarded", ATTENTION] + {"report": ["merged"], "verify": ["implement", "tests"], "implement": ["tests"]}.get(cur, []))
     if to not in allowed:
         raise ValueError("cannot advance %s from %r to %r; allowed: %s" % (tid, cur, to, ", ".join(allowed) or "none"))
     why = gate(task, to, root)

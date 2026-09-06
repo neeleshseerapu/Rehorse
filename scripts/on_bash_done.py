@@ -74,6 +74,8 @@ def main():
             state.advance(s, task["id"], state.ATTENTION, reason="baseline ran 0 tests with `%s`" % command)
             msg = ("baseline ran 0 tests, so task %s moved to needs-attention (report: %s). Fix the test command or "
                    "test discovery, then resume via /rehorse:status." % (task["id"], report.write_stop(root, s, task)))
+    elif task["phase"] == "tests" and task.get("tests_sha"):  # a revision round re-entered this phase; the red it earned stands
+        msg += " red stands from the first tests phase (%s); this run is a revision." % task["tests_sha"][:7]
     elif task["phase"] == "tests":
         task["red_check"] = dict(counts)
         base = task.get("baseline") or {"passed": 0, "failed": 0}

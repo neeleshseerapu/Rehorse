@@ -113,13 +113,15 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    code underneath. If the narrowest correct fix is in shared code, line 1 must name the other callers you checked
    and the tests that cover them; if you cannot name them, scope the fix to the caller the finding named.
    Reply with exactly two lines: (1) what you changed, (2) what the tests say and what is left. If a test you must
-   satisfy contradicts REHORSE_SPEC.md, reply instead with a last line starting "CONTRADICTS SPEC:" naming the test
-   and the criterion.
+   satisfy contradicts REHORSE_SPEC.md, reply instead with a last line starting "CONTRADICTS SPEC:" naming that test
+   as <file>::<test> and the criterion it contradicts.
    ```
 
    Steps titled `Fix (verifier round N): ...` and `Make the verifier's tests pass: ...` come from the verifier (§4); the
-   verifier's own test file is locked like every other test (in the tests phase too). A `CONTRADICTS SPEC:` reply moves the task to
-   `needs-attention` (the hook does it): quote the line to the user and stop.
+   verifier's own test file is locked like every other test (in the tests phase too). A `CONTRADICTS SPEC:` reply naming a
+   test moves the task to `tests` for a second opinion on that test (the hook does it, and it costs one of the three rounds):
+   go to §4's `tests` branch. One naming no test, or one on the last round, moves the task to `needs-attention` instead:
+   quote the line to the user and stop.
 
    The SubagentStop hook marks the step done in PROGRESS.md only when tests ran after the last edit and the worktree is
    committed; otherwise it tells the subagent what to run. Do not read the subagent's transcript.
@@ -145,19 +147,27 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    - phase `implement` again: the verdict was `fail` or the verifier's tests fail. The hook appended the findings as new
      plan steps and archived the verdict. Continue at §3.2 with the new steps, then `state.py advance verify` and run
      this section again (round 2, then 3 at most; the brief carries the earlier findings).
-   - phase `tests` again: a finding said an existing test pins the behaviour the spec calls a bug, and the implementer
-     cannot touch a test. Spawn one `rehorse-step` subagent with the §2 tests prompt, replacing its first paragraph with:
+   - phase `tests` again: someone said an existing test pins the behaviour the spec calls a bug, and the implementer
+     cannot touch a test. It reaches here two ways — a verifier finding carrying `pins_bug`, or a step's
+     `CONTRADICTS SPEC:` line (§3.2) — and the answer is the same either way; **Next:** in PROGRESS.md names which, the
+     test, and the claim in the claimant's own words. Spawn one `rehorse-step` subagent with the §2 tests prompt,
+     replacing its first paragraph with:
 
      ```
-     Rehorse phase: tests, revision after verifier round <n>. Read <worktree>/REHORSE_SPEC.md first.
-     The verifier says <test id> asserts the behaviour the spec calls the bug: <the finding's description>.
-     Change that test to what the criterion requires and nothing else — do not touch any other test, do not touch
-     implementation files (they are locked in this phase), and do not touch the verifier's own rehorse_verify_* file.
+     Rehorse phase: tests, revision (round <n>). Read <worktree>/REHORSE_SPEC.md first.
+     <the verifier | step <k>> claims <test id> asserts the behaviour the spec calls the bug: <the claim, verbatim>.
+     Judge that claim yourself against REHORSE_SPEC.md and that test. If it holds, change that test to what the
+     criterion requires and nothing else — no other test, no implementation file (locked in this phase), not the
+     verifier's rehorse_verify_* file — and declare it in expected_test_changes with the criterion. If it does not
+     hold, change nothing and make your last line start "CONTRADICTS SPEC:" saying why the claim is wrong.
      ```
 
-     Its reply needs the same coverage block plus an `expected_test_changes` entry for that test naming the criterion;
-     the hook refuses the stop without one. Then `state.py advance implement` and continue at the plan step you were on
-     — **do not run `progress.py plan`**, which would drop the steps this round bought (it refuses, and says so).
+     If it agrees, its reply needs the same coverage block plus an `expected_test_changes` entry for that test naming
+     the criterion; the hook refuses the stop without one. Then `state.py advance implement` and continue at the plan
+     step you were on — **do not run `progress.py plan`**, which would drop the steps this round bought (it refuses,
+     and says so). If it disagrees, the hook moves the task to `needs-attention` with **both** claims in the reason:
+     run `report.py` (§5), quote both to the user and stop. Nobody but the user settles a disagreement between two
+     agents that have each read the spec.
    - phase `needs-attention`: three rounds failed. Run `report.py --summary "..."` (it renders the reason and the
      findings), print the report, quote the reason to the user, and stop. The user resumes with `/rehorse:build resume`
      (which renders the FAIL report for a merge/discard decision) or discards.

@@ -301,3 +301,17 @@ def test_a_failing_guard_is_not_red(repo):
     r = task_state(repo)["red_check"]
     assert r["new_failed"] == 0 and r["new_failing"] == [] and r["failing_guards"] == ["tests/test_new.py::test_add_unchanged"]
     assert "1 guard(s) failing" in context(out, "PostToolUseFailure")
+
+
+def test_a_revision_round_re_entering_tests_does_not_overwrite_the_red_it_earned(repo):
+    """A round trip back to `tests` runs the suite with the implementation present, so it is green — and recording that
+    as the red check would leave `state.py advance implement` refusing the very task it just sent here. Red is evidence
+    from the first tests phase; a revision does not re-earn it. `tests_sha` (set when the plan was made) is what tells
+    the two apart."""
+    wt = task_in(repo, "tests", edit_seq=2, tests_sha="a" * 40,
+                 red_check={"passed": 2, "failed": 1, "new_failed": 1, "new_failing": ["tests/test_app.py::test_x"]})
+    out = done(repo, cwd=wt)  # the fixture's run is green, as a revision round's run is
+    t = task_state(repo)
+    assert t["red_check"] == {"passed": 2, "failed": 1, "new_failed": 1, "new_failing": ["tests/test_app.py::test_x"]}
+    assert t["last_test_run"]["after_edit_seq"] == 2, "the run itself is still recorded"
+    assert "red stands from the first tests phase" in context(out)

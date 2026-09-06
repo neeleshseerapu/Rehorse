@@ -4,6 +4,7 @@ new test; a `CONTRADICTS SPEC:` line sends the task to needs-attention."""
 import json
 import os
 import shutil
+import sys
 
 import pytest
 from conftest import PINNED_FIXTURE as FIXTURE, commit_in, git, hook_input, hook_out, run_script, task_in, task_state
@@ -116,16 +117,78 @@ def test_verifier_stop_is_never_a_step_done(repo):
     assert t["plan"][0]["done"] is False and t["step"] == 0 and t["stop_blocks"] == 0
 
 
-def test_contradicts_spec_line_in_a_step_summary_sets_needs_attention_instead_of_continuing(repo):
-    wt = plan_task(repo, plan=[{"title": "Fix (verifier round 1): reject strings", "done": False, "summary": None, "commit": None}],
-                   edit_seq=1, last_test_run={"passed": 3, "failed": 1, "after_edit_seq": 1, "output": ""})
+def test_a_contradicts_spec_line_naming_a_test_routes_the_task_to_the_tests_phase(repo):
+    """The implementer cannot edit a test, so the claim goes where the decision belongs. The step stays open: it is the
+    step the task resumes at once the test question is settled, and the plan it belongs to must survive the trip."""
+    plan_task(repo, plan=[{"title": "Fix (verifier round 1): reject strings", "done": False, "summary": None, "commit": None}],
+              edit_seq=1, last_test_run={"passed": 3, "failed": 1, "after_edit_seq": 1, "output": ""})
     line = "CONTRADICTS SPEC: tests/test_rehorse_verify_t-1.py::test_strings expects TypeError, acceptance criterion 2 says ValueError"
     out = step_done(repo, "I could not make this pass without breaking the spec.\n" + line)
-    assert out and "decision" not in out and "needs-attention" in out["systemMessage"] and "TypeError" in out["systemMessage"]
     t = task_state(repo)
-    assert t["phase"] == "needs-attention" and t["attention"] == {"reason": line, "prior_phase": "implement"}
-    assert t["plan"][0]["done"] is False and t["step"] == 0
-    assert line in progress_md(repo)
+    assert t["phase"] == "tests" and t["attention"] is None
+    assert t["verify_round"] == 1 and t["plan"][0]["done"] is False and t["step"] == 0
+    h = t["verify_history"][-1]
+    assert h["from"] == "implement" and h["round"] == 1 and h["verdict"] == "contradicts spec"
+    assert h["revision"] == [{"test": "tests/test_rehorse_verify_t-1.py::test_strings", "why": line}]
+    assert "decision" not in out and "back to tests" in out["systemMessage"].lower() and "round 1 of 3" in out["systemMessage"]
+    assert "tests/test_rehorse_verify_t-1.py::test_strings" in progress_md(repo)
+
+
+def test_the_tests_phase_is_told_who_claimed_what_and_that_it_may_disagree(repo):
+    """A second opinion is worth nothing if it only hears "rewrite this": PROGRESS.md carries the claim verbatim and
+    both answers open to it."""
+    plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None}], edit_seq=1,
+              last_test_run={"passed": 1, "failed": 1, "after_edit_seq": 1, "output": ""})
+    line = "CONTRADICTS SPEC: tests/test_app.py::test_add pins the off-by-one criterion 1 calls the bug"
+    step_done(repo, "Cannot finish.\n" + line)
+    md = progress_md(repo)
+    assert "step 1 sent this back to tests" in md and line in md
+    assert "expected_test_changes" in md and "CONTRADICTS SPEC:" in md and "judges for itself" in md
+
+
+def test_a_contradicts_spec_line_naming_no_test_stops_the_task_with_the_reason(repo):
+    """A claim about a test nobody named is routable nowhere — the same rule that drops a pins_bug flag with no test id."""
+    plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None}], edit_seq=1,
+              last_test_run={"passed": 3, "failed": 1, "after_edit_seq": 1, "output": ""})
+    line = "CONTRADICTS SPEC: the suite expects TypeError, acceptance criterion 2 says ValueError"
+    out = step_done(repo, "I could not make this pass without breaking the spec.\n" + line)
+    t = task_state(repo)
+    assert t["phase"] == "needs-attention" and t["attention"]["prior_phase"] == "implement"
+    assert t["attention"]["reason"].startswith(line) and "no test id named" in t["attention"]["reason"]
+    assert "needs-attention" in out["systemMessage"] and t["verify_round"] == 0
+
+
+def test_the_last_round_is_not_spent_on_a_trip_to_the_tests_phase(repo):
+    """The cap counts every trip back, whoever bought it. On the last one the task stops instead, with the claim."""
+    plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None}], edit_seq=1, verify_round=2,
+              last_test_run={"passed": 3, "failed": 1, "after_edit_seq": 1, "output": ""})
+    payload = dict(hook_input("subagentstop_step_contradicts"), cwd=str(repo))
+    out = hook_out(run_script("step_done", stdin=payload, cwd=str(repo)))
+    t = task_state(repo)
+    assert t["phase"] == "needs-attention" and t["verify_round"] == 2
+    assert "tests/test_columns.py::test_render" in t["attention"]["reason"]
+    assert "round 3 of 3" in t["attention"]["reason"] and "spent" in t["attention"]["reason"]
+    assert (repo / t["report_path"]).exists() and "decision" not in out
+
+
+def test_the_tests_phase_disagreeing_stops_the_task_with_both_claims(repo):
+    """The one outcome nobody can automate: two agents that have both read the spec, disagreeing about a test. The user
+    gets each claim in the banner, from the agent that made it."""
+    plan_task(repo, "tests", edit_seq=1, verify_round=1,
+              last_test_run={"passed": 1, "failed": 1, "after_edit_seq": 1, "output": ""},
+              verify_history=[{"round": 1, "verdict": "contradicts spec", "from": "implement", "tests": None, "findings": [],
+                               "revision": [{"test": "tests/test_app.py::test_add", "why": "CONTRADICTS SPEC: it pins the bug"}]}])
+    line = "CONTRADICTS SPEC: tests/test_app.py::test_add is right; criterion 1 is about widths, not sums"
+    out = step_done(repo, "The claim does not hold.\n" + line)
+    t = task_state(repo)
+    assert t["phase"] == "needs-attention" and t["attention"]["prior_phase"] == "tests"
+    assert t["attention"]["reason"].startswith(line)
+    assert "CONTRADICTS SPEC: it pins the bug" in t["attention"]["reason"], "the claim it was sent to answer"
+    assert "needs-attention" in out["systemMessage"]
+    text = (repo / t["report_path"]).read_text()
+    assert "Round 1: CONTRADICTS SPEC" in text and "its run" not in text, "the round is in the report; it bought no verifier run"
+    assert "Round 1: test revision (tests/test_app.py::test_add" in text
+    assert "Step: round 1 CONTRADICTS SPEC" in progress_md(repo)
 
 
 # ---- tests phase: the reply must map every acceptance criterion to a new test ---------------------------------------
@@ -278,11 +341,11 @@ def test_a_second_tests_phase_keeps_the_first_rounds_declarations(pinned_repo):
 
 
 def test_a_contradicts_spec_stop_during_implement_leaves_the_user_a_report(repo):
-    """The rich-3871 shape, from its own captured hook input: a step agent finds an existing test that pins the bug,
-    stops the task, and the turn ends there. Nobody is left to run report.py, so the hook renders it: the report exists,
-    its banner is the reason, and the systemMessage points at it."""
+    """The rich-3871 shape, from its own captured hook input, on its last round: the claim can buy no further trip to
+    the tests phase, so the task stops and the turn ends there. Nobody is left to run report.py, so the hook renders
+    it: the report exists, its banner is the reason, and the systemMessage points at it."""
     wt = plan_task(repo, plan=[{"title": "Make _get_padding_width honor pad_edge", "done": False, "summary": None, "commit": None}],
-                   edit_seq=8, last_test_run={"passed": 931, "failed": 1, "after_edit_seq": 8, "output": ""})
+                   edit_seq=8, verify_round=2, last_test_run={"passed": 931, "failed": 1, "after_edit_seq": 8, "output": ""})
     payload = dict(hook_input("subagentstop_step_contradicts"), cwd=str(repo))
     out = hook_out(run_script("step_done", stdin=payload, cwd=str(repo)))
     t = task_state(repo)
@@ -301,7 +364,78 @@ def test_the_report_of_a_stop_is_committed_on_the_rehearsal_branch_like_any_othe
     """The evidence trail does not depend on how the task ended: /rehorse:merge carries a stop's report too."""
     plan_task(repo, plan=[{"title": "A", "done": False, "summary": None, "commit": None}],
               edit_seq=1, last_test_run={"passed": 1, "failed": 0, "after_edit_seq": 1, "output": ""})
-    step_done(repo, "Cannot proceed.\nCONTRADICTS SPEC: tests/test_app.py::test_add pins the bug (criterion 1)")
+    step_done(repo, "Cannot proceed.\nCONTRADICTS SPEC: no test named here, so there is nothing to route")
     name = os.path.basename(task_state(repo)["report_path"])
     committed = git(repo / ".rehorse" / "worktrees" / "t-1", "show", "--stat", "HEAD")
     assert "rehorse: report for t-1" in committed and name in committed
+
+
+# ---- end to end: a step finds the pinned test, the tests phase settles it, the suite goes green -------------------
+
+PINNED = "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis"
+CORRECT_FIX = ("def truncate(text, width):\n    if len(text) <= width:\n        return text\n"
+               "    return text[:width - 1] + \"…\"\n")
+
+
+def pytest_in(wt):
+    """A real run of the fixture's suite in the worktree: (passed, failed)."""
+    import re
+    import subprocess
+    out = subprocess.run([sys.executable, "-m", "pytest", "-q"], cwd=wt, capture_output=True, text=True).stdout
+    return (int((re.search(r"(\d+) passed", out) or [0, 0])[1]), int((re.search(r"(\d+) failed", out) or [0, 0])[1]))
+
+
+def implementing(repo, **fields):
+    """That repo mid-implementation: the red tests committed, the correct fix committed, the pinned test still failing."""
+    wt = plan_task(repo, "implement", test_paths=["tests/"],
+                   plan=[{"title": "keep the ellipsis inside the budget", "done": False, "summary": None, "commit": None}],
+                   edit_seq=2, last_test_run={"passed": 2, "failed": 1, "after_edit_seq": 2, "output": ""}, **fields)
+    shutil.copy(os.path.join(FIXTURE, "REHORSE_SPEC.md"), os.path.join(wt, "REHORSE_SPEC.md"))
+    tests_sha = commit_in(wt, "tests/test_app.py", ORIGINAL + NEW_TEST, "tests: red for t-1")
+    commit_in(wt, "app.py", CORRECT_FIX, "step 1: keep the ellipsis inside the budget")
+    s = state.load(str(repo))
+    s["tasks"]["t-1"]["tests_sha"] = tests_sha
+    state.save(str(repo), s)
+    return wt
+
+
+def revise(repo, wt):
+    """The tests phase doing what it was sent back to do: rewrite the pinned assertion and declare why."""
+    commit_in(wt, "tests/test_app.py", REWRITTEN, "tests: revise the pinned assertion")
+    s = state.load(str(repo))
+    s["tasks"]["t-1"]["last_test_run"]["after_edit_seq"] = s["tasks"]["t-1"]["edit_seq"]
+    state.save(str(repo), s)
+    return step_done(repo, "Revised the pinned assertion.\nGreen.\n" + PINNED_BLOCK)
+
+
+def test_a_step_can_send_the_pinned_test_back_and_the_task_goes_green(pinned_repo):
+    """rich-3871's shape end to end, and rich-3577's from the other side. The tests phase missed that an existing test
+    pinned the bug; the implementer hits it, may not touch it, and says so naming the test. That used to end the run
+    with a sentence of homework. Now the tests phase decides, declares the rewrite, and implementation resumes."""
+    wt = implementing(pinned_repo)
+    assert pytest_in(wt) == (2, 1), "the correct fix leaves the pinned test failing: that is the whole problem"
+    out = step_done(pinned_repo, "The fix matches criterion 1.\nThe suite is red on a test I may not touch.\n"
+                    "CONTRADICTS SPEC: %s asserts the six-cell result criterion 1 calls the bug" % PINNED)
+    assert task_state(pinned_repo)["phase"] == "tests" and PINNED in out["systemMessage"]
+
+    assert revise(pinned_repo, wt) is None
+    assert task_state(pinned_repo)["expected_test_changes"] == [
+        {"test": PINNED, "why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]
+
+    r = run_script("state", ["advance", "implement"], cwd=str(pinned_repo))
+    assert r.returncode == 0, r.stdout + r.stderr
+    t = task_state(pinned_repo)
+    assert t["phase"] == "implement" and t["step"] == 0 and t["plan"][0]["done"] is False, "resumes at the step it left"
+    assert pytest_in(wt) == (3, 0), "green once the test that pinned the bug says what the spec says"
+
+
+def test_the_plan_survives_the_trip_to_the_tests_phase(pinned_repo):
+    """`progress.py plan` would reset the plan and drop the step the task is meant to resume at. It already refuses once
+    a round trip has been recorded, and a step's trip is recorded where the verifier's is, so it refuses this one too."""
+    wt = implementing(pinned_repo)
+    step_done(pinned_repo, "Cannot finish.\nCONTRADICTS SPEC: %s pins the bug (criterion 1)" % PINNED)
+    assert revise(pinned_repo, wt) is None
+    assert run_script("state", ["advance", "implement"], cwd=str(pinned_repo)).returncode == 0
+    r = run_script("progress", ["plan", "B"], cwd=str(pinned_repo))
+    assert r.returncode != 0 and "would drop the round-trip steps" in (r.stdout + r.stderr)
+    assert task_state(pinned_repo)["plan"][0]["title"] == "keep the ellipsis inside the budget"
