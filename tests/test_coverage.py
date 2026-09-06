@@ -6,14 +6,44 @@ from conftest import commit_in, git, task_in, task_state
 import coverage
 import state
 
+FIXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+
 SPEC = ("Add sub and mul.\n\n## Acceptance criteria\n\n1. sub(5, 3) == 2\n2. mul(2, 3) == 6\n3) mul(0, 9) == 0\n\n"
         "## Files likely involved\n- app.py\n")
 
 
+def texts(crits):
+    return [c["text"] for c in crits]
+
+
 def test_criteria_are_the_numbered_or_bulleted_items_under_the_heading():
-    assert coverage.criteria(SPEC) == ["sub(5, 3) == 2", "mul(2, 3) == 6", "mul(0, 9) == 0"]
-    assert coverage.criteria("## Acceptance criteria\n- one\n- two\n### Notes\n- not a criterion\n") == ["one", "two"]
+    assert texts(coverage.criteria(SPEC)) == ["sub(5, 3) == 2", "mul(2, 3) == 6", "mul(0, 9) == 0"]
+    assert texts(coverage.criteria("## Acceptance criteria\n- one\n- two\n### Notes\n- not a criterion\n")) == ["one", "two"]
     assert coverage.criteria("Goal only.\n") is None
+
+
+def test_a_sub_bullet_of_a_criterion_is_part_of_it_and_not_another_criterion():
+    """rich-3577's spec listed the two tests criterion 10 covers as sub-bullets, and the parser read them as criteria
+    11 and 12 — so its tests phase had to invent coverage entries for two things nobody had asked for."""
+    spec = "## Acceptance criteria\n1. first\n2. second, which covers:\n   - a case\n   - another case\n"
+    assert texts(coverage.criteria(spec)) == ["first", "second, which covers:"]
+
+
+def test_a_criterion_records_where_it_came_from():
+    """rich-3577's own criteria 1 and 10: the issue's Expected Output restated, and the spec's own decision that two
+    existing tests must be rewritten — which the issue says nothing about."""
+    crits = coverage.criteria(open(os.path.join(FIXTURES_DIR, "spec_with_criterion_sources.md")).read())
+    assert [c["source"] for c in crits] == ["issue", "inferred"]
+    assert crits[0]["text"].startswith("A single trailing newline is preserved")
+    assert not crits[1]["text"].startswith("["), "the tag is stripped from the criterion's own words"
+
+
+def test_source_of_reads_the_tag_of_the_criterion_an_entry_names():
+    crits = coverage.criteria(open(os.path.join(FIXTURES_DIR, "spec_with_criterion_sources.md")).read())
+    assert coverage.source_of(crits, "1") == "issue"
+    assert coverage.source_of(crits, "Two existing tests assert the behaviour this spec calls a bug") == "inferred"
+    assert coverage.source_of(crits, "7") == "", "a criterion the spec does not have has no source"
+    assert coverage.source_of([{"text": "untagged", "source": ""}], "1") == "", "nor does one written before the tag"
 
 
 def test_json_block_is_the_last_fenced_block_or_none():
@@ -130,5 +160,8 @@ def test_a_deleted_test_counts_as_changed(repo):
 def test_declared_changes_are_the_reply_blocks_entries_with_a_reason():
     block = {"expected_test_changes": [{"test": "tests/test_app.py::test_long", "why": "the spec says the pinned width is wrong"},
                                        {"test": "tests/test_app.py::test_x"}, {"why": "no test named"}, "junk"]}
-    assert coverage.declared_changes(block) == [{"test": "tests/test_app.py::test_long", "why": "the spec says the pinned width is wrong"}]
+    assert coverage.declared_changes(block) == [{"test": "tests/test_app.py::test_long", "criterion": "",
+                                                "why": "the spec says the pinned width is wrong"}]
+    cited = {"expected_test_changes": [{"test": "t.py::x", "why": "criterion 1 says so", "criterion": " 1 "}]}
+    assert coverage.declared_changes(cited) == [{"test": "t.py::x", "why": "criterion 1 says so", "criterion": "1"}]
     assert coverage.declared_changes({}) == [] and coverage.declared_changes(None) == []

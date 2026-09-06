@@ -262,7 +262,7 @@ def test_step_closed_on_an_unchanged_head_is_marked_satisfied_by_the_step_that_d
 PINNED_BLOCK = ('```json\n{"coverage": [{"criterion": 1, "ref": "tests/test_app.py::test_truncate_fits_the_width"}, '
                 '{"criterion": 2, "ref": "tests/test_app.py::test_short_text_is_returned_unchanged"}], '
                 '"expected_test_changes": [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", '
-                '"why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]}\n```')
+                '"criterion": "1", "why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]}\n```')
 
 
 def pinned_task(repo, tests):
@@ -283,7 +283,7 @@ def test_changing_an_existing_test_without_saying_why_is_blocked_naming_it(pinne
     pinned_task(pinned_repo, REWRITTEN)
     out = step_done(pinned_repo, "Rewrote the pinned assertion.\nOne fails.\n" + PINNED_BLOCK.replace(
         '"expected_test_changes": [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", '
-        '"why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]', '"expected_test_changes": []'))
+        '"criterion": "1", "why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]', '"expected_test_changes": []'))
     assert out["decision"] == "block"
     assert "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis" in out["reason"]
     assert "expected_test_changes" in out["reason"] and "REHORSE_SPEC.md" in out["reason"]
@@ -295,15 +295,26 @@ def test_a_declared_change_is_recorded_with_its_reason_and_allowed(pinned_repo):
     assert step_done(pinned_repo, "Rewrote the pinned assertion.\nOne fails.\n" + PINNED_BLOCK) is None
     t = task_state(pinned_repo)
     assert t["expected_test_changes"] == [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis",
+                                           "criterion": "1", "source": "issue",
                                            "why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]
     assert task_state(pinned_repo)["coverage"], "the coverage mapping is still recorded alongside it"
+
+
+def test_a_rewrite_records_the_source_of_the_criterion_it_cites(pinned_repo):
+    """The rewrite is the same edit either way; the difference is whether the task text asked for it or the model did.
+    That is resolved once, here, against the spec as it stood — the report and the verifier's brief just read it."""
+    wt = pinned_task(pinned_repo, REWRITTEN)
+    spec = open(os.path.join(wt, "REHORSE_SPEC.md")).read()
+    commit_in(wt, "REHORSE_SPEC.md", spec.replace("1. [issue]", "1. [inferred]"), "spec: criterion 1 was the model's own")
+    assert step_done(pinned_repo, "Rewrote the pinned assertion.\nOne fails.\n" + PINNED_BLOCK) is None
+    assert task_state(pinned_repo)["expected_test_changes"][0]["source"] == "inferred"
 
 
 def test_adding_tests_without_touching_the_existing_ones_needs_no_declaration(pinned_repo):
     pinned_task(pinned_repo, ORIGINAL + NEW_TEST)
     assert step_done(pinned_repo, "Added one test.\nIt fails.\n" + PINNED_BLOCK.replace(
         '"expected_test_changes": [{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", '
-        '"why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]', '"expected_test_changes": []')) is None
+        '"criterion": "1", "why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]', '"expected_test_changes": []')) is None
     assert task_state(pinned_repo)["expected_test_changes"] == []
 
 
@@ -331,8 +342,9 @@ def test_a_second_tests_phase_keeps_the_first_rounds_declarations(pinned_repo):
     commit_in(wt, "tests/test_app.py", REWRITTEN.replace('truncate("abc", 5) == "abc"', 'truncate("abc", 9) == "abc"'), "tests: round 2")
     later = PINNED_BLOCK.replace(
         '{"test": "tests/test_app.py::test_long_text_is_cut_with_an_ellipsis", '
-        '"why": "it pins the off-by-one the spec calls the bug (criterion 1)"}',
-        '{"test": "tests/test_app.py::test_short_text_is_returned_unchanged", "why": "criterion 2 says any width over the length"}')
+        '"criterion": "1", "why": "it pins the off-by-one the spec calls the bug (criterion 1)"}',
+        '{"test": "tests/test_app.py::test_short_text_is_returned_unchanged", "criterion": "2", '
+        '"why": "criterion 2 says any width over the length"}')
     assert step_done(pinned_repo, "Widened the short-text case.\nOne fails.\n" + later) is None
     recorded = {c["test"]: c["why"] for c in task_state(pinned_repo)["expected_test_changes"]}
     assert set(recorded) == {"tests/test_app.py::test_long_text_is_cut_with_an_ellipsis",
@@ -420,7 +432,7 @@ def test_a_step_can_send_the_pinned_test_back_and_the_task_goes_green(pinned_rep
 
     assert revise(pinned_repo, wt) is None
     assert task_state(pinned_repo)["expected_test_changes"] == [
-        {"test": PINNED, "why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]
+        {"test": PINNED, "criterion": "1", "source": "issue", "why": "it pins the off-by-one the spec calls the bug (criterion 1)"}]
 
     r = run_script("state", ["advance", "implement"], cwd=str(pinned_repo))
     assert r.returncode == 0, r.stdout + r.stderr

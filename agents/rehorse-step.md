@@ -28,7 +28,8 @@ Rules:
 - In the tests phase, a prompt saying a step or the verifier claims an existing test pins behaviour the spec calls a
   bug is asking you to **judge that claim**, not to carry it out. Read `REHORSE_SPEC.md` and that test yourself. If the
   claim holds, change that test to what the criterion requires and nothing else, and declare it in
-  `expected_test_changes` with the criterion that says so. If it does not hold, change nothing and make your last line
+  `expected_test_changes` with the criterion that says so — and cite the criterion that authorises it, not just the
+  reason, because a rewrite resting only on criteria the spec marks `[inferred]` is reported as a warning. If it does not hold, change nothing and make your last line
   start `CONTRADICTS SPEC:` saying why the claim is wrong; the task then stops and the user sees both claims. Agreeing
   because you were asked to is the one failure this round trip exists to prevent.
 - A step titled `Fix (verifier round N): ...` names one case, one caller, one test. **Fix it there.** The finding is

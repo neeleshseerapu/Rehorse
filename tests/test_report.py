@@ -169,7 +169,8 @@ def test_concerns_verdict_replaces_unverified_in_the_banner_and_renders_findings
     section = text[i:text.index("## Test-file drift")]
     assert "[medium] app.py:5 strings are concatenated, not rejected" in section
     assert "tests/test_rehorse_verify_t-1.py::test_strings" in section and "3 passed, 0 failed" in section
-    assert "| 2. sub raises TypeError on strings | none |" in section and "| 1. sub(3, 1) == 2 | test | tests/test_sub.py::test_sub |" in section
+    assert "| 2. sub raises TypeError on strings | – | none |" in section
+    assert "| 1. sub(3, 1) == 2 | – | test | tests/test_sub.py::test_sub |" in section
 
 
 def test_fail_verdict_leads_the_banner_but_the_merge_command_is_still_offered(repo):
@@ -199,7 +200,7 @@ def test_many_findings_go_to_the_verifier_folder_and_the_report_links_it(repo):
     name = os.path.basename(task_state(repo)["report_path"])
     assert "finding 5" in text and "finding 6" not in text and "3 more in rehorse-reports/verifier/%s" % name in text
     full = open(os.path.join(str(repo), "rehorse-reports", "verifier", name)).read()
-    assert all("finding %d" % n in full for n in range(1, 9)) and "| 2. sub raises TypeError on strings | none |" in full
+    assert all("finding %d" % n in full for n in range(1, 9)) and "| 2. sub raises TypeError on strings | – | none |" in full
     names = git(wt, "show", "--name-only", "--format=", "HEAD").split()
     assert "rehorse-reports/verifier/" + name in names
 
@@ -331,3 +332,44 @@ def test_the_report_notes_diagnostic_runs_in_one_line_and_keeps_them_out_of_the_
 def test_a_task_with_no_diagnostic_runs_says_nothing_about_them(repo):
     verified_task(repo)
     assert "Diagnostic runs" not in render(repo)
+
+
+CITED = {"test": "tests/test_ansi.py::test_decode_example", "criterion": "1",
+         "why": "criterion 1 says the render now carries that trailing break"}
+
+
+def test_a_rewrite_names_the_criterion_it_was_justified_by_and_where_that_came_from(repo):
+    verified_task(repo, expected_test_changes=[dict(CITED, source="issue")])
+    text = render(repo)
+    assert "- `tests/test_ansi.py::test_decode_example` — criterion 1 says the render now carries that trailing break " \
+           "(criterion 1, issue)" in text
+    assert "inferred criteria only" not in text
+
+
+def test_a_rewrite_justified_only_by_inferred_criteria_is_a_warning(repo):
+    """rich-3577's shape: criterion 1 is the issue's own Expected Output, criterion 10 is the spec's decision that two
+    existing tests must change. Rewriting a test the repo pinned on the strength of the second alone is the model
+    editing the evidence, and the reader (and the verifier, which sees these lines first) is told so."""
+    verified_task(repo, expected_test_changes=[dict(CITED, criterion="10", source="inferred")])
+    text = render(repo)
+    assert "**Warning: rewrite justified by inferred criteria only.**" in text
+    assert "Nothing in the task text asks for `tests/test_ansi.py::test_decode_example` to change" in text
+    assert "(criterion 10, inferred)" in text
+
+
+def test_a_rewrite_citing_no_criterion_at_all_warns_too(repo):
+    verified_task(repo, expected_test_changes=[{"test": "tests/t.py::x", "why": "it was wrong", "criterion": "", "source": ""}])
+    text = render(repo)
+    assert "(no criterion cited)" in text and "**Warning: rewrite justified by inferred criteria only.**" in text
+
+
+def test_the_coverage_table_shows_where_each_criterion_came_from(repo):
+    wt = verified_task(repo, verifier=dict(VERDICT, coverage=[
+        {"criterion": "1. sub(3, 1) == 2", "evidence": "test", "ref": "tests/test_sub.py::test_sub"},
+        {"criterion": "2", "evidence": "none", "ref": ""}]))
+    open(os.path.join(wt, "REHORSE_SPEC.md"), "w").write(
+        "Goal.\n\n## Acceptance criteria\n1. [issue] sub(3, 1) == 2\n2. [inferred] sub raises TypeError on strings\n")
+    text = render(repo)
+    assert "| acceptance criterion | source | evidence | ref |" in text
+    assert "| 1. sub(3, 1) == 2 | issue | test | tests/test_sub.py::test_sub |" in text
+    assert "| 2 | inferred | none |  |" in text

@@ -291,6 +291,19 @@ def test_brief_names_the_existing_tests_the_change_rewrote(repo):
     assert brief.index("## Existing tests the change rewrote") > brief.index("## Diff")
 
 
+def test_the_brief_flags_a_rewrite_justified_only_by_a_criterion_the_model_inferred(repo):
+    """The verifier is the one reader in a position to push back on a rewrite before it merges, and it sees these lines
+    ahead of the diff. It is told which rewrites the task text asked for and which the spec decided on its own."""
+    verify_task(repo, expected_test_changes=[
+        {"test": "tests/test_sub.py::test_sub", "criterion": "2", "source": "inferred", "why": "criterion 2 says so"},
+        {"test": "tests/test_mul.py::test_mul", "criterion": "1", "source": "issue", "why": "criterion 1 says so"}])
+    assert run_script("verify", ["brief"], cwd=str(repo)).returncode == 0
+    brief = open(str(repo / ".rehorse" / "verify" / "t-1-round1.md")).read()
+    assert "**Warning: rewrite justified by inferred criteria only.**" in brief
+    assert "`tests/test_sub.py::test_sub`" in brief.split("Warning: rewrite")[1].split("\n")[0]
+    assert "tests/test_mul.py::test_mul` — criterion 1 says so (criterion 1, issue)" in brief
+
+
 # ---- a finding that says an existing test pins the bug sends the round trip back to the tests phase --------------
 
 PINS = ('```json\n{"verdict": "fail", "findings": [{"severity": "high", "file": "tests/test_app.py", "line": 8, '
@@ -377,8 +390,8 @@ PINNED_VERDICT = ('The fix itself is right.\n```json\n{"verdict": "fail", "findi
                   '"tests_added": [], "coverage": []}\n```' % PINNED_TEST)
 REVISION_BLOCK = ('```json\n{"coverage": [{"criterion": 1, "ref": "tests/test_app.py::test_truncate_fits_the_width"}, '
                   '{"criterion": 2, "ref": "tests/test_app.py::test_short_text_is_returned_unchanged"}], '
-                  '"expected_test_changes": [{"test": "%s", "why": "criterion 1 says the ellipsis is inside the budget, so '
-                  'the six-cell expectation is the bug"}]}\n```' % PINNED_TEST)
+                  '"expected_test_changes": [{"test": "%s", "criterion": "1", "why": "criterion 1 says the ellipsis is inside '
+                  'the budget, so the six-cell expectation is the bug"}]}\n```' % PINNED_TEST)
 
 
 def pytest_in(wt):
@@ -422,7 +435,8 @@ def test_the_verifier_can_send_a_pinned_test_back_to_the_tests_phase_and_the_tas
                    last_assistant_message="Revised the pinned assertion.\nGreen.\n" + REVISION_BLOCK)
     assert hook_out(run_script("step_done", stdin=payload, cwd=str(pinned_repo))) is None
     assert task_state(pinned_repo)["expected_test_changes"] == [
-        {"test": PINNED_TEST, "why": "criterion 1 says the ellipsis is inside the budget, so the six-cell expectation is the bug"}]
+        {"test": PINNED_TEST, "criterion": "1", "source": "issue",
+         "why": "criterion 1 says the ellipsis is inside the budget, so the six-cell expectation is the bug"}]
 
     r = run_script("state", ["advance", "implement"], cwd=str(pinned_repo))
     assert r.returncode == 0, r.stdout + r.stderr

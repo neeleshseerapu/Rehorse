@@ -14,6 +14,7 @@ import re
 import shutil
 import sys
 
+import coverage
 import progress
 import state
 import testcmd
@@ -51,7 +52,6 @@ def drift(wt, task):
 
 def changed_in(wt, since, path):
     """Ids of the tests in `path` whose body differs from `since`; [path] when the file cannot be read as tests."""
-    import coverage  # lazy: only the drift check needs the parsers
     before = coverage.test_bodies(worktree.git(wt, "show", "%s:%s" % (since, path), check=False))
     try:
         after = coverage.test_bodies(open(os.path.join(wt, path), errors="ignore").read())
@@ -115,13 +115,28 @@ def findings_text(v):
                      for f in v["findings"]) or "- (none)"
 
 
+def cite(c):
+    """The criterion a rewrite was justified by, and where that criterion came from."""
+    if not c.get("criterion"):
+        return " (no criterion cited)"
+    return " (criterion %s, %s)" % (c["criterion"], c.get("source") or "source not recorded")
+
+
 def changes_block(task, heading="## Existing tests the change rewrote"):  # the default heading is what the verifier brief shows too
-    """The tests the tests phase rewrote and why, as report lines: the riskiest part of a diff, so it is never implicit."""
+    """The tests the tests phase rewrote and why, as report lines: the riskiest part of a diff, so it is never implicit.
+
+    Each rewrite names the criterion that allowed it and where that criterion came from. One justified only by criteria
+    the spec marks `inferred` is a test the repo pinned being rewritten on the model's own authority, not the issue's —
+    a reader (and the verifier, which gets these lines first) should be told which of the two happened."""
     changes = task.get("expected_test_changes") or []
     if not changes:  # one line, not a section: the report has a one-screen budget and nothing happened here
         return ["Existing tests changed: none — every test in the diff is new.", ""]
+    weak = [c for c in changes if c.get("source") != "issue"]
     return [heading, "", "Existing tests changed: %d (declared in the tests phase, with the reason each was allowed)." % len(changes), "",
-            *["- `%s` — %s" % (c["test"], c["why"]) for c in changes], ""]
+            *["- `%s` — %s%s" % (c["test"], c["why"], cite(c)) for c in changes],
+            *(["", "**Warning: rewrite justified by inferred criteria only.** Nothing in the task text asks for %s to change; "
+               "the criterion cited was written by the model. Read %s before merging."
+               % (", ".join("`%s`" % c["test"] for c in weak), "it" if len(weak) == 1 else "them")] if weak else []), ""]
 
 
 def revision_line(task, h):
@@ -133,10 +148,12 @@ def revision_line(task, h):
     return ["Round %d: test revision (%s)" % (h["round"], "; ".join("%s, %s" % (r["test"], why.get(r["test"]) or r["why"]) for r in rev))] if rev else []
 
 
-def coverage_table(cov):
+def coverage_table(cov, crits=None):
+    """Each criterion, where it came from, and what evidence the verifier tied to it."""
     if not cov:
         return ["(no coverage map returned)"]
-    return ["| acceptance criterion | evidence | ref |", "|---|---|---|"] + ["| %s | %s | %s |" % (c["criterion"], c["evidence"], c["ref"]) for c in cov]
+    return ["| acceptance criterion | source | evidence | ref |", "|---|---|---|---|"] + [
+        "| %s | %s | %s | %s |" % (c["criterion"], coverage.source_of(crits, c["criterion"]) or "–", c["evidence"], c["ref"]) for c in cov]
 
 
 def tests_added(ids):
@@ -157,7 +174,7 @@ def rounds(task):
     return out
 
 
-def verifier_section(task, name):
+def verifier_section(task, name, crits=None):
     """Report lines for the verdict; second value is the full findings file's text when the report shows only the first few."""
     v, hist = task.get("verifier"), task.get("verify_history") or []
     if not v:  # a task can stop before the verifier ever runs and still have spent rounds; those still belong in the report
@@ -169,9 +186,9 @@ def verifier_section(task, name):
              "Findings:" if n else "Findings: none", *([findings_text({"findings": v["findings"][:MAX_FINDINGS]})] if n else [])]
     if n > MAX_FINDINGS:
         lines.append("- ... %d more in %s/verifier/%s" % (n - MAX_FINDINGS, REPORTS, name))
-    lines += ["", *coverage_table(v["coverage"]), "", *rounds(task)]
+    lines += ["", *coverage_table(v["coverage"], crits), "", *rounds(task)]
     full = "\n".join(["# Verifier findings: %s (round %d, verdict %s)" % (task["id"], v["round"], v["verdict"]), "",
-                      findings_text(v), "", *coverage_table(v["coverage"]), ""]) if n > MAX_FINDINGS else None
+                      findings_text(v), "", *coverage_table(v["coverage"], crits), ""]) if n > MAX_FINDINGS else None
     return lines, full
 
 
@@ -186,7 +203,7 @@ BUILD_FAILED_ROW = "| red (tests written, no implementation) | build failed (new
 
 def render(root, task, name):
     wt, tid = progress.wt_path(root, task), task["id"]
-    verifier, full = verifier_section(task, name)
+    verifier, full = verifier_section(task, name, coverage.spec_criteria(root, task))
     stat = worktree.diff(root, tid, task["base_sha"], stat=True).strip() if task["base_sha"] else ""
     d = drift(wt, task)
     if d is None:

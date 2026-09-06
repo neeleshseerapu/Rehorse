@@ -897,3 +897,29 @@ failed", which is true of one test and of nothing else.
 - **The fixture is that command, verbatim.** Its failure body is abbreviated: the 4000-character tail the run recorded
   had already scrolled past pytest's summary line (the `sed` of the test file came last), so the run's own stored
   output no longer parses. The command is what the classification turns on, and that is captured exactly.
+
+## Every acceptance criterion records whether the issue asked for it (2026-09-05)
+
+`rich-3577` rewrote two tests the repo already had, and was right to: the maintainer's merged PR makes the identical
+two edits. But the reason it recorded — "Criterion 10: ..." — cites a criterion the model wrote itself. The issue says
+nothing about `tests/test_ansi.py`; criterion 10 *is* the spec's own decision that those two tests must change. The
+justification was sound because its second half cited criterion 1, which is the issue's Expected Output restated. A
+reader had no way to tell those two halves apart, and neither did the verifier.
+
+- **`[issue]` or `[inferred]`, leading each criterion.** The spec phase writes `1. [issue] ...` /
+  `10. [inferred] ...`; `coverage.criteria()` strips the tag and records it. Nothing gates on it, deliberately — a spec
+  is *supposed* to infer, and a gate would only teach the model to label everything `[issue]`. It is carried so that
+  the one place it matters can say so.
+- **That place is a rewritten test.** `expected_test_changes` now carries the `criterion` it cites, `step_done.py`
+  resolves that criterion's source against the spec as it stood, and the report renders
+  "**Warning: rewrite justified by inferred criteria only**" naming the tests when no cited criterion is `[issue]`.
+  The verifier's brief gets it in the same lines, ahead of the diff, because the verifier is the one reader positioned
+  to push back before the rewrite merges. A warning, not a block: a rewrite the issue did not ask for is sometimes
+  right (`rich-3577`'s was), and the judgement is the user's.
+- **The coverage table gained a source column**, so the report shows for every criterion whether the task asked for it
+  or the model did — which is also the honest way to read a green run against a spec the model wrote.
+- **A sub-bullet is part of its criterion, not another criterion.** Found while tagging `rich-3577`'s spec: its
+  criterion 10 lists the two tests as sub-bullets, and `criteria()` counted them, so the parser saw 12 criteria and
+  the tests phase dutifully invented coverage entries "11." and "12." for things nobody had asked for. Only items at
+  the section's outermost indent are criteria now. The gate got weaker in exactly the way it should: it stopped
+  demanding tests for half-sentences.

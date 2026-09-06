@@ -2,6 +2,11 @@
 """Acceptance-criteria coverage for the tests phase: before tests -> implement, every criterion under
 `## Acceptance criteria` in REHORSE_SPEC.md must map to a test in a test file the tests phase added or changed.
 
+Each criterion carries where it came from: `1. [issue] ...` is quoted or paraphrased from the task text, `[inferred]`
+was added by the model writing the spec. Nothing gates on it, because a spec is allowed to infer; it is carried so the
+report and the verifier can say which kind of criterion a rewritten test was justified by, which is the difference
+between "the issue says this test is wrong" and "the model decided it was".
+
 The mapping comes from the tests-phase agent's reply, a ```json block {"coverage": [{"criterion": <number or text>,
 "ref": "<file>::<test>"}]} (the verifier's coverage shape), recorded by step_done.py as task["coverage"]. This module
 checks the mapping against the files: the ref must name a new or changed test file and a test that exists in it. It
@@ -22,6 +27,7 @@ import worktree
 
 HEADING_RE = re.compile(r"^#+\s*acceptance criteria\s*$", re.I)
 ITEM_RE = re.compile(r"^\s*(?:\d+[.)]|[-*])\s+(.+?)\s*$")
+SOURCE_RE = re.compile(r"^[\[(](issue|inferred)[\])]\s*", re.I)  # leading, so a criterion may still wrap over lines
 BLOCK_RE = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
 NO_SECTION = "REHORSE_SPEC.md has no '## Acceptance criteria' section (numbered, each testable); write it before the tests"
 GUARD_RE = re.compile(r"(?:#|//)\s*rehorse:\s*guard\b")
@@ -31,7 +37,9 @@ CLASS_RE = re.compile(r"^class (\w+)")
 
 
 def criteria(text):
-    """The items under '## Acceptance criteria' (numbered or bulleted), or None when the section is missing."""
+    """[{text, source}] for the items under '## Acceptance criteria', or None when the section is missing.
+
+    `source` is "issue", "inferred", or "" for a spec written before the tag existed or by a model that skipped it."""
     items, inside, seen = [], False, False
     for line in text.splitlines():
         if line.startswith("#"):
@@ -40,8 +48,26 @@ def criteria(text):
             continue
         m = inside and ITEM_RE.match(line)
         if m:
-            items.append(m.group(1))
-    return items if seen else None
+            tag = SOURCE_RE.match(m.group(1))
+            items.append({"text": SOURCE_RE.sub("", m.group(1)), "source": tag.group(1).lower() if tag else "",
+                          "indent": len(line) - len(line.lstrip())})
+    top = min((i["indent"] for i in items), default=0)  # a sub-bullet of a criterion is part of it, not another one
+    return [{k: v for k, v in i.items() if k != "indent"} for i in items if i["indent"] == top] if seen else None
+
+
+def spec_criteria(root, task):
+    """The task's criteria from its worktree, or [] when there is no spec or no section."""
+    wt = os.path.realpath(os.path.join(root, task["worktree"]))
+    try:
+        return criteria(open(os.path.join(wt, "REHORSE_SPEC.md")).read()) or []
+    except OSError:
+        return []
+
+
+def source_of(crits, entry):
+    """Where the criterion an entry names came from: "issue", "inferred", or "" when it names none, or the spec
+    records no source for it. Matching is `matches()`: by number, or by the criterion's own words."""
+    return next((c["source"] for n, c in enumerate(crits or [], 1) if matches(n, c["text"], entry)), "")
 
 
 def json_block(text):
@@ -153,7 +179,7 @@ def changed_existing_tests(root, task):
 def declared_changes(block):
     """The reply block's expected_test_changes: entries naming a test and giving a one-line reason. Junk is dropped."""
     entries = (block or {}).get("expected_test_changes") or []
-    return [{"test": str(e["test"]), "why": " ".join(str(e["why"]).split())}
+    return [{"test": str(e["test"]), "why": " ".join(str(e["why"]).split()), "criterion": " ".join(str(e.get("criterion") or "").split())}
             for e in entries if isinstance(e, dict) and e.get("test") and e.get("why")]
 
 
@@ -172,6 +198,7 @@ def uncovered(root, task):
         crits = None
     if crits is None:
         return [NO_SECTION]
+    crits = [c["text"] for c in crits]
     tests = changed_tests(root, task)
     out = []
     for n, c in enumerate(crits, 1):

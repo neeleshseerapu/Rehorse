@@ -1,8 +1,8 @@
 truncate() must never return more cells than the width it was given.
 
 ## Acceptance criteria
-1. `truncate("abcdefgh", 5)` returns `"abcd…"`: five cells, the ellipsis inside the budget.
-2. `truncate("abc", 5)` still returns `"abc"` unchanged.
+1. [issue] `truncate("abcdefgh", 5)` returns `"abcd…"`: five cells, the ellipsis inside the budget.
+2. [issue] `truncate("abc", 5)` still returns `"abc"` unchanged.
 
 ## Assumptions
 - `tests/test_app.py::test_long_text_is_cut_with_an_ellipsis` pins the old, wrong width

@@ -24,7 +24,8 @@ AGENT = "rehorse-step"
 COVERAGE_HINT = ('end your reply with a ```json block {"coverage": [{"criterion": "<acceptance criterion or its number>", '
                  '"ref": "<test file>::<test name>"}]} mapping every acceptance criterion in REHORSE_SPEC.md to a test you added')
 CHANGED_HINT = ('Either restore it, or, if REHORSE_SPEC.md says the behaviour it pins is wrong, add to the same json block '
-                '"expected_test_changes": [{"test": "<file>::<test>", "why": "<one line: which criterion says so>"}] for each')
+                '"expected_test_changes": [{"test": "<file>::<test>", "criterion": "<the criterion or its number>", '
+                '"why": "<one line: what that criterion says the old expectation got wrong>"}] for each')
 
 
 def contradicts(root, s, task, c):
@@ -102,6 +103,9 @@ def main():
         if undeclared:  # rewriting a test the repo already had is a spec decision, not a tests-phase liberty
             return guard_stop.block(root, s, task, "existing test(s) changed with no reason given: %s. %s, then run the test command, "
                                     "commit, and stop again." % (", ".join(undeclared), CHANGED_HINT), "step-done")
+        crits = coverage.spec_criteria(root, task)  # where the cited criterion came from: the report and the brief say so
+        for d in declared:
+            d["source"] = coverage.source_of(crits, d["criterion"])
         task["expected_test_changes"] = [d for d in declared if d["test"] in set(coverage.changed_existing_tests(root, task))]
     task["stop_blocks"] = 0
     if title:

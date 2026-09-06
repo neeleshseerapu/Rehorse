@@ -60,6 +60,13 @@ Record its command and move on: `testcmd.py set "<command>"`, then
 2. Write `<worktree>/REHORSE_SPEC.md`. First line: one sentence stating the goal (the report quotes it). Then
    `## Acceptance criteria` (numbered, each testable), `## Files likely involved`, `## Assumptions` (every question you
    would have asked; if a user is present and the task is genuinely ambiguous, ask before writing).
+
+   **Every criterion starts with `[issue]` or `[inferred]`**, right after its number: `1. [issue] ...`. `[issue]` means
+   the task text asks for it — quoted, or paraphrased closely enough that a reader of the issue would recognise it.
+   `[inferred]` means you added it: a consequence you worked out, a regression you decided to guard, a decision about
+   existing tests. Inferring is expected and is not penalised; mislabelling is, because a rewrite of a test the repo
+   already had is later judged by whether the criterion behind it came from the issue or from you. When in doubt it is
+   `[inferred]`. Sub-bullets under a criterion are part of it and are not tagged.
 3. Baseline: run exactly `cd <worktree> && <test_cmd>`. The PostToolUse hook records the counts. If it replies that the
    baseline ran 0 tests, the task is now `needs-attention`: fix the command with `testcmd.py set`, run
    `state.py advance spec`, and run the baseline again.
@@ -82,10 +89,12 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    Commit: cd <worktree> && git add -A && git commit -m "tests: red for <id>"
    Reply with two lines, (1) which tests you added and where, (2) what fails and why, then a ```json block
    {"coverage": [{"criterion": "<criterion or its number>", "ref": "<test file>::<test name>"}],
-    "expected_test_changes": [{"test": "<file>::<test>", "why": "<one line: which criterion says the old one was wrong>"}]}
+    "expected_test_changes": [{"test": "<file>::<test>", "criterion": "<the criterion or its number>",
+                               "why": "<one line: what that criterion says the old expectation got wrong>"}]}
    with one entry per acceptance criterion in REHORSE_SPEC.md, and one expected_test_changes entry per existing test you
-   changed (omit it when you changed none). The hook records both and refuses the stop while a criterion has no test or
-   an existing test changed with no reason given.
+   changed (omit it when you changed none). Cite the criterion that authorises each rewrite: a rewrite resting only on
+   criteria the spec marks [inferred] is reported to the user, and to the verifier, as a warning. The hook records both
+   and refuses the stop while a criterion has no test or an existing test changed with no reason given.
    ```
 
 2. Run `cd <worktree> && <test_cmd>` yourself; the hook records `red_check`. **At least one test that was not failing at
