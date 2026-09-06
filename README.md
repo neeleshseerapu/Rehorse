@@ -284,7 +284,11 @@ and rounds, wall time, session turns, report.
 Ten `rich` tasks have run (`eval/results.md`): nine pass the upstream PR's tests, eight reached a green report of
 their own, and none errored. The two that did not finish are worth more than the eight that did — `rich-3577` is the
 pinned-test stop described above, and `rich-3871` was stopped by its own verifier after three rounds for a regression
-the upstream tests never cover, which is why its row says `needs-attention` next to `upstream-tests-pass: yes`.
+the upstream tests never cover, which is why its row says `needs-attention` next to `upstream-tests-pass: yes`. Reading
+that one back, the verifier was right all three times: a finding about one table shape was fixed in the width routine
+every table goes through, and the two rounds that followed were the same regression twice. A step that fixes a verifier
+finding is now told to stay in the caller the finding named, and to name the other callers and their tests when the fix
+really does belong in shared code.
 
 ## License
 

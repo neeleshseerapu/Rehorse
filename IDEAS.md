@@ -20,8 +20,7 @@ Out-of-scope ideas noticed while building. Not to be built without a decision.
 - `testcmd.verify_file` guesses pytest naming for `make test` and unknown runners; reading the Makefile's `test` target (or letting the user set the verifier file with `testcmd.py set`) would name it right for other runners behind make.
 - Verifier findings could carry the acceptance criterion they belong to, so a round-trip step names the criterion and the report groups findings by criterion.
 
-- **The implementer widens the blast radius when a verifier finding is about a shared helper** (seen in rich-3871,
-  2026-09-05: three rounds, one regression twice). Two possible nudges, neither tried: the step-agent prompt could ask
-  that a fix for a verifier finding stay in the narrowest scope that satisfies the criterion, and name the criterion it
-  must not break; and a "make the verifier's tests pass" step that closes with no edits could be required to say which
-  round's tests it ran, since closing it as already-satisfied proved nothing about the next round's cases.
+- A "make the verifier's tests pass" step that closes with no edits could be required to say which round's tests it ran:
+  in rich-3871 two such steps were closed as already-satisfied, which was true of the tests that existed at that moment
+  and proved nothing about the next round's cases. (The other half of that diagnosis — scoping a verifier fix to the
+  caller the finding named — is now in the step-agent prompt; see DECISIONS.md, 2026-09-05.)

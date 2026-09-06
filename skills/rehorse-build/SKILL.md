@@ -109,6 +109,9 @@ Record its command and move on: `testcmd.py set "<command>"`, then
    Previous step: <its two lines, or "none">
    Test command: cd <worktree> && <test_cmd>   (run it after your edits)
    Commit: cd <worktree> && git add -A && git commit -m "step <n>: <title>"
+   If this step is titled "Fix (verifier round <n>)", it names one case or caller: fix it there, not in the shared
+   code underneath. If the narrowest correct fix is in shared code, line 1 must name the other callers you checked
+   and the tests that cover them; if you cannot name them, scope the fix to the caller the finding named.
    Reply with exactly two lines: (1) what you changed, (2) what the tests say and what is left. If a test you must
    satisfy contradicts REHORSE_SPEC.md, reply instead with a last line starting "CONTRADICTS SPEC:" naming the test
    and the criterion.

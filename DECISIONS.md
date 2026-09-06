@@ -762,3 +762,33 @@ homework, because the one edit left was the one edit the implementer is forbidde
   driven from both ends. The new end-to-end test runs real pytest at each stage: the correct fix leaves the suite at
   2 passed / 1 failed on the pinned test, the verifier's `pins_bug` verdict walks the task to `tests`, the declared
   rewrite passes `step_done.py` and the `state.py` gate, and the suite ends 3 passed / 0 failed.
+
+## A verifier fix stays in the caller the finding named (2026-09-05)
+
+The rich-3871 post-mortem above concluded that the verifier was right all three rounds and the *implementer* is what
+failed. This is that conclusion turned into an instruction. It is the one change in this batch that is prose and not a
+hook, and that is a judgement, not an oversight: no hook can tell "the narrowest fix happens to live in a shared
+helper" from "the model reached for the shared helper because it was there".
+
+- **What actually went wrong.** Round 1's finding was about `pad_edge=False` expanded tables — one case, one caller.
+  Step 2 fixed it in `ratio_distribute`, the width allocation every expanded table goes through, rather than in the
+  caller's `flex_minimum`. That turned a finding about one table shape into a change to all of them, and rounds 2 and
+  3 are the same regression twice: a default `pad_edge=True` table's column widths moved, which criterion 4 of that
+  task's own spec explicitly forbids. Three rounds, one bug, and the fix for the reported case was correct the whole
+  time.
+- **The rule, in `agents/rehorse-step.md` and the §3.2 step prompt.** A step titled `Fix (verifier round N): ...`
+  names one case, one caller, one test; fix it there. A finding is evidence about the case it names and nothing more —
+  it is not evidence that the shared routine underneath is wrong. When the narrowest correct fix genuinely is in
+  shared code, line 1 of the two-line summary must name the other callers checked and the tests that cover them, and
+  a step that cannot name them is told to scope the fix to the caller instead. The cost is deliberately asymmetric:
+  fixing at the caller costs a sentence, and widening costs the work of enumerating who else goes through it —
+  which is the work that was skipped.
+- **Why line 1 of the summary and not a new field.** The summary is the only thing the orchestrator reads and the only
+  thing the report carries per step, so a claim made there is visible to the user at merge time and quotable back at
+  the next round. A structured field would be another thing to validate, and validating "did you really check those
+  callers" is not something a hook can do; what a hook can do is nothing, so the honest place for it is the reply the
+  human reads.
+- **What this does not do.** It cannot stop a step that widens anyway and writes a confident line 1, and it says
+  nothing about the other half of the rich-3871 diagnosis — the two "make the verifier's tests pass" steps closed with
+  no edits, each true of the tests that existed at that moment and proving nothing about the next round's cases. That
+  half stays in `IDEAS.md`.

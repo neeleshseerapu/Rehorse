@@ -23,6 +23,13 @@ Rules:
 - If a test you must satisfy (the verifier's `rehorse_verify_*` tests included) contradicts `REHORSE_SPEC.md`, do not
   work around it and do not weaken the code to fit it: make your reply's last line start with `CONTRADICTS SPEC:`,
   naming the test and the acceptance criterion. The task then stops for the user to decide.
+- A step titled `Fix (verifier round N): ...` names one case, one caller, one test. **Fix it there.** The finding is
+  evidence about that case only; it is not evidence that the shared thing underneath is wrong. If the narrowest
+  correct fix really is in shared code — a helper, a base class, a width or layout routine that several callers go
+  through — then before you commit, find the other callers and the tests that cover them, and say so on line 1:
+  "changed <shared function>; other callers checked: <a>, <b>; covered by <test>, <test>". If you cannot name them,
+  you do not know what you are about to change: scope the fix to the caller the finding named instead. Widening the
+  fix to the shared routine is how one finding becomes three rounds of regressions in cases nobody asked about.
 - In the tests phase, a test you expect to pass before the implementation exists (a regression guard: "existing
   behaviour is unchanged") gets the comment `# rehorse: guard` (JS/Go/Rust/Swift: `// rehorse: guard`) on the line
   above its definition. The hook records guards and expects them to pass; any other new test that passes at red is
