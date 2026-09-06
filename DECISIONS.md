@@ -688,3 +688,33 @@ way to tell a justified rewrite from a quiet one. Now the rewrite is legal, decl
   with its reason, a new test alongside untouched ones needing no declaration. Writing them caught a real property of
   the detector: changing the quote style of an untouched test is a change, and the fixture-derived test data now says
   so honestly rather than working around it.
+
+## The 150-line cap binds the hook entry script, not the logic behind it (2026-09-05)
+
+`verify.py` and `state.py` had both landed exactly on 150 lines, and the cap had started to cost something real: the
+last change bought its new lines by moving `findings_text` from `verify.py` to `report.py`, which is a fine place for
+it but was not why it moved. A cap that decides where code lives by arithmetic rather than by what the code is will
+eventually be paid in the only currency left — a guarantee dropped, or a reason string shortened until it stops
+telling the model what to do instead.
+
+- **What the cap is actually for**: a hook is the only thing between the model and the user's branch, and a guarantee
+  nobody reads whole is not a guarantee. That argument binds the file Claude Code executes — the one named in
+  `hooks/hooks.json` — and says nothing about a module that file imports. So the rule is now: **a hook entry script
+  stays under 150 lines; the logic it needs may live in `scripts/rehorse_lib/`**, which has no cap and the same
+  stdlib-only, no-install rule. `coverage.py` and `report.py` had already been carrying "not a hook (no line cap)" in
+  their docstrings; this makes that honest instead of a local exception.
+- **No install step, and none possible.** `rehorse_lib` is a plain package next to the entry scripts, so
+  `scripts/` is already `sys.path[0]` when Claude Code runs `python3 .../scripts/verify.py` and
+  `from rehorse_lib import brief` resolves with no `-m`, no `PYTHONPATH`, no `pip install -e`, and no packaging
+  metadata. That is the same mechanism `import state` has always used; the package adds a directory, not a dependency.
+- **What moved, and why that split.** `verify.py` 150 -> 82: `rehorse_lib/verdict.py` holds what a verdict *is*
+  (the vocabulary, `parse()`, `round_trip_steps()`) and `rehorse_lib/brief.py` what the verifier is *allowed to see*;
+  `verify.py` is left as the SubagentStop hook that records one, which is the part worth reading before trusting.
+  `state.py` 150 -> 134: `rehorse_lib/gates.py` holds `gate()`, the evidence each transition must show, which is the
+  part that keeps growing (red, then coverage, then declared test changes) and has nothing to do with atomic writes.
+  `report.py` now imports `rehorse_lib.verdict` for `MAX_ROUNDS` instead of importing `verify`, which removes a
+  report -> verify edge and leaves the dependency running one way.
+- **Both rules are now tested, not asserted.** `tests/test_line_cap.py` reads `hooks/hooks.json` for the entry list
+  (so a new hook is capped the moment it is wired, and nothing else is capped by accident) and walks every file under
+  `scripts/` with `ast`, checking each import against `sys.stdlib_module_names` plus the sibling modules. The
+  stdlib-only constraint had been prose since day one and had never actually been checked.

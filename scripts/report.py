@@ -16,8 +16,9 @@ import sys
 import progress
 import state
 import testcmd
-import verify
 import worktree
+
+from rehorse_lib import verdict
 
 REPORTS = "rehorse-reports"
 MAX_FINDINGS = 5
@@ -133,7 +134,7 @@ def verifier_section(task, name):
     if not v:
         return ["## Verifier: not run", "", "no verdict recorded.", ""], None
     n = len(v["findings"])
-    lines = ["## Verifier: %s (round %d of %d)" % (v["verdict"].upper(), v["round"], verify.MAX_ROUNDS), "",
+    lines = ["## Verifier: %s (round %d of %d)" % (v["verdict"].upper(), v["round"], verdict.MAX_ROUNDS), "",
              "Its run: %s. Tests added: %s" % (progress.counts(v.get("tests")).replace(" / ", ", "), tests_added(v["tests_added"])), "",
              "Findings:" if n else "Findings: none", *([findings_text({"findings": v["findings"][:MAX_FINDINGS]})] if n else [])]
     if n > MAX_FINDINGS:

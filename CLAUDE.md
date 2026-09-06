@@ -21,8 +21,10 @@ Read it before wiring any hook. Real hook inputs captured from those runs are in
 
 - Zero cost: no API keys, no external services. Runs on the user's Claude Code subscription,
   git, and Python 3 stdlib only.
-- Hook scripts are plain Python 3, stdlib only, under 150 lines, invoked as `python3 script.py`.
-  Read JSON on stdin, write JSON on stdout, exit 0. No jq, no bash-isms.
+- Hook scripts are plain Python 3, stdlib only, invoked as `python3 script.py`. Read JSON on stdin, write JSON on
+  stdout, exit 0. No jq, no bash-isms. The 150-line cap binds the **hook entry script** (the file `hooks/hooks.json`
+  names); shared logic it imports lives in `scripts/rehorse_lib/` (stdlib only, no install). `tests/test_line_cap.py`
+  enforces both. Move code out to fit the cap; never drop a guarantee to fit it.
 - Every safety guarantee lives in a hook script, never in a skill's prose. Prose guides; hooks enforce.
 - Phases advance only via `scripts/state.py`, never by the model editing `state.json` directly.
 - Only `merge.py` and `discard.py` may modify the user's real branch. `guard_bash.py` denies

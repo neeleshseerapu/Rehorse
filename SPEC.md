@@ -170,7 +170,11 @@ Markdown, one screen. Order: verdict banner (a task in `needs-attention` renders
 
 - **Day 1 is spikes, not code.** Run every spike in the "Day-1 spikes" section below with throwaway scripts and show me the evidence. If any spike fails, stop and tell me; we redesign before building.
 - Write the failing pytest for a hook script before the script (we dogfood the principle).
-- Keep hook scripts under 150 lines each and free of imports outside stdlib.
+- Keep every script free of imports outside stdlib, and keep each **hook entry script** — the file named in
+  `hooks/hooks.json` — under 150 lines. The cap exists so a hook can be read whole before it is trusted; it binds the
+  entry point, not the logic behind it. Shared logic goes in `scripts/rehorse_lib/` (a plain package, stdlib only, no
+  install: `scripts/` is already `sys.path[0]` for an entry script, so `from rehorse_lib import x` just works). Moving
+  code there to fit is the intended move; deleting a guarantee to fit is not. `tests/test_line_cap.py` checks both rules.
 - After each milestone, update `README.md` and `DECISIONS.md` (one line per decision, with the reason).
 - Never "improve" scope. If you notice a missing feature, add it to `IDEAS.md` and move on.
 - Manually test each hook by piping sample JSON: `echo '{...}' | python3 scripts/guard_edit.py`. Keep those samples in `tests/fixtures/`.

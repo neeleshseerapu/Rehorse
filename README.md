@@ -233,7 +233,9 @@ claude plugin validate .
 bash tests/e2e_live.sh /tmp/rehorse-e2e                  # real sessions on toy repos: build, merge, compact, resume
 ```
 
-Hook scripts are written test-first, stay under 150 lines, and import only the standard library.
+Hook scripts are written test-first and import only the standard library. Each one Claude Code invokes stays under
+150 lines, so you can read the thing that enforces a guarantee before you trust it; the logic they share lives in
+`scripts/rehorse_lib/`, which has no cap and the same stdlib-only rule. `tests/test_line_cap.py` checks both.
 
 ### Development
 
