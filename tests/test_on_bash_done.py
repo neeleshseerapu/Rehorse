@@ -315,3 +315,41 @@ def test_a_revision_round_re_entering_tests_does_not_overwrite_the_red_it_earned
     assert t["red_check"] == {"passed": 2, "failed": 1, "new_failed": 1, "new_failing": ["tests/test_app.py::test_x"]}
     assert t["last_test_run"]["after_edit_seq"] == 2, "the run itself is still recorded"
     assert "red stands from the first tests phase" in context(out)
+
+
+# ---- partial runs: recorded, but not as evidence -----------------------------------------------------------------
+
+def test_a_partial_run_is_a_diagnostic_and_nothing_else(repo):
+    """rich-3871's own targeted command, verbatim from that run: a node id, extra flags, a pipe and a second command.
+    (The failure body is abbreviated: the 4000-character tail the run recorded had scrolled past pytest's summary line,
+    so only the command is captured, which is what this classification turns on.) That run's 1 failure was the whole
+    suite's story for nine minutes, and it is evidence of neither red nor green."""
+    wt = task_in(repo, "implement", edit_seq=8, test_cmd="/private/tmp/rehorse-eval/rich-3871/.venv/bin/python "
+                 "-m pytest -q --tb=short -rfE", last_test_run={"passed": 931, "failed": 0, "after_edit_seq": 3})
+    out = done(repo, "posttoolusefailure_bash_pytest_partial", cwd=wt)
+    t = task_state(repo)
+    assert t["last_test_run"] == {"passed": 931, "failed": 0, "after_edit_seq": 3}, "untouched: the Stop guard still holds"
+    assert t["baseline"] is None and t["red_check"]["failed"] == 1, "and so is every count the report will print"
+    runs = t["diagnostic_runs"]
+    assert len(runs) == 1 and pf(runs[0]) == {"passed": 0, "failed": 1} and runs[0]["after_edit_seq"] == 8
+    assert "tests/test_columns.py::test_render" in runs[0]["command"] and "output" not in runs[0]
+    ctx = context(out, "PostToolUseFailure")
+    assert "diagnostic run recorded" in ctx and "part of the suite" in ctx and "--tb=short -rfE" in ctx
+
+
+def test_a_partial_run_in_the_tests_phase_cannot_stand_in_for_red(repo):
+    wt = task_in(repo, "tests", edit_seq=1, test_cmd="python3 -m pytest -q")
+    done(repo, cwd=wt, command="cd %s && python3 -m pytest -q tests/test_app.py::test_add" % wt,
+         stdout="1 failed, 0 passed in 0.01s")
+    t = task_state(repo)
+    assert t["red_check"] is None and t["last_test_run"] is None
+    assert len(t["diagnostic_runs"]) == 1
+
+
+def test_diagnostic_runs_are_capped_so_state_does_not_grow_without_saying_more(repo):
+    wt = task_in(repo, "implement", edit_seq=1, test_cmd="python3 -m pytest -q")
+    import on_bash_done
+    for n in range(on_bash_done.MAX_DIAGNOSTIC + 5):
+        done(repo, cwd=wt, command="cd %s && python3 -m pytest -q -k case%d" % (wt, n), stdout="1 passed in 0.01s")
+    runs = task_state(repo)["diagnostic_runs"]
+    assert len(runs) == on_bash_done.MAX_DIAGNOSTIC and runs[-1]["command"].endswith("case%d" % (on_bash_done.MAX_DIAGNOSTIC + 4))

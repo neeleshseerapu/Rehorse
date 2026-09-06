@@ -335,3 +335,47 @@ def test_failing_ids_other_runners(text, expected):
 def test_failing_ids_is_none_when_the_runner_printed_failures_but_no_ids():
     assert testcmd.failing_ids("1 failed, 2 passed in 0.01s\n") is None
     assert testcmd.failing_ids("Tests  1 failed | 1 passed (2)\n") is None
+
+
+# ---- scope: is this run the whole suite the task is judged by, or a slice of it? ----------------------------------
+
+RICH = "/private/tmp/rehorse-eval/rich-3871/.venv/bin/python -m pytest -q --tb=short -rfE"
+
+
+@pytest.mark.parametrize("test_cmd, command, expected", [
+    # the recorded command, however it is dressed up, is always the whole suite
+    (RICH, "cd /wt && " + RICH, "full"),
+    ("python3 -m pytest -q", "python3 -m pytest -q --tb=long", "full"),
+    ("cargo test", "cargo test --quiet", "full"),
+    ("make test", "cd /wt && make test", "full"),
+    ("python3 -m pytest -q", "cd /wt && python3 -m pytest -q > /tmp/out.txt", "full"),
+    # rich-3871's own diagnostic: a node id, extra flags, a pipe and a second command after it
+    (RICH, "/private/tmp/rehorse-eval/rich-3871/.venv/bin/python -m pytest -q -vv tests/test_columns.py::test_render"
+           " 2>&1 | sed -n 1,80p; sed -n 1,70p /wt/tests/test_columns.py", "partial"),
+    # paths the recorded command already carries are the suite; a narrower one is not
+    ("python3 -m pytest -q tests/", "cd /wt && python3 -m pytest -q tests/", "full"),
+    ("python3 -m pytest -q tests/", "cd /wt && python3 -m pytest -q -vv tests/", "full"),
+    ("python3 -m pytest -q tests/", "cd /wt && python3 -m pytest -q tests/test_a.py", "partial"),
+    ("go test ./...", "cd /wt && go test ./...", "full"),
+    ("go test ./...", "cd /wt && go test ./pkg/table", "partial"),
+    ("npx vitest run --reporter=dot", "cd /wt && npx vitest run --reporter=dot", "full"),
+    ("npx vitest run --reporter=dot", "npx vitest run --reporter=dot src/a.test.ts", "partial"),
+    # selectors, and the -m that is python's module flag rather than pytest's marker
+    ("python3 -m pytest -q", "python3 -m pytest -q -k 'not slow'", "partial"),
+    ("python3 -m pytest -q", "python3 -m pytest -q -k=slow", "partial"),
+    ("python3 -m pytest -q", "python3 -m pytest -q -m smoke", "partial"),
+    ("python3 -m pytest -q", "cd /wt && python3 -m pytest -q", "full"),
+    # a suite the recorded command itself defines by a marker: repeating it is full, changing it is not
+    ("python3 -m pytest -m smoke", "cd /wt && python3 -m pytest -m smoke", "full"),
+    ("python3 -m pytest -m smoke", "python3 -m pytest -q -m smoke", "full"),
+    ("python3 -m pytest -m smoke", "python3 -m pytest -q -m other", "partial"),
+])
+def test_scope_calls_a_narrowed_run_partial_and_everything_else_full(test_cmd, command, expected):
+    assert testcmd.scope(command, test_cmd) == expected
+
+
+def test_scope_defaults_to_full_when_it_recognises_nothing():
+    """A run wrongly called partial leaves the task unable to satisfy any gate; one wrongly called full costs a warning.
+    So the classifier only ever answers `partial` on evidence it can point at."""
+    assert testcmd.scope("./run-my-tests.sh", "python3 -m pytest -q") == "full"
+    assert testcmd.scope("", "python3 -m pytest -q") == "full"

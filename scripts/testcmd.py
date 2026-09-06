@@ -4,6 +4,7 @@
   detect(root)                      -> {"test_cmd", "runner", "test_paths"} or None, from the target repo only
                                        (its .venv/venv, pyproject/pytest.ini, package.json, Makefile; never sys.executable)
   is_test_command(cmd, test_cmd)    -> does this Bash command run the project's test runner?
+  scope(cmd, test_cmd)              -> "full" (the whole suite the task is judged by) or "partial" (narrowed to some of it)
   is_test_path(rel_path, dirs)      -> is this file a test file (locked/unlocked by phase)?
   parse_counts(text)                -> {"passed", "failed"} from pytest / vitest / jest / cargo output, or None
                                        (0-test runs like `no tests ran` are {0, 0}; --collect-only, --version, grep hits are None)
@@ -19,6 +20,7 @@ CLI: testcmd.py detect | testcmd.py set "<cmd>" (record a user-supplied command 
 import json
 import os
 import re
+import shlex
 import sys
 
 TEST_DIRS = ["tests", "test", "Tests", "__tests__", "spec"]
@@ -95,6 +97,58 @@ def is_test_command(command, test_cmd):
     if not runner or NOT_A_RUN_RE.search(command):
         return False
     return any(t in command + " " for t in RUNNER_TOKENS[runner])
+
+
+def _tokens(s):
+    try:
+        return shlex.split(s or "", comments=False)
+    except ValueError:  # an unbalanced quote is not worth a traceback inside a hook
+        return (s or "").split()
+
+
+def _run_of(tokens, want):
+    """Start index of `want` as a contiguous run in `tokens`, or None."""
+    return next((i for i in range(len(tokens) - len(want) + 1) if tokens[i:i + len(want)] == want), None) if want else None
+
+
+def _beyond(command, test_cmd):
+    """The arguments this command adds past the recorded test command: what follows it where it appears verbatim, else
+    what follows the runner token. Cut at the first shell separator or redirect, so `| sed ...` is not read as args."""
+    cmd, want = _tokens(command), _tokens(test_cmd)
+    i = _run_of(cmd, want)
+    if i is not None:
+        i += len(want)
+    else:
+        runner = runner_of(test_cmd) or ""
+        i = next((n + 1 for n, t in enumerate(cmd) if t == runner or t.endswith("/" + runner)), None) if runner else None
+        if i is None:
+            return []
+    out = []
+    for t in cmd[i:]:
+        if t in (";", "|", "||", "&&", "&") or ">" in t or "<" in t:
+            break
+        out.append(t)
+    return out
+
+
+def scope(command, test_cmd):
+    """"full" when the run exercises the whole suite the task is judged by, "partial" when it narrows to part of it.
+
+    Partial on positive evidence only: an argument beyond the recorded test command that names a file path, a node id
+    (`::`), or a `-k` / `-m` selector. A token the recorded command already carries is not evidence -- a suite whose own
+    command says `tests/`, or `go test ./...`, is still the whole suite -- and a command nothing matches is `full`,
+    because a run wrongly called partial leaves the task unable to satisfy any gate, while one wrongly called full only
+    costs a warning."""
+    want = _tokens(test_cmd)
+    args = _beyond(command, test_cmd)
+    for i, a in enumerate(args):
+        flag, val = (a[:2], a[3:]) if a[:3] in ("-k=", "-m=") else (a, args[i + 1] if i + 1 < len(args) else "")
+        if flag in ("-k", "-m"):  # `python -m pytest`'s -m is not pytest's: only the ones past the runner reach here
+            if _run_of(want, [flag, val]) is None and _run_of(want, [flag + "=" + val]) is None:
+                return "partial"  # the same selector the recorded command carries is that suite, not a slice of it
+        elif not a.startswith("-") and a not in want and ("::" in a or "/" in a or TEST_FILE_RE.match(a)):
+            return "partial"
+    return "full"
 
 
 def effective_cwd(command, cwd):

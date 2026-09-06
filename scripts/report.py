@@ -91,6 +91,14 @@ def guard_line(task):
         "; %d guard(s) failing at red: %s" % (len(fg), ids(fg)) if fg else ""), ""]
 
 
+def diagnostic_line(task):
+    """Runs narrowed to part of the suite: one line, a count. They are not in the table above because they are not
+    evidence of anything the table claims; leaving them out entirely would hide how much of the run was spent on them."""
+    n = len(task.get("diagnostic_runs") or [])
+    return ["Diagnostic runs: %d (narrowed to selected tests; not counted as baseline, red or green).%s" % (
+        n, " Last: `%s`" % task["diagnostic_runs"][-1]["command"][:120] if n else ""), ""] if n else []
+
+
 def red_lines(task):
     """Pre-existing failures are reported apart from red; red is judged by ids that were not failing at baseline."""
     base, red, out = task.get("baseline") or {}, task.get("red_check") or {}, []
@@ -204,6 +212,7 @@ def render(root, task, name):
         BUILD_FAILED_ROW if task.get("red_kind") == "build_failed" else row("red (tests written, no implementation)", task["red_check"]),
         row("green (last run)", task["last_test_run"]), "",
         "Command: `%s`" % task["test_cmd"], "",
+        *diagnostic_line(task),
         *red_lines(task),
         *guard_line(task),
         *changes_block(task),

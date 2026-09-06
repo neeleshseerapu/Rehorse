@@ -312,3 +312,22 @@ def test_the_revision_reason_falls_back_to_the_finding_when_nothing_was_recorded
 def test_an_ordinary_round_shows_no_revision_line(repo):
     verified_task(repo, verify_history=[dict(REVISION_ROUND[0], revision=[])])
     assert "test revision" not in render(repo)
+
+
+def test_the_report_notes_diagnostic_runs_in_one_line_and_keeps_them_out_of_the_table(repo):
+    """They are not in the tests table because they are not evidence of what that table claims; they are on the page
+    because a reader should know how much of the run went on narrowed re-runs."""
+    verified_task(repo, diagnostic_runs=[
+        {"passed": 0, "failed": 1, "after_edit_seq": 1, "at": "2026-09-05T18:55:34",
+         "command": "python3 -m pytest -q -vv tests/test_columns.py::test_render"},
+        {"passed": 1, "failed": 0, "after_edit_seq": 1, "at": "2026-09-05T18:56:02",
+         "command": "python3 -m pytest -q -k render"}])
+    text = render(repo)
+    assert "Diagnostic runs: 2 (narrowed to selected tests; not counted as baseline, red or green)." in text
+    assert "Last: `python3 -m pytest -q -k render`" in text
+    assert "| green (last run) | 2 | 0 |" in text, "the table still reports only the full runs"
+
+
+def test_a_task_with_no_diagnostic_runs_says_nothing_about_them(repo):
+    verified_task(repo)
+    assert "Diagnostic runs" not in render(repo)

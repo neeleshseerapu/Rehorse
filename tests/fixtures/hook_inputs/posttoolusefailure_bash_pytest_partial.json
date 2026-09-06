@@ -1,0 +1,20 @@
+{
+  "session_id": "05604e5b-5f0e-4270-87df-431edcfd5fc2",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-rehorse-eval-rich-3871/05604e5b-5f0e-4270-87df-431edcfd5fc2.jsonl",
+  "cwd": "/private/tmp/rehorse-eval/rich-3871/.rehorse/worktrees/t-20260905-fix-double-padding-in-table-first",
+  "prompt_id": "6d2a1f80-77c4-4a19-9f0e-2b8f5a0c31d7",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PostToolUseFailure",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "/private/tmp/rehorse-eval/rich-3871/.venv/bin/python -m pytest -q -vv tests/test_columns.py::test_render 2>&1 | sed -n 1,80p; sed -n 1,70p /private/tmp/rehorse-eval/rich-3871/.rehorse/worktrees/t-20260905-fix-double-padding-in-table-first/tests/test_columns.py",
+    "description": "Run the one failing test and show the snapshot it asserts"
+  },
+  "tool_use_id": "toolu_01Qw7ZbG2mVnR4kTpLcXyHf3",
+  "error": "Exit code 1\ntests/test_columns.py::test_render FAILED                                 [100%]\n\n=================================== FAILURES ===================================\n__________________________________ test_render _________________________________\n\n    def test_render():\n        expected = \"\\u2500\\u2500\\u2500 empty \\u2500\\u2500\\u2500\\n...\\nAnteater,         Eunectes sp.     \"\n>       assert render() == expected\nE       AssertionError: assert '\\u2500\\u2500\\u2500 empty...Anteater,        ' == '\\u2500\\u2500\\u2500 empty...Anteater,         '\n\ntests/test_columns.py:66: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_columns.py::test_render - AssertionError: assert '\\u2500\\u2500\\u2500 empt...\n1 failed in 0.34s\n",
+  "is_interrupt": false,
+  "duration_ms": 2841
+}

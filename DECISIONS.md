@@ -869,3 +869,31 @@ about who may edit a test. It is wrong about what the implementer was asking for
   caught it. Red is evidence
   the first tests phase earned, and a revision does not re-earn it: `on_bash_done.py` now recomputes `red_check` only
   while `tests_sha` is unset, which is exactly the first pass through the phase.
+
+## A run narrowed to part of the suite is a diagnostic, not a test run (2026-09-05)
+
+`rich-3871` spent its last recorded "test run" on
+`... -m pytest -q -vv tests/test_columns.py::test_render 2>&1 | sed -n 1,80p; sed -n 1,70p .../tests/test_columns.py` —
+one test and a look at the file asserting it. That is a reasonable thing for a step agent to run and an unreasonable
+thing to write into `last_test_run`, which is what the Stop guard, the red and green gates, the tests table, the
+verifier's brief and the eval's `self-green` all read. The report that run produced says "green (last run) 0 passed, 1
+failed", which is true of one test and of nothing else.
+
+- **`testcmd.scope(command, test_cmd)` answers `full` or `partial`**, and `on_bash_done.py` sends a partial run to
+  `diagnostic_runs` and returns. Nothing else sees it: no `last_test_run`, so the Stop guard keeps asking for the real
+  command; no `baseline`, `red_check` or `verify_run`, so no gate can be satisfied by a slice; no row in the tests
+  table. The hook's message says which command would count.
+- **Partial on positive evidence only.** An argument *beyond the recorded test command* that names a path, a node id
+  (`::`) or a `-k` / `-m` selector. Tokens the recorded command already carries are not evidence — a suite whose own
+  command is `pytest tests/`, `go test ./...` or `pytest -m smoke` is still the whole suite — and a command the
+  classifier recognises nothing in is `full`. The asymmetry is deliberate: a run wrongly called partial leaves the task
+  unable to satisfy any gate and stops it for no reason, while one wrongly called full costs a line in the report.
+- **`python -m pytest`'s `-m` is not pytest's `-m`.** Only arguments past the runner token are considered, and a
+  selector the recorded command itself carries (`-m smoke` when the task's suite *is* `-m smoke`) is skipped, so a
+  marker-scoped project cannot deadlock on its own definition.
+- **No output is kept**, and the list is capped at 20. The report shows a count and the last command; the verifier
+  reads `last_test_run.output`, and a slice's output sitting there would be a slice presented as the suite. Keeping
+  every diagnostic would grow `state.json` without telling a reader anything the count does not.
+- **The fixture is that command, verbatim.** Its failure body is abbreviated: the 4000-character tail the run recorded
+  had already scrolled past pytest's summary line (the `sed` of the test file came last), so the run's own stored
+  output no longer parses. The command is what the classification turns on, and that is captured exactly.

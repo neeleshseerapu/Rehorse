@@ -9,6 +9,10 @@ were not failing at baseline; counts with ids_unavailable when the runner printe
 output shows a compiler error or fewer tests ran than at baseline: the new tests reference symbols that do not exist yet)
 and weak_tests (new tests that already pass and are not marked `# rehorse: guard`; a warning, not a gate; guards are recorded
 in task["guards"] and a failing guard is not red either), verify -> verify_run, always -> last_test_run.
+
+A run narrowed to part of the suite (paths, node ids, -k / -m: testcmd.scope) is none of that. It goes to
+diagnostic_runs, and only there: a slice of the suite cannot show red, cannot show green, and must not release the Stop
+guard, because "the tests I was looking at pass" is exactly the claim a rehearsal exists to disbelieve.
 """
 import datetime
 import json
@@ -20,6 +24,8 @@ import report
 import state
 import testcmd
 import worktree
+
+MAX_DIAGNOSTIC = 20  # the report shows a count; keeping every one of them would grow state.json without telling anyone more
 
 
 def note(hook, text):
@@ -46,6 +52,18 @@ def red_by_ids(red, ids, base, guards):
         " (the failures also fail at baseline; write a test that fails because the feature is missing)" if red["preexisting"] and not red["new_failed"] else "", note)
 
 
+def diagnostic(root, s, task, hook, counts, command, wt):
+    """A narrowed run: recorded so the report can say how many there were, and nowhere else. No output is kept -- the
+    verifier and the report read last_test_run, and a slice's output there would be a slice presented as the suite."""
+    runs = (task.get("diagnostic_runs") or [])[-(MAX_DIAGNOSTIC - 1):]
+    task["diagnostic_runs"] = runs + [dict(counts, at=datetime.datetime.now().isoformat(timespec="seconds"),
+                                           after_edit_seq=task["edit_seq"], command=command)]
+    state.save(root, s)
+    return note(hook, "diagnostic run recorded (%d passed, %d failed): this command runs part of the suite, so it is not a "
+                      "test run — it cannot show red or green and does not let the turn end. Run `cd %s && %s` for that."
+                      % (counts["passed"], counts["failed"], wt, task["test_cmd"]))
+
+
 def main():
     hook = json.load(sys.stdin)
     root, s, task = state.active(hook.get("cwd"))
@@ -62,6 +80,8 @@ def main():
         if not broken:
             return 0
         counts = {"passed": 0, "failed": 0}  # the build failed before any test ran; the attempt still counts as a run
+    if testcmd.scope(command, task["test_cmd"]) == "partial":
+        return diagnostic(root, s, task, hook, counts, command, wt)
     task["last_test_run"] = dict(counts, at=datetime.datetime.now().isoformat(timespec="seconds"), build_failed=broken,
                                  after_edit_seq=task["edit_seq"], command=command, output=text[-4000:])  # tail: verifier + report
     msg = "recorded test run: %d passed, %d failed%s (edit_seq %d)." % (
