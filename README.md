@@ -98,7 +98,8 @@ agreed the new output was right — then failed the round anyway, because one te
 `tests/test_ansi.py::test_decode_example`, pinned the old output and now needed one more `\n` in its expected string.
 Test files are locked once the tests phase ends, and a rehearsal cannot go back to that phase, so the one edit left
 was the one Rehorse would not make. It stopped at `needs-attention` and said so: "The fix itself is complete; update
-that one expected string on merge." Eleven minutes of work, handed back with a sentence of homework.
+that one expected string on merge." Eleven minutes of work, handed back with a sentence of homework. (Re-run after the
+changes below, it goes green; the eval section has what its diff got right and what it did not.)
 
 The tests phase can now make that edit, but only deliberately: it may change a test the repo already had when
 `REHORSE_SPEC.md` says the behaviour that test pins is wrong, and it must name the test and the criterion that says so.
@@ -287,14 +288,42 @@ Columns: self-green (Rehorse reached its report with a green run: its own claim,
 (the phase it stopped in: green, needs-attention, error), upstream-tests-pass (the grade), verifier verdict
 and rounds, wall time, session turns, report.
 
-Ten `rich` tasks have run (`eval/results.md`): nine pass the upstream PR's tests, eight reached a green report of
-their own, and none errored. The two that did not finish are worth more than the eight that did — `rich-3577` is the
-pinned-test stop described above, and `rich-3871` was stopped by its own verifier after three rounds for a regression
-the upstream tests never cover, which is why its row says `needs-attention` next to `upstream-tests-pass: yes`. Reading
-that one back, the verifier was right all three times: a finding about one table shape was fixed in the width routine
-every table goes through, and the two rounds that followed were the same regression twice. A step that fixes a verifier
-finding is now told to stay in the caller the finding named, and to name the other callers and their tests when the fix
-really does belong in shared code.
+Ten `rich` tasks have run (`eval/results.md`): nine pass the upstream PR's tests, nine reached a green report of
+their own, none errored, and all ten have a report. Two of them are worth more than the eight that simply worked.
+
+**`rich-3577`** asked `Text.from_ansi` to stop dropping trailing newlines. Rehorse's diff rewrites two tests the repo
+already had, which is the riskiest thing a rehearsal can do — and both rewrites are character for character what the
+maintainer merged in PR #4076. `tests/test_ansi.py::test_decode_issue_2688` case 0 gains one `\n` on its expected
+string; `::test_decode_example` gains one `\n` on its captured render. Nothing else about either test changes: same
+input, same assertion, one character each. Rehorse declared both in the tests phase with a reason before writing them,
+and the verifier saw them ahead of the diff.
+
+It still fails the grade, and not over those rewrites. Upstream fixed the bug inside `AnsiDecoder.decode` — `splitlines()`
+became `re.split(r"(?<=\n)")` with an `rstrip`, so `decode()` now yields a trailing empty `Text` — while Rehorse fixed
+`Text.from_ansi` one level above it and added a guard test pinning `decode()`'s line-oriented contract, the exact
+behaviour the maintainer then changed. One upstream failure, `tests/test_ansi.py::test_decode`, from a test nobody
+asked Rehorse to write. The declared rewrites were justified partly by criterion 1 (the issue's own Expected Output)
+and partly by criterion 10, which the model wrote itself; telling those apart is why every criterion now records
+whether the issue asked for it.
+
+**`rich-3871`** — "Table padding is miscalculated in first column" — ran twice, and both runs are in the repo. The
+first (`eval/results/archive/rich-3871.pre-pins-bug.*`) was stopped by its own verifier after three rounds while the
+upstream PR's tests passed, which reads like the verifier being precious and is not. Reading it back: criterion 4 of
+that run's spec said the fix must be a no-op for default tables, the round-3 test still fails on the final code, and
+the same table built at the base commit gives what the test asserts. A default table really had changed. The
+implementer had fixed a finding about one table shape inside `ratio_distribute`, the width allocation every expanded
+table goes through, and rounds 2 and 3 were that same regression twice. The upstream tests pass because they never
+build that table. A step that fixes a verifier finding is now told to stay in the caller the finding named.
+
+The re-run, after that change and the pinned-test round trip landed, stopped somewhere new: 17 turns, zero verifier
+rounds, a step agent reporting that `tests/test_columns.py::test_render` asserts the very padding the spec calls the
+bug. It was right — upstream's merged PR rewrites exactly that snapshot — and it had no legal move, because test paths
+are locked during implementation. Three things came out of that one stop. A `CONTRADICTS SPEC:` line naming a test now
+takes the same trip back to the tests phase a verifier `pins_bug` finding takes, where a fresh agent judges the claim
+rather than obeying it. A task that stops for the user gets its report written by the hook that stopped it, since the
+turn that would have written one is the turn ending. And the run's last recorded "test run" was
+`pytest -q -vv tests/test_columns.py::test_render | sed ...`, one test, which is why a narrowed run is now a diagnostic
+and cannot release the Stop guard or fill in the tests table.
 
 ## License
 
