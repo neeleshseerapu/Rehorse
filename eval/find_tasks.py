@@ -18,14 +18,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import testcmd  # noqa: E402
 
 MAX_FILES = 5
+FASTAPI_SETUP = (  # the base commit's own moment, asked of git in the clone the setup runs in
+    'if [ -f uv.lock ]; then uv sync -q --frozen --python 3.13 --extra all --group tests; '
+    'else uv venv -q --python 3.13 .venv && VIRTUAL_ENV=.venv uv pip install -q '
+    '--exclude-newer "$(git show -s --format=%cI HEAD)" -r requirements-tests.txt; fi')
 PYGMENTS_PIN = r"""pygments==$(sed -n '/^name = "pygments"/{n;s/version = "\(.*\)"/\1/p;}' poetry.lock)"""  # the lock's version
 DEFAULTS = {  # per-repo setup and test commands; the target's own venv, so the plugin's interpreter never leaks in.
     # rich: attrs is a dev dependency its tests import; pygments must match poetry.lock (the syntax tests are golden output)
     "Textualize/rich": {"setup_cmd": 'python3 -m venv .venv && .venv/bin/pip install -q -e . pytest attrs "%s"' % PYGMENTS_PIN,
                         "test_cmd": ".venv/bin/python -m pytest -q --tb=short"},
-    "fastapi/fastapi": {"setup_cmd": "python3 -m venv .venv && .venv/bin/pip install -q -e '.[all]' -r requirements-tests.txt",
-                        "test_cmd": ".venv/bin/python -m pytest -q --tb=short"},
-    "colinhacks/zod": {"setup_cmd": "npm ci", "test_cmd": "npx vitest run --reporter=dot"},
+    # fastapi: two eras. From 2026-01 the repo has uv.lock and PEP 735 groups, so the lock pins everything; before that
+    # requirements-tests.txt is unpinned at the top (anyio, starlette), and today's versions turn `filterwarnings = error`
+    # into 296 collection errors, so the resolution is cut at the base commit's own timestamp. Python 3.13 either way.
+    "fastapi/fastapi": {"setup_cmd": FASTAPI_SETUP, "test_cmd": ".venv/bin/python -m pytest -q --tb=short -rfE tests/"},
+    # zod: a pnpm workspace. `pnpm build` before every run because packages/treeshake asserts the built entry is newer
+    # than packages/zod/src, and every edit Rehorse makes is newer than the last build.
+    "colinhacks/zod": {"setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+                       "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"},
 }
 QUERY = """query($owner: String!, $name: String!, $after: String) {
   repository(owner: $owner, name: $name) {
@@ -33,6 +42,7 @@ QUERY = """query($owner: String!, $name: String!, $after: String) {
       pageInfo { hasNextPage endCursor }
       nodes { number title url body
         closedByPullRequestsReferences(first: 5) { nodes { number url merged changedFiles baseRefOid
+          repository { nameWithOwner }
           mergeCommit { oid parents(first: 1) { nodes { oid } } } files(first: 10) { nodes { path } } } } } } } }"""
 
 
@@ -59,6 +69,8 @@ def candidates(repo, issues):
         for p in i["closedByPullRequestsReferences"]["nodes"]:
             if not p["merged"] or not 1 <= p["changedFiles"] <= MAX_FILES:
                 continue
+            if (p.get("repository") or {}).get("nameWithOwner") != repo:
+                continue  # an issue can be closed by a PR in another repo (zod#5760 by elastic/kibana): not a task here
             files = [f["path"] for f in p["files"]["nodes"]]
             tests = [f for f in files if testcmd.is_test_path(f, ["tests/", "test/"])]
             src = [f for f in files if f not in tests]

@@ -1,0 +1,1050 @@
+[
+  {
+    "id": "zod-6550",
+    "repo": "colinhacks/zod",
+    "base_sha": "5489a532e65ee3f5ab0959ff8a5da346ced96f2a",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6550",
+    "issue_title": "`toJSONSchema()`: chaining `.int()` after `.min()`/`.max()` replaces explicit bounds",
+    "issue_body": "Calling `.int()` after explicit numeric constraints changes the generated JSON Schema, even though runtime validation behaves identically.\n\nTested with:\n\n- Zod 4.5.4\n- Node.js 24.18.0\n- JSON Schema Draft 2020-12 and OpenAPI 3.0 targets\n\n### Minimal reproduction\n\n```ts\nimport * as z from \"zod\";\n\nconst intFirst = z.number().int().min(0).max(23);\nconst intLast = z.number().min(0).max(23).int();\n\nfor (const target of [\"draft-2020-12\", \"openapi-3.0\"] as const) {\n  console.log(target);\n  console.log(\"intFirst\", z.toJSONSchema(intFirst, { target }));\n  console.log(\"intLast\", z.toJSONSchema(intLast, { target }));\n}\n```\n\n### Actual output\n\nFor both targets:\n\n```ts\n// z.number().int().min(0).max(23)\n{\n  type: \"integer\",\n  minimum: 0,\n  maximum: 23\n}\n\n// z.number().min(0).max(23).int()\n{\n  type: \"integer\",\n  minimum: -9007199254740991,\n  maximum: 9007199254740991\n}\n```\n\nBoth schemas still behave identically during runtime validation:\n\n- `-1` is rejected\n- `0` is accepted\n- `1.5` is rejected\n- `23` is accepted\n- `24` is rejected\n\n### Expected output\n\nThe explicit `minimum: 0` and `maximum: 23` constraints should be preserved regardless of whether `.int()` appears before or after them.\n\nAt minimum, the generated schema should not describe different accepted ranges when the two Zod schemas accept the same values.\n\nThis matters when `toJSONSchema()` is used to produce an OpenAPI contract: applying `.int()` last causes the published contract to lose the application's explicit range.\n\n### Related issue\n\n[#4779](https://github.com/colinhacks/zod/issues/4779) discusses the default safe-integer range emitted for an unconstrained integer. This case is different because explicit, tighter constraints are present and enforced at runtime, but are replaced only in the generated schema when `.int()` is applied last.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6553",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/bigint.test.ts",
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6524",
+    "repo": "colinhacks/zod",
+    "base_sha": "319f47f44f40755773a9aa83b6fdaaad1ff01d77",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6524",
+    "issue_title": "`toZod<T>()` rejects enum schema for enum-typed property, but accepts equivalent union of enum members",
+    "issue_body": "`z.toZod<T>()` accepts schemas when a property is typed as a union of enum members:\n`someEnum: SomeEnum.A | SomeEnum.B;`\nHowever, when the property is typed as the enum itself:\n`someEnum: SomeEnum;`\nThe corresponding Zod schemas are rejected by TypeScript, even though they represent the same set of enum values.\n\n### Environment\n\n- `typescript@6.0.3`\n- `zod@4.5.4`\n\n### Reproduction\n\nWhen the interface property is a **union of enum members**, the type check passes:\n\n```ts\nenum SomeEnum {\n  A = \"A\",\n  B = \"B\",\n}\n\ninterface SomeObject {\n  someEnum: SomeEnum.A | SomeEnum.B;\n}\n\nconst schema = z.toZod<SomeObject>()(\n  z.object({\n    someEnum: z.enum(SomeEnum),\n    // also works:\n    // someEnum: z.enum([SomeEnum.A, SomeEnum.B]),\n    // someEnum: z.union([z.literal(SomeEnum.A), z.literal(SomeEnum.B)]),\n  }),\n);\n```\n\nHowever, when the interface property is typed as the **enum itself**, the same schemas are rejected:\n\n```ts\nenum SomeEnum {\n  A = \"A\",\n  B = \"B\",\n}\n\ninterface SomeObject {\n  someEnum: SomeEnum;\n}\n\nconst schema = z.toZod<SomeObject>()(\n  z.object({\n    someEnum: z.enum(SomeEnum),\n    // same failure with:\n    // someEnum: z.enum([SomeEnum.A, SomeEnum.B]),\n    // someEnum: z.union([z.literal(SomeEnum.A), z.literal(SomeEnum.B)]),\n  }),\n);\n```\n\n### TypeScript error\n\n```txt\nArgument of type 'ZodObject<{ someEnum: ZodUnion<readonly [ZodLiteral<SomeEnum.A>, ZodLiteral<SomeEnum.B>]>; }, $strip>' is not assignable to parameter of type '$ZodObject<{ someEnum: ToZodKeyMismatch<SomeEnum, SomeEnum>; }, $strip>'.\n  Types of property '_zod' are incompatible.\n    Type '$ZodObjectInternals<{ someEnum: ZodUnion<readonly [ZodLiteral<SomeEnum.A>, ZodLiteral<SomeEnum.B>]>; }, $strip>' is not assignable to type '$ZodObjectInternals<{ someEnum: ToZodKeyMismatch<SomeEnum, SomeEnum>; }, $strip>'.\n      Type '{ someEnum: ZodUnion<readonly [ZodLiteral<SomeEnum.A>, ZodLiteral<SomeEnum.B>]>; }' is not assignable to type '{ someEnum: ToZodKeyMismatch<SomeEnum, SomeEnum>; }'.\n        Types of property 'someEnum' are incompatible.\n          Type 'ZodUnion<readonly [ZodLiteral<SomeEnum.A>, ZodLiteral<SomeEnum.B>]>' is not assignable to type 'ToZodKeyMismatch<SomeEnum, SomeEnum>'.\n            Property '\"types do not match\"' is missing in type 'ZodUnion<readonly [ZodLiteral<SomeEnum.A>, ZodLiteral<SomeEnum.B>]>' but required in type '{ \"types do not match\": { expected: SomeEnum; received: SomeEnum; }; }'.ts(2345)\nutil.d.cts(25, 5): '\"types do not match\"' is declared here.\n```\n\n### Expected behavior\n\n`toZod<SomeObject>()` should accept a schema when its inferred output type is compatible with the corresponding property type.\n\nIn particular, a schema representing all members of `SomeEnum` should be accepted for a property typed as `SomeEnum`, just as the equivalent union of enum members is accepted.\n\n### Actual behavior\n\nThe same set of enum values is accepted when the property is typed as `SomeEnum.A | SomeEnum.B`, but rejected when the property is typed as `SomeEnum`.\n\n### Notes\n\nThis appears to be a type-level compatibility issue in `toZod`'s handling of enum types, rather than a runtime validation issue.\n\nRelated discussion: https://github.com/colinhacks/zod/pull/5913#issuecomment-5370100533\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6528",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/assignability.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6516",
+    "repo": "colinhacks/zod",
+    "base_sha": "08ba069e29d67b2f7b13b98dc9e70b1d99aeab5d",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6516",
+    "issue_title": "toJSONSchema emits a base64url pattern that accepts strings z.base64url() rejects",
+    "issue_body": "### Problem\n\n`z.base64url()` and the JSON Schema it generates disagree about the same string:\n\n```ts\nz.base64url().safeParse(\"A\").success;              // false\nz.toJSONSchema(z.base64url()).pattern;             // \"^[A-Za-z0-9_-]*$\"  \u2014 matches \"A\"\n```\n\nUnpadded base64url encodes 3 bytes per 4 characters, so a length that leaves a remainder of 1 mod 4 carries no whole byte and no encoder can produce it. `regexes.base64` already rules this out; `regexes.base64url` does not.\n\n`isValidBase64URL()` catches it at parse time, so `parse()` is correct. But `$ZodBase64URL` assigns the loose regex to `def.pattern`, and that is what `toJSONSchema()` emits \u2014 so a consumer validating against the generated schema accepts input Zod itself rejects. That matters where the schema is handed to something else (tool calling, a gateway) and Zod re-validates afterwards.\n\n### Suggested fix\n\nGive `base64url` the same split `base64` already has \u2014 a strict pattern for the schema, a dedicated validator for parsing:\n\n- `regexes.base64url` \u2192 `/^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$/`, mirroring `regexes.base64`. This is what lands in `def.pattern`.\n- a new `regexes.base64urlCharset` (`/^[A-Za-z0-9_-]*$/`) for `isValidBase64URL()`.\n\nThe second part is load-bearing: `isValidBase64()` never runs its pattern (it checks `length % 4` and calls `atob`), but `isValidBase64URL()` does run its own against user input of any size, and a quantified group overflows the stack on a long subject \u2014 the existing `big base64 and base64url` test (10 MB) hits exactly that. The length rule is already enforced downstream, where the padded string reaches `isValidBase64()`.\n\n### Status\n\nI have this implemented on a branch, with `\"A\"` added to the existing invalid fixtures in `string.test.ts`. `check:semver`, `check:comments`, `biome check` and the full `packages/zod` suite (7835 tests) pass, and runtime parse behaviour is unchanged.\n\nThe change is here, ready to open as a PR: https://github.com/colinhacks/zod/compare/main...oleg6k:zod:fix/base64url-pattern\n\nPR creation is currently limited to collaborators, so I am filing this instead \u2014 happy to open the PR as soon as that lifts, or to hand over the diff if someone wants to land it directly.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6527",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/string.test.ts",
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6515",
+    "repo": "colinhacks/zod",
+    "base_sha": "74f9a6d3f2818f24e6df5394b8b6e60acb176463",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6515",
+    "issue_title": "z.emoji() accepts strings that contain no emoji",
+    "issue_body": "### Problem\n\n`z.emoji()` accepts strings that contain no emoji at all:\n\n```ts\nz.emoji().parse(\"123\");        // passes\nz.emoji().parse(\"#\");          // passes\nz.emoji().parse(\"*\");          // passes\nz.emoji().parse(\"\\u{200D}\");   // lone ZWJ, passes\nz.emoji().parse(\"\\u{FE0F}\");   // lone variation selector, passes\nz.emoji().parse(\"\\u{1F3FD}\");  // lone skin tone modifier, passes\n```\n\nThe pattern is `^[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$`. `\\p{Emoji_Component}` is not a set of emoji \u2014 it is the set of pieces that combine with one: ASCII digits `0`\u2013`9`, `#`, `*`, regional indicators, skin tone modifiers, ZWJ and variation selectors. A string built only from components is not an emoji.\n\n### Suggested fix\n\nKeep the character class exactly as it is \u2014 the single class matters, #6347 replaced an alternation with it to kill the exponential backtracking over the U+1F9B0\u2013U+1F9B3 overlap \u2014 and add a leading lookahead requiring one anchor: an `Extended_Pictographic`, a regional indicator, or U+20E3, the enclosing keycap that makes `1\ufe0f\u20e3` an emoji.\n\n```\n^(?=[\\s\\S]*[\\p{Extended_Pictographic}\\p{Regional_Indicator}\u20e3])[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$\n```\n\n`[\\s\\S]` rather than `[^]`, and `\u20e3` rather than `\\u{20E3}`, because the pattern is emitted into JSON Schema and not every consumer parses the ECMAScript-only spellings.\n\n### Checks\n\n- every emoji in `unicode-emoji-json` (1914 entries) still validates, and every existing fixture in `string.test.ts` passes, keycap sequences included\n- `recheck` reports the new pattern safe; the lookahead is a single unnested quantifier, so matching stays linear \u2014 measured at 1k/10k/50k characters, on both the matching and the failing path, it costs about 10% more than the current pattern and scales linearly\n- two snapshots that carry the pattern as text need updating\n- full `packages/zod` suite passes (7835 tests)\n\n### Status\n\nImplemented on a branch with tests for the component-only cases above. The change is here, ready to open as a PR: https://github.com/colinhacks/zod/compare/main...oleg6k:zod:fix/emoji-component-only\n\nPR creation is currently limited to collaborators, so I am filing this instead \u2014 happy to open the PR as soon as that lifts.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6532",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/continuability.test.ts",
+      "packages/zod/src/v4/classic/tests/string.test.ts",
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6496",
+    "repo": "colinhacks/zod",
+    "base_sha": "7e24a24288183ce02554f1ded7775d0650a7b7e6",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6496",
+    "issue_title": "`toJSONSchema` on record with numeric keys results in invalid `propertyNames`",
+    "issue_body": "This code with Zod 4.5.2:\n\n```\nimport * as z from \"zod\";\n\nconst schema = z.record(z.number(), z.number());\nconst jsonSchema = z.toJSONSchema(schema);\nconsole.log(jsonSchema);\n```\n\nproduces this output:\n\n```\n{\n  '$schema': 'https://json-schema.org/draft/2020-12/schema',\n  type: 'object',\n  propertyNames: { type: 'number' },\n  additionalProperties: { type: 'number' }\n}\n```\n\nwhich can never work because in JSON the property names are always strings.\n\nSimilar issue in TypeScript with `Record<number, number>` being kind of weird, but Zod already handles that correctly (as [the docs](https://zod.dev/api?id=zrecord#zrecord) say, \"Zod supports numeric keys inside records in a way that closely mirrors TypeScript itself\"). So for `toJSONSchema` wouldn't it make sense to also support numeric keys in a sensible way?\n\nThe output might be better as:\n\n```\n{\n  '$schema': 'https://json-schema.org/draft/2020-12/schema',\n  type: 'object',\n  propertyNames: { type: 'string' },\n  additionalProperties: { type: 'number' }\n}\n```\n\nBut that's redundant since property names are always strings, so:\n\n```\n{\n  '$schema': 'https://json-schema.org/draft/2020-12/schema',\n  type: 'object',\n  additionalProperties: { type: 'number' }\n}\n```\n\n(You could imagine  doing something like `\"propertyNames\": { \"pattern\": \"^[0-9]+$\" }` but idk if that's worth the trouble because it'd have to be a fairly complex regex to handle negative numbers, decimals, NaN, Infinity, maybe more?)",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6497",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6495",
+    "repo": "colinhacks/zod",
+    "base_sha": "1a16102a494b03ce1df7b80b663ae2df465f419e",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6495",
+    "issue_title": "Functions are executed twice for object property defaults",
+    "issue_body": "If you define an object type and use a function for a property's default value, the function is executed twice:\n```js\nlet test = 0;\nconst schema = z.object({\n\n    TEST: z.string().default(() => {\n        console.log(`Executed... ${test++}`);\n        return 'default';\n    })\n\n})\n\nschema.parse({});\n// Executed... 0\n// Executed... 1\n```\n\nWhen it's not wrapped in an object, the function is only executed once, as expected:\n```js\nconst defaultTuna = z.string().default(() => {\n    console.log(`tuna`);\n    return 'tuna';\n});\n\ndefaultTuna.parse(undefined); // => \"tuna\"\n```\n\nI'm currently using Node.js v24.14.1 and Zod v4.5.2. \nI have not checked the versions in between, but Zod v4.4.2 does not have this issue and the default function is only executed once.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6500",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/cyclic-data.test.ts",
+      "packages/zod/src/v4/classic/tests/default.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6463",
+    "repo": "colinhacks/zod",
+    "base_sha": "81ded9918fe39d51b232be72f23ba0d5fb6a837e",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6463",
+    "issue_title": "fromJSONSchema silently ignores minProperties and maxProperties",
+    "issue_body": "## `fromJSONSchema` silently ignores `minProperties` and `maxProperties`\n\nBoth keywords are listed in `RECOGNIZED_KEYS` in `from-json-schema.ts` (so they are silently consumed instead of falling into `extraMeta`), but no validation logic is ever attached to the resulting schema. An object with `minProperties: 1` accepts `{}`, and one with `maxProperties: 2` accepts three or more keys without error.\n\n### Reproduce\n\n```ts\nimport { fromJSONSchema } from \"zod/v4\";\n\nconst schema = fromJSONSchema({\n  type: \"object\",\n  properties: { a: { type: \"string\" }, b: { type: \"number\" } },\n  minProperties: 1,\n  maxProperties: 2,\n});\n\nschema.safeParse({}).success      // true  \u2014 should be false (0 < minProperties)\nschema.safeParse({ a: \"x\", b: 1, c: true }).success  // true  \u2014 should be false (3 > maxProperties)\n```\n\n### Expected\n\nBoth should fail: `{}` has 0 properties (< `minProperties: 1`), and `{ a, b, c }` has 3 properties (> `maxProperties: 2`).\n\n### Actual\n\nBoth parse successfully \u2014 the keywords are consumed without effect.\n\n### Root cause\n\n`minProperties` and `maxProperties` appear in the `RECOGNIZED_KEYS` set (lines 62\u201363 of `from-json-schema.ts`) but are never referenced in `convertBaseSchema` or `convertSchema`. By contrast, the analogous array keywords `minItems`/`maxItems` are applied via `.check(z.minLength(...))` / `.check(z.maxLength(...))`, and string `minLength`/`maxLength` via `.min()` / `.max()`. The object property-count keywords simply have no corresponding branch.\n\n### Fix\n\nLayer a `.check()` on the object schema after `propertyNames` handling, counting `Object.keys(value).length` against the threshold and emitting `too_small` / `too_big` issues with `origin: \"object\"`. I have a patch ready (37 lines in `from-json-schema.ts` + 40 lines of regression tests in `from-json-schema.test.ts`) \u2014 happy to open a PR if `pull_request_creation_policy` allows, or I can attach the diff here.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6535",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6436",
+    "repo": "colinhacks/zod",
+    "base_sha": "17d1227ff61ff7c27ea11cd4ce31f84959534c8c",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6436",
+    "issue_title": "zod v4 `z.iso.datetime()` emits empty alternation (`||`) that breaks strict JSON Schema compilers",
+    "issue_body": "**Repo:** `opentabs-dev/opentabs`\n**Affected package(s):** `@opentabs-dev/opentabs-plugin-outlook` (v0.0.95) \u2014 and any plugin using `z.iso.datetime()` in a tool input schema\n**Root cause:** zod v4.4.3 `z.iso.datetime()` regex builder\n**Severity:** High \u2014 breaks `get_calendar_view`, `get_schedule`, `create_event`, `update_event` for MCP clients with strict schema compilers\n\n---\n\n## Summary\n\nTools that declare `start`/`end` params with `z.iso.datetime({ offset, local })` produce a JSON Schema whose `pattern` contains an **empty alternation branch** (`||`). Several strict JSON Schema compilers reject empty alternations, so the tool schema fails to compile and the tool cannot be called. The error surfaces as:\n\n```\nTool \"outlook__get_calendar_view\" cannot be called: schema compilation failed. Schema compilation failed \u2014 validation skipped\n```\n\n## Root cause\n\nIn zod v4.4.3, `zod/v4/core/regexes.js` `datetime()`:\n\n```js\nexport function datetime(args) {\n    const time = timeSource({ precision: args.precision });\n    const opts = [\"Z\"];\n    if (args.local)\n        opts.push(\"\");                       // <-- empty string pushed\n    if (args.offset)\n        opts.push(`([+-](?:[01]\\\\d|2[0-3]):[0-5]\\\\d)`);\n    const timeRegex = `${time}(?:${opts.join(\"|\")})`;   // <-- join produces \"||\"\n    return new RegExp(`^${dateSource}T(?:${timeRegex})$`);\n}\n```\n\nWhen `local: true` is set, an empty string `\"\"` is pushed into `opts`. When `offset` is also enabled, `opts` becomes `[\"Z\", \"\", \"([+-]...\")]` and `join(\"|\")` yields:\n\n```\n(?:Z||([+-](?:[01]\\d|2[0-3]):[0-5]\\d))\n```\n\nThe `||` is an empty alternation branch. Even with only `local: true` (no offset), the pattern is `(?:Z|)` \u2014 a trailing empty branch \u2014 which some strict compilers also reject.\n\n## Affected tools (in the Outlook plugin)\n\n| Tool | Params | Generated pattern |\n|------|--------|-------------------|\n| `get_calendar_view` | `{ offset: true, local: true }` | `(?:Z\\|\\|([+-]...))` \u274c |\n| `get_schedule` | `{ offset: false, local: true }` | `(?:Z\\|)` \u274c |\n| `create_event` | `{ offset: false, local: true }` | `(?:Z\\|)` \u274c |\n| `update_event` | `{ offset: false, local: true }` | `(?:Z\\|)` \u274c |\n\n## Reproduction\n\n1. Load the Outlook plugin (v0.0.95) in an MCP client whose schema compiler rejects empty alternations.\n2. Call `get_calendar_view` with any `start`/`end`.\n3. Observe: `schema compilation failed`.\n\n## Suggested fix\n\nIn zod's `datetime()` builder, avoid pushing an empty string into the alternation. Build the suffix as a single optional group instead:\n\n```js\nexport function datetime(args) {\n    const time = timeSource({ precision: args.precision });\n    const suffix = [];\n    if (args.offset) suffix.push(`[+-](?:[01]\\\\d|2[0-3]):[0-5]\\\\d`);\n    const tz = args.offset ? `(?:Z|${suffix[0]})?` : args.local ? `Z?` : `Z`;\n    const timeRegex = `${time}${tz}`;\n    return new RegExp(`^${dateSource}T(?:${timeRegex})$`);\n}\n```\n\nOr, minimally, only push `\"\"` when `local` is true **and** `offset` is false, and guard the join so no empty branch is emitted.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6439",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/datetime.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6397",
+    "repo": "colinhacks/zod",
+    "base_sha": "68aca3dc402c59f5c4e30322e83028389e44b8b5",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6397",
+    "issue_title": "process function messes up polyfills",
+    "issue_body": "In https://github.com/colinhacks/zod/commit/767f320318986e422f524b939f1a7174544fda2e you added a function called \"process\". I am building a react app that's importing zod, using GlobalPolyfills({ process: true }). I am now getting white screen with error: \"Identifier 'process has already been declared\". When downgrading versions it solves this problem",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6541",
+    "pr_test_files": [
+      "packages/zod/src/v4/core/tests/polyfill-collision.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6395",
+    "repo": "colinhacks/zod",
+    "base_sha": "f101d8cada31bd99f2df5d5ce094c95b209b2950",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6395",
+    "issue_title": "z.url(), z.ipv6() and z.cidrv6() accept ASCII tab/newline because the URL parser deletes them",
+    "issue_body": "`z.url()`, `z.httpUrl()`, `z.ipv6()` and `z.cidrv6()` all validate by calling `new URL()` and treating \"didn't throw\" as valid. Step 2 of the WHATWG basic URL parser **deletes** every ASCII tab, LF and CR from the input before parsing \u2014 it flags a validation error but recovers rather than failing \u2014 so `new URL()` succeeds on strings containing them and reports on a string that isn't the one it was given.\n\nOn 4.4.3:\n\n```ts\nz.ipv6().parse(\"::1\\n\");                    // \"::1\\n\"     \u2014 net.isIPv6() says false\nz.cidrv6().parse(\"::1\\n/64\");               // \"::1\\n/64\"\nz.url().parse(\"https://exa\\nmple.com\");     // \"https://exa\\nmple.com\"\nz.httpUrl().parse(\"https://exa\\nmple.com\"); // \"https://exa\\nmple.com\"\n```\n\nThe host case is the sharp one: `new URL(\"https://exa\\nmple.com\").host` is `example.com`, so the string Zod validated and the string Zod returned are URLs pointing at different hosts.\n\nTab, LF and CR are the only characters with this property. I enumerated all 32 C0 controls at host, path, query, fragment, leading and trailing positions: every other one is either percent-encoded (`https://example.com/pa%00th`) or rejected, and U+0009/U+000A/U+000D are the only three that can be injected into the **host** and still validate.\n\nIt also breaks a self-consistency invariant \u2014 `regexes.ipv6` is still emitted as the `pattern` by `toJSONSchema()`, and it rejects these:\n\n```ts\nnew RegExp(z.toJSONSchema(z.ipv6()).pattern).test(\"::1\\n\"); // false\nz.ipv6().safeParse(\"::1\\n\").success;                        // true\n```\n\nI scanned every code point 0x0000\u20130x10FFFF inserted into `::1` and `::1/64`: `z.ipv6()` disagrees with `net.isIPv6` on exactly those three characters and nothing else.\n\n`isValidBase64` already handles the identical hazard one section down \u2014 \"atob ignores whitespace, so reject it up front\" \u2014 so the shape of the fix is settled by precedent: scan for `[\\t\\n\\r]` ahead of each `new URL()` call. Happy to open a PR.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6442",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/string.test.ts",
+      "packages/zod/src/v4/core/tests/compile-differential.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6342",
+    "repo": "colinhacks/zod",
+    "base_sha": "a106fbe7ae574cbb7045606e173671aad3eb1cd6",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6342",
+    "issue_title": "z.xor() works fine with strict objects but breaks with regular ones",
+    "issue_body": "For some reason the code below fails in a really weird way. With the given input both `gentleXor` and `strictXor` must successfully parse the input but `gentleXor` fails.\n\n```typescript\nimport z from \"zod\"\n\nconst input = {\n    \"os\": {\n        \"name\": \"windows\",\n        \"version\": \"^10\\\\.\"\n    }\n}\n\nconst nameOsRule = z.object({\n    name: z.enum([\"windows\", \"osx\", \"linux\"]).nonoptional()\n})\n\nconst versionOsRule = nameOsRule.extend({\n    version: z.string().nonempty().nonoptional()\n})\n\n// This will break\nconst gentleXor = z.xor([\n    nameOsRule,\n    versionOsRule\n])\n\n// The strict version works fine\nconst strictXor = z.xor([\n    z.strictObject(nameOsRule.shape),\n    z.strictObject(versionOsRule.shape)\n])\n\ngentleXor.parse(input.os, { reportInput: true })\nstrictXor.parse(input.os, { reportInput: true })\n```\n\nThe error doesn't give any clue and looks uninformative:\n```\nZodError: [\n  {\n    \"code\": \"invalid_union\",\n    \"errors\": [],\n    \"inclusive\": false,\n    \"path\": [],\n    \"message\": \"Invalid input\",\n    \"input\": {\n      \"name\": \"windows\",\n      \"version\": \"^10\\\\.\"\n    }\n  }\n]\n```\n\nCan someone explain me why this breaks?\n\nZod version is 4.4.3",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6376",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/union.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6323",
+    "repo": "colinhacks/zod",
+    "base_sha": "d7b209f3928266a3e5cd7d5f8973fc9047be0791",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6323",
+    "issue_title": "fromJSONSchema: propertyNames with enum is treated as required keys",
+    "issue_body": "### Summary\n\n`z.fromJSONSchema()` converts an object schema that constrains its keys with\n`propertyNames: { enum: [...] }` into a Zod schema where each enum value becomes a\n**required** property. `propertyNames` restricts which key *names are allowed*; it\ndoes not make any key *required*. As a result, a valid object that contains only a\nsubset of the allowed keys is incorrectly rejected.\n\n### Zod version\n\n`zod@4.4.3` (Node 20)\n\n### Reproduction\n\n```js\nimport { z } from \"zod\";\n\nconst schema = {\n  type: \"object\",\n  propertyNames: { enum: [\"a\", \"b\"] },\n  additionalProperties: { type: \"string\" },\n};\n\nconst zodSchema = z.fromJSONSchema(schema);\n\n// `{ a: \"x\" }` is valid against the JSON Schema (an allowed key, string value),\n// but Zod rejects it:\nzodSchema.parse({ a: \"x\" });\n// \u2716 ZodError: [{ path: [\"b\"], code: \"invalid_type\",\n//     message: \"Invalid input: expected string, received undefined\" }]\n```\n\n### What's happening\n\nRound-tripping the converted schema back through `z.toJSONSchema()` shows the enum\nproperty names were turned into `required`:\n\n```jsonc\n{\n  \"type\": \"object\",\n  \"propertyNames\": { \"type\": \"string\", \"enum\": [\"a\", \"b\"] },\n  \"additionalProperties\": { \"type\": \"string\" },\n  \"required\": [\"a\", \"b\"]   // \u2190 injected; not present in the source schema\n}\n```\n\n### Expected\n\n- `{ a: \"x\" }` and `{ b: \"y\" }` should pass (as should `{}`, unless `minProperties`\n  or an explicit `required` say otherwise).\n- Only keys *not* in `[\"a\", \"b\"]` should fail (via `propertyNames`).\n- No property should be required unless it appears in the schema's own `required`.\n\n### Notes\n\nThis looks like the object-keyword sibling of #6200 (`fromJSONSchema` requiring\n`prefixItems` tuple elements when `minItems` is omitted) \u2014 both over-require\nmembers that the source schema leaves optional.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6411",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6304",
+    "repo": "colinhacks/zod",
+    "base_sha": "942bf8cb9a4085e66f785c04b5a9a3ed6877709c",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6304",
+    "issue_title": "fromJSONSchema doesn't support format:hostname (but could)",
+    "issue_body": "Doing a check of supported JSON Schema features vs what OpenAI supports for JSON schema, the only observed difference is that OpenAI supports `format:hostname` on string fields, and zod's `fromJsonSchema` does not.  https://json-schema.org/draft/2020-12/draft-bhutton-json-schema-validation-00#rfc.section.7.3.3\n\nHowever, we have `z.hostname()`, so supporting this is very feasible.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6305",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6296",
+    "repo": "colinhacks/zod",
+    "base_sha": "0a76f3d7ba299084e505b55fe7adf65262e86c79",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6296",
+    "issue_title": "fromJSONSchema date-time rejects valid RFC 3339 offsets",
+    "issue_body": "`fromJSONSchema({ type: \"string\", format: \"date-time\" })` currently maps to `z.iso.datetime()` and rejects valid RFC 3339 timestamps with numeric UTC offsets.\n\n```ts\nconst schema = z.fromJSONSchema({ type: \"string\", format: \"date-time\" });\n\nschema.parse(\"2026-07-29T14:30:00Z\"); // accepted\nschema.parse(\"2026-07-29T16:30:00+02:00\"); // rejected\n```\n\nJSON Schema defines `date-time` using RFC 3339, where both `Z` and numeric offsets are valid. A local timestamp without an offset should remain invalid.\n\nThe mapping can preserve that behavior by using `z.iso.datetime({ offset: true })`. Authored JSON Schema constraints such as `pattern` should continue to compose with the format check.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6298",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6220",
+    "repo": "colinhacks/zod",
+    "base_sha": "7f20a26aa216c56f6a673017c87ca4cb105dc23c",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6220",
+    "issue_title": ".strict() silently accepts an own __proto__ input key instead of reporting unrecognized_keys",
+    "issue_body": "**Not a vulnerability report** \u2014 no prototype pollution occurs; the existing defense works. This is a question about `.strict()`'s reporting semantics that falls out of where that defense sits.\n\n### What happens\n\n`z.object(...).strict()` (and `z.strictObject`) reports every unknown input key as `unrecognized_keys` \u2014 except an own `__proto__` key, which is silently accepted and silently dropped from the parse output. So strict mode flags every unknown key except the one an attacker would actually send, and downstream code that inspects `parsed.data` never learns the key was there.\n\n### Repro (zod 4.4.3, fresh install, Node 24)\n\n```js\nimport { z } from 'zod';\n\nconst strict = z.object({ name: z.string() }).strict();\n\n// JSON.parse creates an OWN \"__proto__\" property \u2014 the wire reality for any JSON body.\nconst wire = JSON.parse('{\"name\":\"a\",\"__proto__\":{\"admin\":true}}');\nconsole.log(Object.getOwnPropertyNames(wire)); // [ 'name', '__proto__' ]\n\nconst res = strict.safeParse(wire);\nconsole.log(res.success);                                          // true   (expected: false)\nconsole.log(Object.getOwnPropertyNames(res.data));                 // [ 'name' ]  \u2014 dropped\nconsole.log(Object.getPrototypeOf(res.data) === Object.prototype); // true \u2014 defense intact \ud83d\udc4d\n\n// Control: any other unknown key is reported as documented.\nconsole.log(strict.safeParse(JSON.parse('{\"name\":\"a\",\"other\":1}')).success); // false, unrecognized_keys\n```\n\n### Where it comes from\n\nThe pollution guard in `handleCatchall` skips `__proto__` **before** the `unrecognized.push(key)` branch:\n\nhttps://github.com/colinhacks/zod/blob/912f0f51b0ced654d0069741e7160834dca742ee/packages/zod/src/v4/core/schemas.ts#L1870-L1878\n\n```ts\nfor (const key in input) {\n  // skip __proto__ so it can't replace the result prototype via the\n  // assignment setter on the plain {} we build into\n  if (key === \"__proto__\") continue;   // \u2190 also exempts it from the strict check below\n  if (keySet.has(key)) continue;\n  if (t === \"never\") {\n    unrecognized.push(key);\n    continue;\n  }\n```\n\nThe comment justifies not *copying* the key into the result (clearly right, please keep it). It doesn't say the key should also be exempt from strict's *reporting* \u2014 that looks like a side effect of where the `continue` sits. `z.record` has the same silent skip (schemas.ts#L2957 (same permalink base)).\n\n### Why it matters\n\nFor anyone using `.strict()` as a trust-boundary contract (\"a body carrying anything unexpected is refused loudly, never stripped silently\"), this is the one input where the contract silently doesn't hold \u2014 and because the key is also absent from the output, a downstream check can't catch it either. We hit this in an e-signature API where a rejected-extra-keys guarantee is load-bearing; our unit tests proved the downstream authority rejects a smuggled `__proto__`, while the deployed pipeline never showed it that key at all. (Worked around with an own-key check beside the parse.)\n\n### Suggested fix, if unintended\n\nReport before skipping \u2014 keeps the copy-defense byte-for-byte identical:\n\n```ts\nif (key === \"__proto__\") {\n  if (t === \"never\") unrecognized.push(key);\n  continue;\n}\n```\n\nHappy to send a PR with tests if you'd take this. And if the current behavior is intentional, a line in the `.strict()` docs naming the exemption would let integrators know to pin own-keys themselves.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6221",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/object.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6200",
+    "repo": "colinhacks/zod",
+    "base_sha": "784e5c264284a9424dc7ebdf538ad7bde0c77e4c",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6200",
+    "issue_title": "fromJSONSchema requires prefixItems tuple elements when minItems is omitted",
+    "issue_body": "## Summary\n\n`fromJSONSchema` converts JSON Schema tuple-style array schemas into Zod required tuples. As a result, arrays shorter than the number of positional schemas are rejected even when the JSON Schema does not set `minItems`.\n\nIn JSON Schema, `prefixItems` / draft-7 array-form `items` constrain the elements that are present. They do not make every positional schema required unless `minItems` says so.\n\n## Code path\n\n- `packages/zod/src/v4/classic/from-json-schema.ts`: `prefixItems` is mapped to `z.tuple(...)`.\n- `packages/zod/src/v4/classic/from-json-schema.ts`: draft-7 array-form `items` is also mapped to `z.tuple(...)`.\n- `packages/zod/src/v4/classic/tests/from-json-schema.test.ts`: the current `prefixItems` test expects a shorter array to throw, which appears stricter than JSON Schema semantics.\n\n## Steps to reproduce\n\nChecked against `912f0f51b0ced654d0069741e7160834dca742ee`.\n\n### Draft 2020-12 `prefixItems`\n\n```ts\nimport { fromJSONSchema } from \"zod/v4\";\n\nconst schema = fromJSONSchema({\n  $schema: \"https://json-schema.org/draft/2020-12/schema\",\n  type: \"array\",\n  prefixItems: [{ type: \"string\" }],\n});\n\nconsole.log(schema.safeParse([]).success);\nconsole.log(schema.safeParse([\"ok\"]).success);\n```\n\nActual output:\n\n```txt\nfalse\ntrue\n```\n\nExpected output:\n\n```txt\ntrue\ntrue\n```\n\n### Draft-7 array-form `items`\n\n```ts\nimport { fromJSONSchema } from \"zod/v4\";\n\nconst schema = fromJSONSchema({\n  $schema: \"http://json-schema.org/draft-07/schema#\",\n  type: \"array\",\n  items: [{ type: \"string\" }],\n  additionalItems: false,\n});\n\nconsole.log(schema.safeParse([]).success);\nconsole.log(schema.safeParse([\"ok\"]).success);\nconsole.log(schema.safeParse([\"ok\", \"extra\"]).success);\n```\n\nActual output:\n\n```txt\nfalse\ntrue\nfalse\n```\n\nExpected output:\n\n```txt\ntrue\ntrue\nfalse\n```\n\n## Expected behavior\n\nWithout `minItems`, shorter arrays should be valid as long as every present positional item satisfies its schema.\n\nFor example:\n\n- `prefixItems: [{ type: \"string\" }]` should accept `[]` and `[\"ok\"]`.\n- draft-7 `items: [{ type: \"string\" }], additionalItems: false` should accept `[]` and `[\"ok\"]`, but reject `[\"ok\", \"extra\"]`.\n\n## Actual behavior\n\nThe generated Zod schema rejects `[]` because `z.tuple([z.string()])` requires the first tuple element to be present.\n\n## Existing coverage\n\nRelated open PRs exist, but they appear to cover the trailing/rest side rather than the shorter-array side:\n\n- #6020 fixes open-by-default tuple rest behavior for omitted `items` / `additionalItems`.\n- #6023 fixes boolean `true` rest behavior for `items: true` / `additionalItems: true`.\n\nBoth directions are related, but adding `.rest(...)` to `z.tuple([z.string()])` still leaves the first tuple element required, so arrays shorter than the prefix length remain rejected unless the fix also changes required-prefix handling.\n\n#6193 / #6194 are about `toJSONSchema()` emitting length constraints for closed Zod tuples, which is the opposite conversion direction.\n\n## Suggested fix\n\nWhen JSON Schema does not set `minItems` to require all positional schemas, avoid representing `prefixItems` / array-form `items` as a required-length Zod tuple directly.\n\nThe converted schema should:\n\n- validate each present positional element against its corresponding schema;\n- allow shorter arrays down to the JSON Schema `minItems` value, defaulting to `0`;\n- still enforce `items:false` / `additionalItems:false` for elements beyond the positional schema list;\n- preserve typed rest behavior when `items` / `additionalItems` is a schema object.\n\n## Suggested tests\n\n- 2020-12 `prefixItems: [{ type: \"string\" }]` with no `minItems` accepts `[]`.\n- 2020-12 `prefixItems: [{ type: \"string\" }, { type: \"number\" }]` with no `minItems` accepts `[]` and `[\"ok\"]`.\n- A present prefix item with the wrong type still fails, e.g. `[1]` for `{ type: \"string\" }`.\n- draft-7 `items: [{ type: \"string\" }], additionalItems:false` accepts `[]` and `[\"ok\"]`, but rejects `[\"ok\", \"extra\"]`.\n- Adding `minItems: 1` rejects `[]`, while adding `minItems: 2` rejects arrays shorter than two items.\n\n---\nSubmitted with Codex.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6201",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6198",
+    "repo": "colinhacks/zod",
+    "base_sha": "c8f06d36fc1b56b99c8a12b2a3270394387cb507",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6198",
+    "issue_title": "fromJSONSchema ignores additionalProperties:false when patternProperties is present",
+    "issue_body": "## Summary\n\n`fromJSONSchema` accepts object properties that match neither `properties` nor `patternProperties` when the source JSON Schema sets `additionalProperties: false`, as long as `patternProperties` is present. This makes the generated Zod schema more permissive than the source JSON Schema.\n\n## Code path\n\n- `packages/zod/src/v4/classic/from-json-schema.ts`: the `patternProperties` branch builds loose records and returns from that branch.\n- `packages/zod/src/v4/classic/from-json-schema.ts`: the later `additionalProperties === false` handling is only reached when the earlier `patternProperties` branch is not taken.\n\n## Steps to reproduce\n\nChecked against `912f0f51b0ced654d0069741e7160834dca742ee`.\n\n```ts\nimport { fromJSONSchema } from \"zod/v4\";\n\nconst schema = fromJSONSchema({\n  type: \"object\",\n  patternProperties: {\n    \"^S_\": { type: \"string\" },\n  },\n  additionalProperties: false,\n});\n\nconsole.log(schema.safeParse({ S_name: \"ok\" }).success);\nconsole.log(schema.safeParse({ X_A: false }).success);\n```\n\nActual output:\n\n```txt\ntrue\ntrue\n```\n\n## Expected behavior\n\nThe second parse should fail. `X_A` does not match `^S_`, so it is an additional property. With `additionalProperties: false`, JSON Schema rejects properties that match neither `properties` nor `patternProperties`.\n\nExpected output:\n\n```txt\ntrue\nfalse\n```\n\n## Actual behavior\n\nThe generated Zod schema accepts `{ X_A: false }`.\n\n## Existing coverage\n\nI found related but not equivalent coverage:\n\n- #5449 covered adding general `patternProperties` support.\n- #5702 covers an `allOf` + `additionalProperties: false` interaction.\n\nI did not find an issue or PR covering the `patternProperties` + `additionalProperties: false` interaction above.\n\n## Suggested fix\n\nApply `additionalProperties` after accounting for keys matched by `properties` and `patternProperties`, instead of returning from the `patternProperties` branch before the `additionalProperties` logic runs.\n\n## Suggested tests\n\n- `fromJSONSchema({ type: \"object\", patternProperties: { \"^S_\": { type: \"string\" } }, additionalProperties: false })` accepts `{ S_name: \"ok\" }`.\n- The same schema rejects `{ X_A: false }`.\n- A matching pattern key with the wrong value type, such as `{ S_name: 1 }`, still fails.\n\n---\nSubmitted with Codex.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6199",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6193",
+    "repo": "colinhacks/zod",
+    "base_sha": "f150020d381ef0b3498bdfcc2a27319b0d6d0057",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6193",
+    "issue_title": "`toJSONSchema()`: closed tuples (no `.rest()`) don't constrain array length in any target, diverging from `.parse()`",
+    "issue_body": "\n### Description\n\nFor a `z.tuple([...])` with **no** `.rest()`, `.parse()` / `.safeParse()` strictly rejects arrays that are longer or shorter than the tuple. `.toJSONSchema()` does not reproduce this constraint faithfully in **any** target:\n\n| target | positional item validation | length bound (`maxItems`/closed) |\n|---|---|---|\n| `draft-7` | \u2705 correct | \u274c missing \u2014 extra trailing items pass unchecked |\n| `draft-2020-12` | \u2705 correct | \u274c missing (`items: false` never emitted) |\n| `openapi-3.0` | \u274c **lost** \u2014 collapses to `items: { anyOf: [...] }`, so element *order* is no longer enforced | \u2705 `maxItems`/`minItems` present |\n\nNo target matches `.parse()`'s accept set: `draft-7`/`draft-2020-12` leave the tail unbounded; `openapi-3.0` bounds the length but loses per-index typing (verified with reordered/duplicate elements).\n\nThis matters for consumers like ajv (e.g. via Fastify) that validate only against the emitted schema, not zod's runtime.\n\n### Reproduction\n\n```ts\nimport { z } from \"zod\";\n\nconst schema = z.tuple([\n  z.string(),\n  z.string(),\n  z.object({ lang: z.string() }),\n]);\n\nschema.safeParse([\"a\", \"b\", { lang: \"en\" }, \"extra\"]).success;\n// -> false (runtime: \"too_big\", maximum: 3)\n\nconsole.log(JSON.stringify(schema.toJSONSchema({ target: \"draft-7\" })));\n// {\"type\":\"array\",\"items\":[{\"type\":\"string\"},{\"type\":\"string\"},\n//  {\"type\":\"object\",\"properties\":{\"lang\":{\"type\":\"string\"}},\"required\":[\"lang\"],\"additionalProperties\":false}]}\n// -> no \"maxItems\", no \"additionalItems\": false\n\nconsole.log(JSON.stringify(schema.toJSONSchema({ target: \"openapi-3.0\" })));\n// {\"type\":\"array\",\"items\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"string\"},\n//  {\"type\":\"object\",\"properties\":{\"lang\":{\"type\":\"string\"}},\"required\":[\"lang\"],\"additionalProperties\":false}]},\n//  \"minItems\":3,\"maxItems\":3}\n// -> length is bounded, but positional typing is gone:\n//    [\"a\",\"a\",\"a\"] now validates, even though schema.safeParse([\"a\",\"a\",\"a\"]) rejects it\n//    (index 2 must be the `{lang}` object, not a string)\n```\n\nFeeding the `draft-7` schema to ajv, `[\"a\",\"b\",{lang:\"en\"},null]` (unvalidated 4th element) passes. Feeding the `openapi-3.0` schema to ajv, `[\"a\",\"a\",\"a\"]` (no `{lang}` object anywhere) also passes. Both diverge from `schema.safeParse()`.\n\n### Root cause (from reading `v4/core/*`)\n\n- `schemas.ts` (`$ZodTuple.init`): when `def.rest == null`, the parser enforces `input.length > items.length` directly \u2026 independent of `schema._zod.bag`.\n- `json-schema-processors.ts` (`tupleProcessor`):\n  - `draft-7`/`draft-2020-12`: only closes the tail (`additionalItems: false` / `items: false`) when `def.rest` is set; otherwise nothing marks the schema as closed.\n  - `openapi-3.0`: correctly infers `maxItems`/`minItems` from `prefixItems.length` when `!rest`, but represents `items` as `{ anyOf: prefixItems }`, which is positionally unsound (OpenAPI 3.0's `items` only accepts a single schema, so this is the best available approximation, but it silently discards per-index typing).\n\nThe two families of targets fail in complementary but both incorrect ways; there's no existing target that gets both right.\n\n### Expected behavior\n\nFor a `.rest()`-less tuple:\n- `draft-7`: `additionalItems: false`\n- `draft-2020-12`: `items: false`\n- `openapi-3.0`: ideally reject/warn that a closed tuple can't be represented losslessly in OpenAPI 3.0 `items`, rather than silently producing a schema with different accept semantics (or emit `minItems`/`maxItems` *and* document that positional constraints are unenforceable in that target).\n\n### Environment\n\n- zod: 4.4.3\n- Node.js: v24.18.0",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6194",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6176",
+    "repo": "colinhacks/zod",
+    "base_sha": "421cc9a507086377f257d76030966371b7b8f1b2",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6176",
+    "issue_title": "v4: `.length()` / `.size()` error messages ignore the `exact` flag",
+    "issue_body": "## Zod version\n\nv4.4.3\n\n## Minimal reproduction\n\n```ts\nimport { z } from \"zod\";\n\nz.string().length(4).parse(\"abc\");\n```\n\n## Expected\n\nSince `.length(4)` represents an exact constraint, the error message should indicate that the expected length is **exactly 4**, as it did in Zod v3.\n\n## Actual\n\nThe error message uses range wording (e.g. `>=4` / `<=4`), even though the generated issue already contains `exact: true`.\n\n## Additional context\n\nWhile investigating this, I found that:\n\n* `exact: true` is assigned for fixed-length validations in `core/checks.ts`.\n* `exact` is part of the `too_small` / `too_big` issue types.\n* None of the v4 locale renderers currently use `issue.exact` when formatting messages.\n* The v3 English locale did use `issue.exact` to produce messages such as \"exactly 4\".\n* I couldn't find an existing issue or PR covering this behavior.\n\nBefore opening a PR, I'd like to confirm whether this is an unintended regression. If so, I'd be happy to submit a focused PR updating the English locale together with the relevant tests.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6177",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/array.test.ts",
+      "packages/zod/src/v4/classic/tests/map.test.ts",
+      "packages/zod/src/v4/classic/tests/set.test.ts",
+      "packages/zod/src/v4/classic/tests/validations.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6163",
+    "repo": "colinhacks/zod",
+    "base_sha": "53cec2a0d0941a69d8add934ac3a8695fb5fb14c",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6163",
+    "issue_title": "Wrong input type inferred from record with enum keys and default values",
+    "issue_body": "When defining a Record with enums as keys and values with defaults, then zod is able to complete the missing keys with the default values in the parsed result:\n```ts\nimport z from \"zod\"\n\nconst schema = z.record(z.enum([\"UP\", \"DOWN\"]), z.string().default(\"unknown\"))\n\ntype Input = z.input<typeof schema>\n\n// @ts-ignore\nconst input: Input = {\n    UP: \"somewhere\"\n}\n\nconsole.log(z.parse(schema, input))\n```\noutput:\n```\n{ UP: 'somewhere', DOWN: 'unknown' }\n```\n\nThe only issue is that the inferred type `Input` is:\n```ts\ntype Input = {\n    UP: string | undefined;\n    DOWN: string | undefined;\n}\n```\nwhich requires using `// @ts-ignore` when defining partial inputs, otherwise typescript complains with:\n```\nerror TS2741: Property 'DOWN' is missing in type '{ UP: string; }' but required in type 'Record<\"UP\" | \"DOWN\", string | undefined>\n```\n\nAssuming it is intended for zod to generate the missing fields in the output, then it would be amazing if the inferred `z.input` type to be Partial. For example:\n```ts\ntype Input = Partial<{\n    UP: string | undefined;\n    DOWN: string | undefined;\n}>\n```",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6460",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/record.test.ts",
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6161",
+    "repo": "colinhacks/zod",
+    "base_sha": "6074828e5d134c34cd1fac9b067dbee74ecdc314",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6161",
+    "issue_title": "toJSONSchema(schemaRegistry, opts) is very slow with a large registry",
+    "issue_body": "As I add more types to a schema registry, calling `toJSONSchema` on that registry gets very slow, growing much faster than the growth in the size of the registry.\n\nIn a private repo I have, a registry with only about 3000 types in it takes 30 seconds to process on a MacBook M3.\n\nI've collected some perf dumps, and the problem might be coming from one or both of these places:\n\n### Finalize iteration\n\n`finalize` is called on every schema, but for each schema it goes through all of the refs and checks each one:\n\nhttps://github.com/colinhacks/zod/blob/main/packages/zod/src/v4/core/to-json-schema.ts#L449\n\nA lot of that ends up being noop, as everything only needs to be procesesd once.  But it's still building all of those new arrays for iteration and revisiting every member of `ctx.seen` many times over.\n\nWhen I hack my copy of zod to only run this loop once per context, the schema generation time for my example goes down from about 30s to about 18s.\n\n### Nested parent computation\n\nWhen a schema has a parent, registry get walks the chain recursively to get ancestor data:\n\nhttps://github.com/colinhacks/zod/blob/main/packages/zod/src/v4/core/registries.ts#L65\n\nThis data can be recomputed many times as registry get is called many times, even though no registry data is written during the process.\n\nWhen I add a subclass of $ZodRegistry that can cache the results of these get calls, the schema generation time for my example goes down from about 30s to about 20s.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6408",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6156",
+    "repo": "colinhacks/zod",
+    "base_sha": "69be843f4864a6c320fb02a4f58f0e700526553c",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6156",
+    "issue_title": "`looseRecord` with a closed key schema reports unrecognized keys fatally",
+    "issue_body": "This fails to parse:\n\n\n```js\nconst A = z.looseRecord(z.enum(['foo', 'bar']), z.any())\nA.parse({ foo: 123, bar: {}, baz: null })\n```\n\nThis parses:\n\n```js\nconst A = z.looseRecord(z.string().regex(/^foo|bar$/), z.any())\nA.parse({ foo: 123, bar: {}, baz: null })\n```\n\nReason: record's implementation (which looseRecord also uses) attempts to retrieve the closed schema value set with `def.keyType._zod.values`.\n\n`z.enum` provides it. `z.regex` doesn't attempt to analyze the regex to provide it. Therefore, the false branch triggers with the rechex, in which `ctx.issues.push` is under `def.mode === \"loose\"`. The true branch has no such condition, meaning `unrecognized_key` is always reported.\n\nhttps://github.com/colinhacks/zod/blob/c7805073fef5b6b8857307c3d4b3597a70613bc2/packages/zod/src/v4/core/schemas.ts#L2773-L2854\n\n@pullfrog also signaled this in #5666.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6157",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/record.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6108",
+    "repo": "colinhacks/zod",
+    "base_sha": "9f0a3d81221e3ab7c09ca4911ef35b54817869a4",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6108",
+    "issue_title": "Impossible to define a global error message *inside* the  schema?",
+    "issue_body": "In zod3, I was able to specify a global error message\n\n`z.number({errorMap: () => ({ message: 'my error' })}).min(1).max(99, 'my special message')`\n\nWhen safeParse gets presented the following data:\n- undefined\n-  0\n- 100\n\n**zod 3** would always respond with the following errors:\n- --> my error\n- --> my error\n- --> my special message\n\nwhich made perfectly sense imho. \n\n**zod 4**, with the exact same schema - would always respond with: \n- --> Invalid input: expected number, received undefined\n- --> Too small: expected string to have >=1 characters\n- --> my  special message\n\nHow can I get the old behavior back? I **never ever** want any default zod error messages. Neither z.setErrorMap nor z.config are an option because I want *schema specific* error messages. I really need a fallback if no specific error message is defined. It's overly verbose to repeat any error message for every schema-rule. Additionally I now can't even pass undefined and there seems to be no way at all to override the error returned then.\n\nI need context specific user friendly error messages.\n\n### What I tried so far\nI tried to postprocess the error messages by adding an own meta-information containing my error message. I could then return this error message in case of an parse-error. But I fail to detect if the error message from zod is either a custom one or the default one. If it's the default --> return my own \"global\" message, if its a custom one --> return the custom one.\n\n```\n    const result = schema.value.safeParse(safeModel);\n\n    if (!result.success) {\n      const firstIssue = result.error.issues[0];\n      // 1. return custom error message if the failed rule had any specified\n      // 2. if not return \"global error\" if specified\n      // 3. otherwise return the zod-error\n\n      /* no way to detect if the ZodError.message is zod default or not, unfortunally ZodError has no flag to check that */\n      const isCustomMessage = false;\n\n      if (!isCustomMessage) {\n        const customGlobMessage = (schema.value as any)._def?.description;\n        if (customGlobMessage) {\n          validationError.value = customGlobMessage;\n          return false;\n        }\n      }\n      validationError.value = firstIssue.message;\n    } else {\n      validationError.value = undefined;\n    }\n```",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6426",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/error.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6104",
+    "repo": "colinhacks/zod",
+    "base_sha": "3a49696865f3347a70852b544b0274692a00ad15",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6104",
+    "issue_title": "Expose ZodFunction schema from .implement() result",
+    "issue_body": "Zod 4 function schemas are close to ideal for introspectable function definitions:\n\n```ts\nexport const install = z.function()\n  .input(z.tuple([z.string().describe('package name')]))\n  .implement(pkg => ({installed: pkg, success: true}))\n```\n\nBut not ideal, because we can't get the `input` schema back out of the above anywhere.\n\nUse case: [`trpc-cli`](https://github.com/mmkal/trpc-cli) can turn a plain module of exported functions into CLI commands. Right now it only supports a vendored/patched `typebox` which can read plain-typescript types (so `export function install(name: string) {return {...}}` works roughly like the above.\n\nIt'd be great for advanced use cases to use `z.function` like the above, since parsing typescript types doesn't allow for runtime transforms/custom metadata etc. It can't work now because the input schema is lost.\n\nI read you saying before that most proposed uses around `z.function()` as a schema are anti-patterns. I think this one is narrower:\n\n- no additional validation steps\n- not asking to restore v3 `z.function()` semantics\n- just asking to expose an already-tracked-internally schema as a gettable property\n\n## Current behavior\n\n`ZodFunction` has schema:\n\n```ts\nconst Fn = z.function().input(...)\nFn._def.input // usable at runtime, albeit internal\n\nconst fn = Fn.implement(pkg => ({installed: pkg, success: true}))\n\nfn._def // undefined\nfn._zod // undefined\nObject.getOwnPropertySymbols(fn) // []\n```\n\nIt could be non-enumerable, maybe symbol-keyed, read-only. Could return `undefined` for non-Zod fns.\n\nTyping could be:\n\n```ts\ntype ImplementedZodFunction<T extends z.ZodFunction> = T['_input'] & {\n  _zod: T\n}\n```\n\n## Related\n\n- #4143: Zod 4 `z.function()` replacement / anti-pattern discussion\n- #4842: extracting fn signature from Zod function schema\n- #5121: `z.function()` extends `$ZodType`\n- #313: older request for lighter function syntax; Zod 4 mostly solved syntax side\n\n## Implementation\n\nHopefully `issue` is more valuable than `pull request` these days, but I did an implementation just to double-check that it is indeed easy and confirm that the maintenance burden would be near zero. Here's the full implementation diff. I'd be happy to open a PR and add tests + brief docs if ur ok with this:\n\n```diff\ndiff --git a/packages/zod/src/v4/core/schemas.ts b/packages/zod/src/v4/core/schemas.ts\nindex 4f85fbf0..2c414284 100644\n--- a/packages/zod/src/v4/core/schemas.ts\n+++ b/packages/zod/src/v4/core/schemas.ts\n@@ -4397,13 +4397,17 @@ export interface $ZodFunction<\n   implement<F extends $InferInnerFunctionType<Args, Returns>>(\n     func: F\n   ): // allow for return type inference\n-  (\n+  ((\n     ...args: Parameters<this[\"_output\"]>\n-  ) => ReturnType<F> extends ReturnType<this[\"_output\"]> ? ReturnType<F> : ReturnType<this[\"_output\"]>;\n+  ) => ReturnType<F> extends ReturnType<this[\"_output\"]> ? ReturnType<F> : ReturnType<this[\"_output\"]>) & {\n+    _zod: $ZodFunctionInternals<Args, Returns>;\n+  };\n \n   implementAsync<F extends $InferInnerFunctionTypeAsync<Args, Returns>>(\n     func: F\n-  ): F extends $InferOuterFunctionTypeAsync<Args, Returns> ? F : $InferOuterFunctionTypeAsync<Args, Returns>;\n+  ): (F extends $InferOuterFunctionTypeAsync<Args, Returns> ? F : $InferOuterFunctionTypeAsync<Args, Returns>) & {\n+    _zod: $ZodFunctionInternals<Args, Returns>;\n+  };\n \n   input<const Items extends util.TupleItems, const Rest extends $ZodFunctionOut = $ZodFunctionOut>(\n     args: Items,\n@@ -4431,7 +4435,7 @@ export const $ZodFunction: core.$constructor<$ZodFunction> = /*@__PURE__*/ core.\n       if (typeof func !== \"function\") {\n         throw new Error(\"implement() must be called with a function\");\n       }\n-      return function (this: any, ...args: never[]) {\n+      const implemented = function (this: any, ...args: never[]) {\n         const parsedArgs = inst._def.input ? parse(inst._def.input, args) : args;\n         const result = Reflect.apply(func, this, parsedArgs as never[]);\n         if (inst._def.output) {\n@@ -4439,20 +4443,30 @@ export const $ZodFunction: core.$constructor<$ZodFunction> = /*@__PURE__*/ core.\n         }\n         return result as any;\n       };\n+      Object.defineProperty(implemented, \"_zod\", {\n+        value: inst._zod,\n+        enumerable: false,\n+      });\n+      return implemented as any;\n     };\n \n     inst.implementAsync = (func) => {\n       if (typeof func !== \"function\") {\n         throw new Error(\"implementAsync() must be called with a function\");\n       }\n-      return async function (this: any, ...args: never[]) {\n+      const implemented = async function (this: any, ...args: never[]) {\n         const parsedArgs = inst._def.input ? await parseAsync(inst._def.input, args) : args;\n         const result = await Reflect.apply(func, this, parsedArgs as never[]);\n         if (inst._def.output) {\n           return await parseAsync(inst._def.output, result);\n         }\n         return result;\n-      } as any;\n+      };\n+      Object.defineProperty(implemented, \"_zod\", {\n+        value: inst._zod,\n+        enumerable: false,\n+      });\n+      return implemented as any;\n     };\n \n     inst._zod.parse = (payload, _ctx) => {\n\n```",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6267",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/function.test.ts",
+      "packages/zod/src/v4/mini/tests/functions.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6070",
+    "repo": "colinhacks/zod",
+    "base_sha": "f722bcddab2bb02bb7c2d801d736f042b99a2cfb",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6070",
+    "issue_title": "treeifyError throws TypeError when an issue path contains a key inherited from Object.prototype (e.g. toString)",
+    "issue_body": "`treeifyError` throws a `TypeError` whenever a validation issue's `path` contains a segment whose name matches a property inherited from `Object.prototype` (for example `toString`, `valueOf`, `constructor`, or `hasOwnProperty`).\n\nMinimal reproduction:\n\n```\nimport zod, { treeifyError } from 'zod';\n\nconst schema = zod.object({ toString: zod.string() });\nconst result = schema.safeParse({}); // success: false\n\nif (!result.success) {\n    treeifyError(result.error); // throws TypeError\n}\n```\n\nThe parse correctly fails: `{}.toString` resolves to the inherited `Object.prototype.toString` function, so the `toString` field is reported as `invalid_type (expected string, received function)` with `path: [\"toString\"]`. That part is expected. The bug is that `treeifyError` then throws while building the tree:\n\n```\nnode_modules/zod/v4/core/errors.js:113\n                        curr.errors.push(mapper(issue));\n                                    ^\nTypeError: Cannot read properties of undefined (reading 'push')\n    at processError (node_modules/zod/v4/core/errors.js:113:37)\n    at treeifyError (node_modules/zod/v4/core/errors.js:120:5)\n```\n\nRoot cause:\n\n`treeifyError` builds the tree using a plain object as a dictionary:\n\n```\ncurr.properties ?? (curr.properties = {});\n(_a = curr.properties)[el] ?? (_a[el] = { errors: [] });\ncurr = curr.properties[el];\n```\n\nWhen the path segment `el` is an `Object.prototype` key, `curr.properties[el]` returns the inherited member (e.g. the `toString` function) instead of `undefined`. The `??` short-circuits, so the node is never created, and `curr` is assigned the inherited function which has no `errors` array. The following `curr.errors.push(...)` then throws.\nA null-prototype object (`Object.create(null)`) or a `Map` for `properties`, or an `Object.hasOwn` guard, would fix it.\n\nEnvironment:\nzod: 4.4.3\nNode.js: v24.15.0",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6213",
+    "pr_test_files": [
+      "packages/zod/src/v3/tests/error.test.ts",
+      "packages/zod/src/v4/classic/tests/error-utils.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6047",
+    "repo": "colinhacks/zod",
+    "base_sha": "28e1ebd89d26147bacb164af988da6ed6de738d4",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6047",
+    "issue_title": "Consider compacting simple JSON Schema unions to type array",
+    "issue_body": "Consider this example:\n\n```js\nimport { z } from \"zod\";\n\nconst schema = z.object({\n  value: z.string().nullable().default(null),\n});\n\nconsole.log(JSON.stringify(z.toJSONSchema(schema), null, 2));\n```\n\nIn Zod 4, this omits something like the following (trimmed for brevity):\n\n```json\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"value\": {\n      \"default\": null,\n      \"anyOf\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"null\"\n        }\n      ]\n    }\n  },\n  \"required\": [\n    \"value\"\n  ],\n  \"additionalProperties\": false\n}\n```\n\nFor JSON Schema targets, the equivalent compact form is:\n\n```json\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"value\": {\n      \"default\": null,\n      \"type\": [\"string\", \"null\"]\n    }\n  },\n  \"required\": [\n    \"value\"\n  ],\n  \"additionalProperties\": false\n}\n```\n\nWould you consider a conservative PR that would update `toJSONSchema(...)` to omit the more compact form when possible?\n\nThe proposed scope would be narrow:\n- only JSON Schema targets that support type arrays (`draft-04`, `draft-07`, `draft-2020-12` - not `openapi-3.0`)\n- only `anyOf` where all branches have the form `{ type: ... }`\n- no compaction when branches contain constraints, metadata, `$ref`, `const`, `enum`, etc.\n- no change to `oneOf` / exclusive unions\n\nMy motivation is that I have projects that generate JSON schemas and check them into version control, and we like having the simplest possible form of things for easier reading / review. We're looking to upgrade from v3 + https://github.com/StefanTerdell/zod-to-json-schema to v4. We love that Zod now has JSON Schema serialization built in, but are missing the compact form that `zod-to-json-schema` omits.\n\nI'll acknowledge that we can do this in userspace as our own post-processing step, which we'll likely do if y'all don't want this in Zod itself. But I thought this could be something that others could appreciate too, so wanted to raise it for discussion. Thanks!",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6339",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6027",
+    "repo": "colinhacks/zod",
+    "base_sha": "2a5164f5e753650c0dca74801c6cde38ca7be7d8",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6027",
+    "issue_title": "Bug: toJSONSchema `$ref` pointer not encoded when meta id contains `/` or `~`",
+    "issue_body": "## Description\n\nAccording to [RFC 6901 (JSON Pointer)](https://datatracker.ietf.org/doc/html/rfc6901), reference tokens inside a JSON Pointer must escape two characters:\n\n- `~` \u2192 `~0`\n- `/` \u2192 `~1`\n\nWhen `z.toJSONSchema()` builds the `$ref` URI fragment from a schema's `.meta({ id })`, it uses the raw id without applying these escapes. The `$defs` key itself is a plain JSON object key and does not need escaping \u2014 but the `$ref` pointer path does, and it currently doesn't get it.\n\n## Steps to reproduce\n\n```typescript\nimport { z } from 'zod';\n\nconst User = z.object({ name: z.string() })\n  .meta({ id: 'Shared/User~' });\n\nconsole.log(z.toJSONSchema(z.object({ User })));\n```\n\n## Actual output\n\n```json\n{\n  \"properties\": {\n    \"User\": {\n      \"$ref\": \"#/$defs/Shared/User~\"\n    }\n  },\n  \"$defs\": {\n    \"Shared/User~\": {}\n  }\n}\n```\n\nThe `$ref` pointer token `Shared/User~` is not escaped \u2014 `/` should be `~1` and `~` should be `~0`.\n\n## Expected output\n\n```json\n{\n  \"properties\": {\n    \"User\": {\n      \"$ref\": \"#/$defs/Shared~1User~0\"\n    }\n  },\n  \"$defs\": {\n    \"Shared/User~\": {}\n  }\n}\n```\n\nThe `$defs` key stays as the original unescaped id. Only the `$ref` pointer path needs encoding.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6144",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-6026",
+    "repo": "colinhacks/zod",
+    "base_sha": "e125fd8d0c718622155fde6b4d7aa31bc66e85e8",
+    "issue_url": "https://github.com/colinhacks/zod/issues/6026",
+    "issue_title": "Feature Request: Support `$ref` at Root Level in `toJSONSchema`",
+    "issue_body": "When a schema with `meta({ id })` is passed directly as the root to `z.toJSONSchema()`, the `id` is silently dropped instead of being hoisted into `$defs` with a root-level `$ref`:\n\n```typescript\nconst User = z.object({ name: z.string() }).meta({ id: 'User' });\n\nz.toJSONSchema(z.object({ User }));\n// correctly emits $defs.User + $ref\n\nz.toJSONSchema(User);\n// id is dropped, no $defs, no $ref\n```\n\nExpected output for the root case:\n\n```json\n{\n  \"$ref\": \"#/$defs/User\",\n  \"$defs\": {\n    \"User\": { \"type\": \"object\", \"properties\": { \"name\": { \"type\": \"string\" } } }\n  }\n}\n```\n\n### Why this matters\n\nIn [oRPC](https://orpc.dev/), users define procedures with `.input` and `.output` and can attach an `id` to their schemas for OpenAPI generation. This is the only issue blocking oRPC v2 from using Zod's built-in `toJSONSchema` instead of maintaining a custom conversion layer.\n\n```typescript\nconst UserSchema = z.object({ name: z.string() }).meta({ id: 'User' });\n\nconst procedure = orpc.input(UserSchema).output(UserSchema).handler(...);\n``",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6029",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5980",
+    "repo": "colinhacks/zod",
+    "base_sha": "bd18314c6d0e29a7890ecea73e206f8bbca54ec9",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5980",
+    "issue_title": "Passing a number to ZodDate min() and max() functions causes the issue origin to become \"number\" (zod@4.4.3)",
+    "issue_body": "Probably a bug:\n\nThe origin of the issue produced by `z.date().min()` and `z.date().max()` changes based on the type of the date passed to the `min` and `max` functions.\n\nWhen passing a date as a `Date` Object the origin is \"date\", but when passing a date as a `number` timestamp the origin is \"number\".\n\nIs this the expected behavior?\nThe origin being \"date\" in both cases would seem more logical to me.\n\nExample with `z.date().min()`:\n\n```ts\nimport { z } from 'zod'\n\nz.config({\n  customError: (issue) => {\n    console.log(issue)\n  },\n})\n\nconst tooSmallDate = new Date(2020, 6, 5)\nconst bigEnoughDate = new Date(2020, 6, 15)\n\n\n\nconst minDateAsDate = new Date(2020, 6, 10)\nconst dateSchemaMinDate = z.date().min(minDateAsDate)\n\ndateSchemaMinDate.safeParse(tooSmallDate)\n// {\n//   \"origin\": \"date\",\n//   \"code\": \"too_small\",\n//   \"minimum\": 1594332000000,\n//   \"input\": \"2020-07-04T22:00:00.000Z\",\n//   \"inclusive\": true,\n//   \"inst\": {},\n//   \"continue\": true\n// }\n\ndateSchemaMinDate.safeParse(bigEnoughDate)\n// {\n//   \"success\": true,\n//   \"data\": \"2020-07-14T22:00:00.000Z\"\n// }\n\n\n\nconst minDateAsTimestamp = new Date(2020, 6, 10).getTime()\nconst dateSchemaMinTimestamp = z.date().min(minDateAsTimestamp)\n\ndateSchemaMinTimestamp.safeParse(tooSmallDate)\n// {\n//   \"origin\": \"number\",\n//   \"code\": \"too_small\",\n//   \"minimum\": 1594332000000,\n//   \"input\": \"2020-07-04T22:00:00.000Z\",\n//   \"inclusive\": true,\n//   \"inst\": {},\n//   \"continue\": true\n// }\n\ndateSchemaMinTimestamp.safeParse(bigEnoughDate)\n// {\n//   \"success\": true,\n//   \"data\": \"2020-07-14T22:00:00.000Z\"\n// }\n```\n\nI noticed this behavior when doing `z.date().min(new Date().setHours(0, 0, 0, 0))` and using a custom error map to change the error message it produces.\n\nConsidering that passing a `number` to `z.string().min()` does not cause the issue origin to become \"number\", seems to confirm the described behavior of `z.date().min()` and `z.date().max()` as a bug:\n\n```\nconst stringSchemaMinNumber = z.string().min(5)\nstringSchemaMinNumber.safeParse('x')\n// {\n//   \"origin\": \"string\",\n//   \"code\": \"too_small\",\n//   \"minimum\": 5,\n//   \"inclusive\": true,\n//   \"input\": \"x\",\n//   \"inst\": {},\n//   \"continue\": true\n// }\n```\n\nTested with version: `zod@4.4.3`",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6129",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/date.test.ts",
+      "packages/zod/src/v4/mini/tests/checks.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5968",
+    "repo": "colinhacks/zod",
+    "base_sha": "973b1b44e182ad2eeba50fb57e926c69df67cdb2",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5968",
+    "issue_title": "Object property with \u201cpreprocess\u201d is marked as optional when output JSON using `toJSONSchema [io: 'input']` since v4.4.3",
+    "issue_body": "Object property with \u201cpreprocess\u201d is marked as optional when output JSON using `toJSONSchema [io: 'input']` since v4.4.3.\n\n## Minimal reproduction\n```ts\nimport * as z from 'zod';\n\nconst schema = z.object({\n  noPreprocess: z.string(),\n  withPreprocess: z.preprocess(v => v, z.string()),\n});\n\nconsole.log(z.toJSONSchema(schema, { io: \"input\" }));\n\n/*\n{\n  '$schema': 'https://json-schema.org/draft/2020-12/schema',\n  type: 'object',\n  properties: {\n    noPreprocess: { type: 'string' },\n    withPreprocess: { type: 'string' }\n  },\n  required: [ 'noPreprocess' ]\n}\n*/\n```\n\n## JSON output using v4.4.2\nIn v4.4.2, `withPreprocess` is included in `required`.\n```\n{\n  '$schema': 'https://json-schema.org/draft/2020-12/schema',\n  type: 'object',\n  properties: {\n    noPreprocess: { type: 'string' },\n    withPreprocess: { type: 'string' }\n  },\n  required: [ 'noPreprocess', 'withPreprocess' ]\n}\n```\n\nIs this the expected behavior?",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6133",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5966",
+    "repo": "colinhacks/zod",
+    "base_sha": "3063993a3317ac8af7a244691b837fce3e53aa96",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5966",
+    "issue_title": "Narrowing the input type of `z.preprocess` no longer works after updating to latest version (v4.4.3)",
+    "issue_body": "Take for example, this sample from the docs:\n\n```ts\nconst trimmed = z.preprocess(\n  (val: string | null | undefined) => val?.trim() ?? \"\",\n  z.string()\n);\n \ntype Input = z.input<typeof trimmed>;  // Now gives you `unknown` instead of  `string | null | undefined` as stated in the docs\ntype Output = z.output<typeof trimmed>; // string\n\n```\n\nI can assert this to be a regression given it still worked as intended in v4.4.0",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5967",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/preprocess-types.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5965",
+    "repo": "colinhacks/zod",
+    "base_sha": "0e5bc4b123caf31a5f34a010a36f6f82638f57b1",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5965",
+    "issue_title": "regexes.domain is missing RFC 1035 length limits",
+    "issue_body": "## Context\n\n`regexes.domain` (used by `z.httpUrl()` for the URL host check) currently has no length anchors:\n\n```ts\nexport const domain: RegExp = /^([a-zA-Z0-9](?:[a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$/;\n```\n\nvs. `regexes.hostname` (used by `z.hostname()`), which does enforce the RFC 1035 limits:\n\n```ts\nexport const hostname: RegExp =\n  /^(?=.{1,253}\\.?$)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[-0-9a-zA-Z]{0,61}[0-9a-zA-Z])?)*\\.?$/;\n```\n\nSo `z.httpUrl()` accepts hosts that exceed the 253-character total or have non-TLD labels longer than 63 characters, while `z.hostname()` rejects them.\n\n## Question\n\nIs this an intentional looseness for `z.httpUrl()` (since RFC 3986 / WHATWG URL doesn't itself impose DNS length limits, even though the underlying DNS does), or a gap worth closing?\n\nIf the latter, the fix is small \u2014 adding a `(?=.{1,253}\\.?$)` lookahead and capping the TLD with a `{2,63}` quantifier. Happy to follow up with a PR if there's interest.\n\n## Note\n\nThis is independent from #5963 (underscore support, currently open), but it'd be cleaner to land that first to avoid noisy rebases.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6035",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/string.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5953",
+    "repo": "colinhacks/zod",
+    "base_sha": "81d9fc6cf47da97ad4ef2c43de02276fba249790",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5953",
+    "issue_title": "\"sideEffects\": false in zod/v4/package.json causes esbuild to tree-shake locale initialization since version 4.4.1",
+    "issue_body": "# Bug\nSince zod 4.4.1, all validation error messages in esbuild-bundled (ESM) applications fall back to the generic [\"Invalid input\"](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html) instead of descriptive locale messages like 'Invalid option: expected one of \"km\"|\"mi\"'.\n\n# Root Cause\nzod/v4/package.json was updated in 4.4.1 to include \"sideEffects\": false. This causes esbuild to tree-shake the [config(en())](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html) call in zod/v4/classic/external.js \u2014 the call that registers the English locale.\n\nWithout the locale registered, all errors fall through to the hardcoded fallback in zod/v4/core/util.js:\n\n`message = config.localeError?.(iss) ?? \"Invalid input\"`\n\n# Reproduction\nMinimal self-contained test (requires esbuild and zod@>=4.4.1):\n```typescript\nimport { execSync } from \"node:child_process\";\nimport { mkdtempSync, rmSync, writeFileSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nimport { build } from \"esbuild\";\n\n/**\n * Self-contained reproduction test for zod locale tree-shaking bug.\n *\n * Since zod 4.4.1, `zod/v4/package.json` declares `\"sideEffects\": false`.\n * This causes esbuild to tree-shake the `config(en())` call in\n * `zod/v4/classic/external.js` that initializes the English locale.\n *\n * Without the locale, all zod validation error messages fall back to\n * the generic \"Invalid input\" instead of descriptive messages like:\n *   'Invalid option: expected one of \"km\"|\"mi\"'\n *\n * The fallback happens here in zod's core/util.js:\n *   message = config.localeError?.(iss) ?? \"Invalid input\"\n */\ndescribe(\"zod v4 locale tree-shaking bug (esbuild reproduction)\", () => {\n    let tmpDir: string;\n\n    beforeAll(() => {\n        tmpDir = mkdtempSync(join(tmpdir(), \"zod-locale-bug-\"));\n        // Install zod 4.4.1 (the version that introduced sideEffects: false)\n        writeFileSync(join(tmpDir, \"package.json\"), JSON.stringify({ type: \"module\" }));\n        execSync(\"npm install zod@4.4.1 --silent\", { cwd: tmpDir, stdio: \"pipe\" });\n        // With 4.3.6 it works\n        // execSync(\"npm install zod@4.3.6 --silent\", { cwd: tmpDir, stdio: \"pipe\" });\n    });\n\n    afterAll(() => {\n        rmSync(tmpDir, { recursive: true, force: true });\n    });\n\n    const bundleAndRun = async (sourceCode: string): Promise<string> => {\n        const inputFile = join(tmpDir, \"input.mjs\");\n        const outputFile = join(tmpDir, \"output.mjs\");\n\n        writeFileSync(inputFile, sourceCode);\n\n        await build({\n            entryPoints: [inputFile],\n            bundle: true,\n            format: \"esm\",\n            platform: \"node\",\n            outfile: outputFile,\n        });\n\n        const result = execSync(`node ${outputFile}`, {\n            stdio: \"pipe\",\n            encoding: \"utf-8\",\n        });\n\n        return result.trim();\n    };\n\n    it(\"enum validation error message is 'Invalid input' instead of descriptive message due to locale tree-shaking\", async () => {\n        const source = `\n            import * as z from \"zod/v4\";\n            const schema = z.enum([\"km\", \"mi\"]);\n            const result = schema.safeParse(\"feet\");\n            if (!result.success) {\n                console.log(JSON.stringify({\n                    message: result.error.issues[0].message,\n                    code: result.error.issues[0].code,\n                }));\n            }\n        `;\n\n        const output = JSON.parse(await bundleAndRun(source));\n\n        // BUG: esbuild tree-shakes the locale, so we get generic \"Invalid input\"\n        // instead of the descriptive 'Invalid option: expected one of \"km\"|\"mi\"'\n        expect(output.code).toBe(\"invalid_value\");\n        // expect(output.message).toBe(\"Invalid input\");\n        // This is what the message SHOULD be:\n        expect(output.message).toBe('Invalid option: expected one of \"km\"|\"mi\"');\n    });\n\n    it(\"workaround: explicit locale import preserves descriptive messages\", async () => {\n        const source = `\n            import { config } from \"zod/v4/core\";\n            import en from \"zod/v4/locales/en.js\";\n            config(en());\n\n            import * as z from \"zod/v4\";\n            const schema = z.enum([\"km\", \"mi\"]);\n            const result = schema.safeParse(\"feet\");\n            if (!result.success) {\n                console.log(JSON.stringify({\n                    message: result.error.issues[0].message,\n                    code: result.error.issues[0].code,\n                }));\n            }\n        `;\n\n        const output = JSON.parse(await bundleAndRun(source));\n\n        // With explicit locale import, the descriptive message works\n        expect(output.code).toBe(\"invalid_value\");\n        expect(output.message).toBe('Invalid option: expected one of \"km\"|\"mi\"');\n    });\n});\n```\n\n# Expected behaviour\nInvalid option: expected one of \"km\"|\"mi\"\n# Actual Behavior\nInvalid input\n\n# Workaround\nExplicitly import and configure the locale:\n```typescript\nimport { config } from \"zod/v4/core\";\nimport en from \"zod/v4/locales/en.js\";\nconfig(en());\n```\n\nDisclaimer: The issue was created using help of AI but I was able to confirming that reverting back to zod version 4.3.6 fixed the issue. When I tried writing a unit test without bundling I had always the english expected message locally, the self contained test which was created by the AI made it clear that it is indeed a combination of changed zod behaviour when using esbuild.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5959",
+    "pr_test_files": [
+      "packages/treeshake/default-locale.test.ts",
+      "packages/zod/src/v4/classic/tests/default-locale.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5944",
+    "repo": "colinhacks/zod",
+    "base_sha": "ee7376ad3ac04ede2567a7074762d20b0de1de6d",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5944",
+    "issue_title": "cidrv6 JSON schema emits an incomplete pattern that rejects valid IPv6 CIDRs",
+    "issue_body": "`z.string().cidrv6()` correctly validates IPv6 CIDRs at runtime using `new URL()`, but the `pattern` emitted by `z.toJSONSchema()` rejects many valid inputs.\n\n**Affected version:** 4.4.3 (current main)\n\n## What happens\n\n```ts\nimport { z } from \"zod\";\n\n// Runtime validation \u2014 correct\nz.string().cidrv6().safeParse(\"2001:db8::/32\").success;    // true\nz.string().cidrv6().safeParse(\"2001:db8:1::/48\").success;  // true\n\n// JSON schema \u2014 incorrect pattern\nz.toJSONSchema(z.string().cidrv6());\n// {\n//   \"$schema\": \"...\",\n//   \"type\": \"string\",\n//   \"format\": \"cidrv6\",\n//   \"pattern\": \"^(([0-9a-fA-F]{1,4}:){7}...|([0-9a-fA-F]{1,4})?::([0-9a-fA-F]{1,4}:?){0,6})\\\\/...\"\n// }\n```\n\nThe exported `pattern` \u2014 `regexes.cidrv6` in `src/v4/core/regexes.ts` \u2014 only allows **0 or 1 groups before `::`** via `([0-9a-fA-F]{1,4})?::`. Valid CIDRs with 2+ groups before `::` are not matched:\n\n| Input | Zod runtime | JSON schema `pattern` |\n|-------|-------------|----------------------|\n| `2001:db8::/32` | \u2705 valid | \u274c no match |\n| `2001:db8:1::/48` | \u2705 valid | \u274c no match |\n| `2001:0db8:85a3::/64` | \u2705 valid | \u274c no match |\n| `fe80::/10` | \u2705 valid | \u2705 matches |\n| `::/0` | \u2705 valid | \u2705 matches |\n\n`2001:db8::/32` is the canonical documentation prefix (RFC 3849) and appears in virtually every IPv6 tutorial and RFC example.\n\n## Why it matters\n\nThe `pattern` field is consumed by OpenAPI validators, API gateways, and frontend validation libraries. Any system that applies the Zod-generated JSON schema directly will reject addresses that Zod itself accepts, silently breaking interoperability.\n\n## Root cause\n\n`$ZodCIDRv6` correctly overrides `inst._zod.check` to use `new URL()`, but `def.pattern` is still set to the incomplete `regexes.cidrv6` before calling `$ZodStringFormat.init()`. `$ZodCheckStringFormat.init()` then adds that pattern to `bag.patterns`, which `stringProcessor` in `json-schema-processors.ts` emits as the `pattern` field.\n\nThe runtime check and the schema metadata diverge at `src/v4/core/schemas.ts:885`:\n\n```ts\ndef.pattern ??= regexes.cidrv6; // not used for validation\n```\n\nThe comment acknowledges the disconnect but the pattern still leaks into the JSON schema output.\n\n## Possible fixes\n\n1. **Fix `regexes.cidrv6`** to correctly cover all compressed forms (similar to how `regexes.ipv6` enumerates eight alternatives).\n2. **Don't set `def.pattern`** for `$ZodCIDRv6` at all, so no `pattern` is emitted in the JSON schema. Validators that need a regex would have to rely on `format: \"cidrv6\"`.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5945",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/string.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5937",
+    "repo": "colinhacks/zod",
+    "base_sha": "b8dffe9e62f17e6571e6249d05cc5102b54d94e4",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5937",
+    "issue_title": "Upgrading from 4.3.6 to 4.4.x causes issues with preprocess + catch",
+    "issue_body": "I am using zod to parse payload we received from URLSearchParams, which requires transforming comma-separated string values into an array of string (which can potentially be empty/undefined). In v4.3.6 and below, the following schema works:\n\n```ts\nz.object({\n  area: z.preprocess(v => v ? v.toString().split(',') : [], z.array(z.string())).catch([])\n})\n```\n\nAnd the payload is as follow:\n\n```ts\n{}\n```\n\n[v4.3.6 on Zod Playground](https://zod-playground.vercel.app?appdata=N4IgzgxgFgpgtgQxALhALwHQHsBGArGCAFwApgAdAOwAJqEAnGBZazAB0Y6whjDBIBu1ALwA%2BakID8EjESwBlIvQCWlAOYkAlBjBsANstIByADRHN1FgG0AuidYYG9BAE8SmMEtUbNvjBAQiaBJbTSoAX00QExABBD0AV14UKxBgcJA7WJh6MGUsShQQABYMAGYMADZokGUwAC0sABMAWVVlFAAzeLAYcKA), which works without any issue \u2705 \n\nHowever, after upgrading to 4.4.x (4.4.0, 4.4.1, and 4.4.2), I get the following error:\n\n```text\ninvalid_type - Invalid input: expected nonoptional, received undefined\n```\n\nAll these versions are showing the same error:\n\n- [v4.4.0 on Zod Playground](https://zod-playground.vercel.app?appdata=N4IgzgxgFgpgtgQxALhALwHQHsBGArGCAFwApgAdAOwAJqEAnGBZazAB0Y6whjDBIBu1ALwA%2BakID8EjESwBlIvQCWlAOYkAlBjBsANstIByADRHN1FgG0AuidYYG9BAE8SmMEtUbNvjBAQiaBJbTSoAX00QExABBD0AV14UKxBgcJA7WJh6MGUsShQQABYMUoAGaJBlMAAtLAATAFlVZRQAM3iwGHCgA)\n- [v4.4.1 on Zod Playground](https://zod-playground.vercel.app?appdata=N4IgzgxgFgpgtgQxALhALwHQHsBGArGCAFwApgAdAOwAJqEAnGBZazAB0Y6whjDBIBu1ALwA%2BakID8EjESwBlIvQCWlAOYkAlBjBsANstIByADRHN1FgG0AuidYYG9BAE8SmMEtUbNvjBAQiaBJbTSoAX00QExABBD0AV14UKxBgcJA7WJh6MGUsShQQABYMUoBGaJBlMAAtLAATAFlVZRQAM3iwGHCgA)\n- [v4.4.2 on Zod Playground](https://zod-playground.vercel.app?appdata=N4IgzgxgFgpgtgQxALhALwHQHsBGArGCAFwApgAdAOwAJqEAnGBZazAB0Y6whjDBIBu1ALwA%2BakID8EjESwBlIvQCWlAOYkAlBjBsANstIByADRHN1FgG0AuidYYG9BAE8SmMEtUbNvjBAQiaBJbTSoAX00QExABBD0AV14UKxBgcJA7WJh6MGUsShQQABYMUoAmaJBlMAAtLAATAFlVZRQAM3iwGHCgA)",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5939",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/catch.test.ts",
+      "packages/zod/src/v4/classic/tests/partial.test.ts",
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5909",
+    "repo": "colinhacks/zod",
+    "base_sha": "ca246d267001e2b64d43a5ff02699f1885e06227",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5909",
+    "issue_title": "Pass arguments from `.apply` to schema mapper",
+    "issue_body": "I currently use the following schemas\n\n```ts\nexport function nullishWithFallback<TSchema extends z.ZodType>(\n\tschema: TSchema,\n\tdefaultValue: z.output<TSchema>,\n) {\n\treturn schema.nullish().transform((x) => x ?? defaultValue);\n}\n\nconst myObject = z.object({\n\tid: z.string().apply((x) => nullishWithFallback(x, \"default-id\")),\n});\n```\n\nit would be cool to use `apply` like this\n\n```ts\ndeclare module \"zod\" {\n\tinterface ZodType {\n\t\tapply<T, TArgs extends unknown[]>(fn: (schema: this, ...args: TArgs) => T, ...args: TArgs): T;\n\t}\n}\n\nconst myObject = z.object({\n\tid: z.string().apply(nullishWithFallback, \"default-id\"),\n});\n```\n\nI can provide a pr if one is welcome.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6337",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/apply.test.ts",
+      "packages/zod/src/v4/mini/tests/apply.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5868",
+    "repo": "colinhacks/zod",
+    "base_sha": "b9b62c65357c2b0fed4ae046a30c8e84e4094202",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5868",
+    "issue_title": "`z.union([])` and `z.xor([])` throw internal error on parse",
+    "issue_body": "See https://zod-playground.vercel.app?appdata=N4IgzgxgFgpgtgQxALhBA9gOzAFwASSyJ4C8eAXgHQCumAllgBQDaAugJQA6m3A9L3gzZ8heAlIVKAD3QAnFh27dZMHNVmYC0MSAA0IAG4IANtRhgUzEMEwI4MZHk4gAUuig8QAXxCt9BmFkwBkwUEAAWSgBmSgA2PRA6MAAtdAATAFk6ehQAMxMwGC8gA\n\nThe types resolve to `never`, so maybe `parse` should treat it as `never` too?",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5869",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/union.test.ts",
+      "packages/zod/src/v4/mini/tests/index.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5842",
+    "repo": "colinhacks/zod",
+    "base_sha": "23edf4844bcd89fa37c549dab187ce7f86728540",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5842",
+    "issue_title": ".merge() silently drops .refine() \u2014 should it throw like .pick()/.omit() do?",
+    "issue_body": "Hi, great work on v4.3.0 \u2014 the fix for `.pick()` and `.omit()` throwing on refined schemas is exactly the right behavior.\n\nI noticed that `.merge()` still silently drops `.refine()` callbacks from both operands. It looks like it was missed in the same pass.\n\n## Minimal PoC\n\n```typescript\nimport { z } from \"zod/v4\";\n\nconst A = z.object({ age: z.number() }).refine(d => d.age >= 18, { message: \"Must be 18+\" });\nconst B = z.object({ name: z.string() });\n\nconst Merged = A.merge(B);\n\n// Refinement silently gone:\nMerged.parse({ age: 5, name: \"test\" });\n// => { age: 5, name: \"test\" }  \u2014 no error, .refine() was dropped\n```\n\n## Source\n\nIn `packages/zod/src/v4/core/util.ts` (line ~693), `merge` sets `checks: []` unconditionally:\n\n```ts\nexport function merge(a, b) {\n  const def = mergeDefs(a._zod.def, {\n    ...\n    checks: [], // silently drops all refines\n  });\n  return clone(a, def);\n}\n```\n\nCompare to `pick`/`omit` which now throw:\n\n```ts\nif (hasChecks)\n  throw new Error(\".pick() cannot be used on object schemas containing refinements\");\n```\n\n## Suggestion\n\nShould `.merge()` throw the same error for consistency? The silent discard is surprising \u2014 a user calling `.merge()` gets back a schema that looks correct but has silently lost all refinements.\n\nHappy to discuss or submit a PR if this seems right.\n\nBest Regards,\nYD",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5856",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/object.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5826",
+    "repo": "colinhacks/zod",
+    "base_sha": "b6b1288277e6ca87dab0ad1c7251b92612b7445c",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5826",
+    "issue_title": "`.default()` shallow-copies",
+    "issue_body": "When using the `default()` functionality, zod appears to return a shallow-copy of the schema's default value. So, when the default value is a Map, or Set, etc. - operating on that default value later on makes for surprising results, because it means that the parser's output is no longer the same for the same input.\n\nIf this is desired, please add this caveat to the `default` documentation. Or, even better, allow the `default` function to return only `function` or primitive types. However, I find this to be a very surprising and incorrect result.\n\nMin repro [Node 24]\n\n```ts\nimport { z } from 'zod';\n\nconst itemParser = z.map(z.string(), z.number()).default(new Map());\n\ntype Item = { field: Map<string, number> | undefined };\n\nconst items: Item[] = [{ field: undefined }, { field: undefined }];\n\nfor (const item of items) {\n  console.log(item);\n  const itemsMap = itemParser.parse(item.field);\n  console.log(itemsMap.size);\n  itemsMap.set('HELLO', 1);\n}\n```\n\noutputs\n\n```\n{ field: undefined }\n0\n{ field: undefined }\n1\n```",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5855",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/default.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5824",
+    "repo": "colinhacks/zod",
+    "base_sha": "fa4a37404966d7ada0f5bb02ceeb592f1d4d9c52",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5824",
+    "issue_title": "Falsy prefault() values are not emitted by toJsonSchema()",
+    "issue_body": "Truthy prefaults work as expected\u2026\n```ts\nz.boolean().prefault(true).toJSONSchema({ io: \"input\" });\n\n// {\n//   $schema: \"https://json-schema.org/draft/2020-12/schema\",\n//   default: true,\n//   type: \"boolean\"\n// }\n```\n\nBut falsy prefaults do not\u2026\n```ts\nz.boolean().prefault(false).toJSONSchema({ io: \"input\" });\n\n// {\n//   $schema: \"https://json-schema.org/draft/2020-12/schema\",\n//   type: \"boolean\"\n// }\n```\n\nCaused by [this line](https://github.com/colinhacks/zod/blob/c7805073fef5b6b8857307c3d4b3597a70613bc2/packages/zod/src/v4/core/to-json-schema.ts#L208)\n\nSuggested patch:\n\n```diff\n- if (ctx.io === \"input\" && result.schema._prefault) result.schema.default ??= result.schema._prefault;\n+ if (ctx.io === \"input\" && \"_prefault\" in result.schema) result.schema.default ??= result.schema._prefault;\n```",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5893",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5792",
+    "repo": "colinhacks/zod",
+    "base_sha": "2564caa440e690fd3ad58ce55fdff0fe073d6cc0",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5792",
+    "issue_title": "`multipleOf` silently accepts non-multiples for small numbers (scientific notation bug in `floatSafeRemainder`)",
+    "issue_body": "`z.number().multipleOf(1e-7).safeParse(2.5e-7)` returns `{ success: true }`,  but `2.5e-7 / 1e-7 = 2.5`  (not a whole number).\n\nRepro:\n```\nz.number().multipleOf(1e-7).safeParse(2.5e-7)  //  { success: true } \u2014 should be false\nz.number().multipleOf(1e-7).safeParse(3.3e-7)  // { success: true } \u2014 should be false\nz.number().multipleOf(1e-7).safeParse(3e-7)    // { success: true } \u2014 correct\n```\n\nRoot cause: `floatSafeRemainder` in util.ts counts decimal places by splitting `val.toString()` on \".\". For small numbers, JS uses scientific notation: (2.5e-7).toString() gives \"2.5e-7\", so the fractional part is \"5e-7\" (length 4) instead of the actual 8 decimal places. \n\nThe function already handles this for the step parameter (lines 251-255) but not for val.\n\nSuggested fix: Apply the same scientific notation regex to val.toString().\n\nZod version: 4.3.6 \n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5793",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/number.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5777",
+    "repo": "colinhacks/zod",
+    "base_sha": "f457edf1e504787eadfe2dffe51a77c64e3f0e17",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5777",
+    "issue_title": "z.toJSONSchema() stack overflows on recursive z.lazy() union schemas when recursive branches use .describe()",
+    "issue_body": "# Zod Issue Draft\n\nTitle:\n\n`z.toJSONSchema()` stack overflows on recursive `z.lazy()` union schemas when recursive branches use `.describe()`\n\nBody:\n\n### Zod version\n\n4.3.6\n\n### What I expected\n\n`z.toJSONSchema()` should serialize a recursive schema using `$ref` when called with:\n\n```ts\nz.toJSONSchema(schema, { cycles: \"ref\", reused: \"ref\" })\n```\n\n### What happened\n\nIt throws:\n\n```text\nRangeError: Maximum call stack size exceeded\n```\n\nThis seems related to recursive `z.lazy()` unions when the recursive branches are decorated with `.describe()`.\n\nThe same recursive schema shape works if I remove the `.describe()` calls.\n\n### Minimal reproduction\n\n```ts\nimport { z } from \"zod\";\n\ntype FieldDefinitionValue =\n  | { type: \"text\" | \"int\"; required?: boolean }\n  | { object: Record<string, FieldDefinitionValue>; required?: boolean }\n  | { array: FieldDefinitionValue; required?: boolean };\n\nconst Scalar = z.enum([\"text\", \"int\"]).describe(\"scalar kind\");\n\nconst Field: z.ZodType<FieldDefinitionValue> = z.lazy(() =>\n  z\n    .union([\n      z\n        .object({\n          type: Scalar.describe(\"scalar field kind\"),\n          required: z.boolean().optional().describe(\"required flag\"),\n        })\n        .strict(),\n      z\n        .object({\n          object: z\n            .record(z.string(), Field)\n            .describe(\"nested object field map\"),\n          required: z.boolean().optional().describe(\"required flag\"),\n        })\n        .strict(),\n      z\n        .object({\n          array: Field.describe(\"array element field definition\"),\n          required: z.boolean().optional().describe(\"required flag\"),\n        })\n        .strict(),\n    ])\n    .describe(\"field definition\"),\n);\n\nconst Root = z\n  .object({\n    fields: z.record(z.string(), Field).describe(\"field map\"),\n  })\n  .strict()\n  .describe(\"root\");\n\nconsole.log(\n  z.toJSONSchema(Root, {\n    cycles: \"ref\",\n    reused: \"ref\",\n  }),\n);\n```\n\n### Notes\n\n- If I remove the `.describe()` calls from the recursive schema branches, `z.toJSONSchema()` succeeds.\n- If I keep recursion but only use `.meta(...)`, `z.toJSONSchema()` also succeeds.\n- This came up while trying to generate Mermaid class diagrams from Zod contract schemas.\n````\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5797",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5775",
+    "repo": "colinhacks/zod",
+    "base_sha": "20cc794895cc8604fe0c87d83a5d1c3f89fad0ac",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5775",
+    "issue_title": "discriminatedUnion no longer warns with invalid variant at compile time (zod 4)",
+    "issue_body": "Tested with `zod 4.3.6`:\n\n```ts\nz.discriminatedUnion(\"type\", [z.object({})]);\n```\n\nv4: no compiler error and fails at runtime with:\n\n```\nInvalid discriminated union option at index \"0\"\n```\n\nv3: compiler error\n\n```\nType 'ZodObject<{}, \"strip\", ZodTypeAny, {}, {}>' is not assignable to type 'ZodDiscriminatedUnionOption<\"type\">'.\n  Type '{}' is not assignable to type '{ type: ZodTypeAny; } & ZodRawShape'.\n    Property 'type' is missing in type '{}' but required in type '{ type: ZodTypeAny; }'.\n```\n\nI would've expected a compile error here. These kind of issues are usually best to catch at compile-time.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5907",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/discriminated-unions.test.ts",
+      "packages/zod/src/v4/mini/tests/index.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5732",
+    "repo": "colinhacks/zod",
+    "base_sha": "e06af5de314f1cad8dfaa0a5f1909e21ffff9e49",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5732",
+    "issue_title": "`z.fromJSONSchema()` does not support metadata for enums, literals and not/never",
+    "issue_body": "Related to #5564 (closed by #5586)\n\nWhile for the simple cases metadata parsing was added, they do not seem to be parsed for all of the special cases in `convertBaseSchema`, such as enums and literals.\n\n```ts\n// Will equal { description: \"The name of the person\" }\nconst stringMeta = z.fromJSONSchema({\n  type: \"string\",\n  description: \"The name of the person\",\n}).meta();\n\n// But all of these will be undefined\nconst enumMeta = z.fromJSONSchema({\n  type: \"string\",\n  enum: [\"red\", \"green\", \"blue\"],\n  description: \"The color of the object\",\n}).meta();\nconst literalMeta = z.fromJSONSchema({\n  type: \"string\",\n  const: \"hello\",\n  description: \"A constant string value\",\n}).meta();\nconst notMeta = z.fromJSONSchema({\n  description: \"Placeholder item\",\n  not: {},\n}).meta();\n```",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5758",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5731",
+    "repo": "colinhacks/zod",
+    "base_sha": "a1cf8a9312582591d9cdccdd677ba1d90e706cc0",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5731",
+    "issue_title": "z.toJSONSchema: .meta({ id }) leaks id into $defs entries \u2014 should use $id or omit it",
+    "issue_body": "When using `.meta({ id })` to enable `$defs` extraction in `z.toJSONSchema()`, the `id` value is included verbatim as an `id` property in the generated `$defs` entries. This is not a valid JSON Schema keyword in Draft 2020-12 (or Draft 7).\n\n- Draft 4 used `id` (no dollar sign)\n- Draft 6+ renamed it to `$id`, and `$id` must be a URI-reference\n\nSo the current behavior produces output that is either:\n- An unrecognized keyword (Draft 2020-12 / Draft 7), or\n- A non-URI value for a URI field (if interpreted as Draft 4 `id`)\n\n## Reproduction\n\n```ts\nimport * as z from \"zod\";\n\nconst inner = z.object({ name: z.string() }).meta({ id: \"Inner\" });\nconst outer = z.object({ a: inner, b: inner });\n\nconsole.log(JSON.stringify(z.toJSONSchema(outer, { target: \"draft-2020-12\" }), null, 2));\n```\n\n## Actual output\n\n```json\n{\n  \"$defs\": {\n    \"Inner\": {\n      \"type\": \"object\",\n      \"properties\": { \"name\": { \"type\": \"string\" } },\n      \"required\": [\"name\"],\n      \"id\": \"Inner\"\n    }\n  },\n  ...\n}\n```\n\n## Expected\n\nThe `id` key should either:\n1. Be omitted from the JSON schema output (it's only needed internally for naming the `$defs` key), or\n2. Be emitted as `$id` with a proper URI value\n\nOption 1 seems cleanest since the `$defs` key already serves as the identifier via `$ref: \"#/$defs/Inner\"`.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5759",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5714",
+    "repo": "colinhacks/zod",
+    "base_sha": "2e5b23dcd41eb257bda434b9997fd60a19cdf38f",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5714",
+    "issue_title": "z.toJSONSchema() output has non-enumerable ~standard property that breaks z.json() validation",
+    "issue_body": "Since `v4.2.0`, `z.toJSONSchema()` returns an object with a non-enumerable `~standard` property containing functions. This causes `z.json()` to reject the output, even though the object is otherwise a valid JSON Schema.\n\n  This is a regression in `v4.2.0`; in `v4.1.13`, it returned a plain object without `~standard`.\n\n  ### Reproduction\n```ts\n  import { z } from \"zod/v4\";\n\n  const schema = z.object({ name: z.string() });\n  const jsonSchema = z.toJSONSchema(schema);\n\n  // ~standard is present (non-enumerable, with functions)\n  console.log(\"~standard\" in jsonSchema); // true \u2014 should be false\n\n  const descriptor = Object.getOwnPropertyDescriptor(jsonSchema, \"~standard\");\n  console.log(descriptor);\n  // {\n  //   value: { validate: [Function], vendor: 'zod', version: 1,\n  //            jsonSchema: { input: [Function], output: [Function] } },\n  //   enumerable: false,\n  //   configurable: false\n  // }\n\n  // z.json() rejects the output\n  console.log(z.json().safeParse(jsonSchema).success); // false \u2014 should be true\n```\n  Expected behavior\n\n  `z.toJSONSchema()` should return a plain JSON Schema object without  `~standard` property, no functions. The output should pass\n  `z.json()` validation.\n\n### Actual behavior\nThe output carries a non-enumerable `~standard` property (from Standard Schema protocol) containing functions. `z.json()` sees this property during validation and rejects the object.\n\n### Impact\nThis breaks any code that validates `z.toJSONSchema()` output using Zod schemas. Specifically `z.json()`, `z.record()`, or `z.unknown()`. A real-world example: Fastify with fastify-type-provider-zod uses Zod schemas to serialize responses. Any API route that returns `z.toJSONSchema()` output with a response schema containing `z.json()` or `z.record(z.string(), z.json())` gets a ResponseSerializationError.\n\nI think this was introduced in https://github.com/colinhacks/zod/pull/5477",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5719",
+    "pr_test_files": [
+      "packages/zod/src/v4/core/tests/record-constructor.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5697",
+    "repo": "colinhacks/zod",
+    "base_sha": "9a7ecc358b5b9bf9e2a682cf797ae4c14413e5a6",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5697",
+    "issue_title": "Weird error message after update | 4.3.6",
+    "issue_body": "In zod v4.3.6, when I give Infinity to finite() number I receive awkward message.\n\n```\n const schema = z.object({\n          id: z.number().finite()\n        }).required({ id: true })\n\nconst value = Infinity\n\n// validate schema with value\n\n// error message: Invalid input: expected number, received number\n// error code: invalid_type\n\n```\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5906",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/number.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5678",
+    "repo": "colinhacks/zod",
+    "base_sha": "bee2dc8d4971a5142d6197a01426837e2a57f69d",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5678",
+    "issue_title": "`transform` callback `ctx.addIssue` not in Typescript",
+    "issue_body": "According to the source (and various articles) I can see that a transform callback receives a context object containing an `addIssue` method:\n\n```ts\nconst schema = z.transform((value, ctx) => {\n  if(isNotValid(value)) {\n    ctx.addIssue({\n      code: \"invalid_element\",\n      message: \"Not valid\",\n    });\n  }\n  return value;\n});\n\nschema.parse(someValue);\n```\n\nThis work at runtime. However, in Typescript I get an error telling me `addIssue` doesn't exist.\n\nIs this method deprecated? It certainly wasn't removed, and TS doesn't mark it as deprecated, but rather absent completely.\n\nConfirmed in Zod v4.2.1 and v4.3.6 (presumably between as well).\n\n-----\n\nResolution:\n\nA. If the method is deprecated, the Typescript needs to be updated to indicate that it's deprecated, but not absent (until it is in fact removed).\n\nB. If the method is *not* deprecated, it needs to be added to the Typescript definition.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5699",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/transform.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5670",
+    "repo": "colinhacks/zod",
+    "base_sha": "518f15ddada3b5d959f4ff32b094789e2d85349a",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5670",
+    "issue_title": "Invalid discriminator errors in Zod 4 do not list possible options like Zod 3",
+    "issue_body": "In Zod 3, if you received an error for an invalid discriminator, you received a list of possible options. In Zod 4, it just gives you a `invalid_union` code with no sub-errors or list of possible values. If the error map had access to the actual schema, it could theoretically use the `discriminator` to loop through the `options`, but this seems impossible at this point.\n\nThis is a pretty limiting regression in Zod 4, since without this information we can't tell users what they should be doing.\n\nThe script below logs the following:\n\n```\nZod 4\n[\n  {\n    code: 'invalid_union',\n    errors: [],\n    note: 'No matching discriminator',\n    discriminator: 'type',\n    path: [ 'type' ],\n    message: 'Invalid input'\n  }\n]\n\nZod 3\n[\n  {\n    code: 'invalid_union_discriminator',\n    options: [ 'fruit', 'vegetable' ],\n    path: [ 'type' ],\n    message: \"Invalid discriminator value. Expected 'fruit' | 'vegetable'\"\n  }\n]\n```\n\n```ts\nimport { z } from 'zod';\nimport { z as z3 } from 'zod/v3';\n\nconsole.log('Zod 4');\nconst schema = z.discriminatedUnion('type', [\n  z.object({ type: z.literal('fruit') }),\n  z.object({ type: z.literal('vegetable') }),\n]);\n\nconsole.log(schema.safeParse({ type: 'hi' }).error?.issues);\n\nconsole.log('Zod 3');\n\nconst schema2 = z3.discriminatedUnion('type', [\n  z3.object({ type: z3.literal('fruit') }),\n  z3.object({ type: z3.literal('vegetable') }),\n]);\n\nconsole.log(schema2.safeParse({ type: 'hi' }).error?.issues);\n```",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5723",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/discriminated-unions.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5663",
+    "repo": "colinhacks/zod",
+    "base_sha": "4cc4053d28fe6879fa360e2780ab52226202904e",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5663",
+    "issue_title": "intersection (.and(...)) does not run check, superRefine or transform functions (and probably others)",
+    "issue_body": "When reusing a schema in another schema, I am assuming that the entire schema will be reused, including the checks, transforms and other hooks. This is also suggested by the types (the output types reflect the transformed type, also when that schema is reused in an intersection).\n\nIn a more specific case, not even the default ran (cfr. latest test case)\n\nI added these tests to packages/zod/src/v4/core/tests/extend.test.ts which I think should work (but that fail in zod 4.3.6).\n\n```typescript\ntest(\"intersection check fn should run ({ x: string; } & { a: string; })\", () => {\n  const spy = vi.fn();\n  const alwaysFailingCheckFn = (ctx: any) => {\n    spy();\n    ctx.addIssue({\n      code: \"custom\",\n      message: \"This check always fails\",\n    });\n  };\n\n  const xSubSchema = z\n    .strictObject({ x: z.string() })\n    .check(alwaysFailingCheckFn);\n\n  const problemSchema = z.intersection(\n    xSubSchema,\n    z.strictObject({ a: z.string() }).check(alwaysFailingCheckFn),\n  );\n\n  type TInput = z.input<typeof problemSchema>; // type TProblemInput = ({ x: string; } & { a: string; })  | ({ x: string; } & { b: boolean; })\n\n  const parseResult = problemSchema.safeParse({\n    x: \"test\",\n    a: \"hello\",\n  } satisfies TInput);\n  expect(spy).toHaveBeenCalledTimes(2);\n  expect(parseResult.error).not.toBe(undefined);\n});\n\ntest(\"intersection superRefine should run ({ x: string; } & { a: string; })\", () => {\n  const spy = vi.fn();\n  const alwaysFailingSuperRefine = (_data: any, ctx: any) => {\n    spy();\n    ctx.addIssue({\n      code: \"custom\",\n      message: \"This check always fails\",\n    });\n  };\n\n  const xSubSchema = z\n    .strictObject({ x: z.string() })\n    .superRefine(alwaysFailingSuperRefine);\n\n  const problemSchema = z.intersection(\n    xSubSchema,\n    z.strictObject({ a: z.string() }).superRefine(alwaysFailingSuperRefine),\n  );\n  type TInput = z.input<typeof problemSchema>; // type TProblemInput = ({ x: string; } & { a: string; })  | ({ x: string; } & { b: boolean; })\n\n  const parseResult = problemSchema.safeParse({\n    x: \"test\",\n    a: \"hello\",\n  } satisfies TInput);\n  expect(spy).toHaveBeenCalledTimes(2);\n  expect(parseResult.error).not.toBe(undefined);\n});\n\ntest(\"intersection transformFn should run ({ x: string; } & { a: string; })\", () => {\n  const spy = vi.fn();\n  const transformFn = <T>(data: T) => {\n    spy();\n    return { ...data, transformed: true };\n  };\n\n  const xSubSchema = z.strictObject({ x: z.string() }).transform(transformFn);\n\n  const problemSchema = z.intersection(\n    xSubSchema,\n    z.strictObject({ a: z.string() }).transform(transformFn),\n  );\n  type TInput = z.input<typeof problemSchema>; // type TInput = ({ x: string; } & { a: string; })  | ({ x: string; } & { b: boolean; })\n  type TOutput = z.output<typeof problemSchema>; // type TOutput = type TOutput = ({ x: string; } & { transformed: boolean; } & { a: string; } & { transformed: boolean; }) | ({ x: string; } & { transformed: boolean; } & { b: boolean; } & { transformed: boolean; })\n\n  const parseResult = problemSchema.safeParse({\n    x: \"test\",\n    a: \"hello\",\n  } satisfies TInput);\n  expect(spy).toHaveBeenCalledTimes(2);\n  expect(parseResult.data).toEqual({\n    x: \"test\",\n    a: \"hello\",\n    transformed: true,\n  } satisfies TOutput);\n});\n```\n\nIn the case of an intersection of an intersection with another schema, not even the default was set:\n```typescript\ntest(\"intersection default should run with intersections of intersections\", () => {\n  const xSubSchema = z.intersection(\n    z.strictObject({\n      x: z.string().default(\"X default\"),\n      y: z.number(),\n    }),\n    z.strictObject({\n      z: z.boolean(),\n    }),\n  );\n\n  const problemSchema = z.intersection(\n    xSubSchema,\n    z.strictObject({ a: z.string() }),\n  );\n  type TInput = z.input<typeof problemSchema>; // type TInput = { x?: string | undefined; y: number; } & { z: boolean; } & { a: string; }\n  type TOutput = z.output<typeof problemSchema>; // type TOutput = { x: string; y: number; } & { z: boolean; } & { a: string; }\n\n  const parseResult = problemSchema.safeParse({\n    y: 34,\n    z: true,\n    a: \"hello\",\n  } satisfies TInput);\n  expect(parseResult.data).toEqual({\n    x: \"X default\",\n    y: 34,\n    z: true,\n    a: \"hello\",\n  } satisfies TOutput);\n});\n\n```",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6412",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/intersection.test.ts",
+      "packages/zod/src/v4/classic/tests/record.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5625",
+    "repo": "colinhacks/zod",
+    "base_sha": "87cf0f93cd0f34bdc69f11c9377568e6812841c4",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5625",
+    "issue_title": "Feature Request: add `.invert()` method to codecs",
+    "issue_body": "Hey there, really enjoying the new codecs feature. I would like to request an `.invert()` (AKA `.inverse()`, `.inverted()`,  `.flip()`, `.flipped()` etc) method on Codecs, so that they can be _composed_ into other schema with arbitrary directionality. The method would effectively just flip the inputs and outputs:\n\n```ts\nconst intToString = z.codec(z.int(), z.string().regex(z.regexes.integer), {\n    decode: (num) => num.toString(),\n    encode: (str) => Number.parseInt(str, 10),\n});\n\nconst stringToInt = intToString.invert();\n```\n\n### Contrived Use-Case:\n\n```ts\nconst intToString = z.codec(z.int(), z.string().regex(z.regexes.integer), {\n    decode: (num) => num.toString(),\n    encode: (str) => Number.parseInt(str, 10),\n});\n\n// \u2705 Already possible:\nconst tenAsString = z.number().pipe(intToString).parse(10);\n\n// \u274c Not yet possible:\nconst tenAsInteger = z.string().pipe(intToString.invert()).parse(\"10\");\n```\n\nThis example is obviously contrived, because in practice you would just use `.encode`:\n\n```diff\n-const tenAsInteger = z.string().pipe(intToString.invert()).parse(\"10\");\n+const tenAsInteger = intToString.encode(\"10\");\n```\n\n**However**, this method would be useful when composing schema with codecs. Eg:\n\n### Actual Use-Case:\n\nIt's common in `react-hook-form` to define validation schema with `zod` that have an `Input` type of `string`, but a transformed `Output` type, eg:\n\n```ts\nimport { useForm } from \"react-hook-form\";\nimport { zodResolver } from \"@hookform/resolvers/zod\";\nimport { intToString } from \"lib/intToString\";\n\nconst formValidationSchema = z.object({\n  age: intToString().invert(), // `string` as input, `number` as output.\n});\n\nexport function MyForm() {\n  const form = useForm({\n    resolver: zodResolver(formValidationSchema),\n  });\n  \n  // \u2026\n}\n```\n\n\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5770",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/codec.test.ts",
+      "packages/zod/src/v4/mini/tests/codec.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5619",
+    "repo": "colinhacks/zod",
+    "base_sha": "f19860f1f17e3bdc3e696ee5290441bba093d7a4",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5619",
+    "issue_title": "Add Romanian (ro) locale",
+    "issue_body": "  I'd like to contribute a Romanian locale for zod v4's localization system.\n\n  Romanian is spoken by approximately 24 million people worldwide. I've already implemented a working Romanian locale in my project covering:\n\n  - Type errors with expected/received types\n  - Size constraints (too_big/too_small) with proper grammar for strings, arrays, sets, maps, files\n  - String format validations (email, URL, UUID, date, IP addresses, etc.)\n  - Value errors, unrecognized keys, and other validations\n\n  I'm happy to file a PR. Let me know if there are any guidelines I should follow for locale contributions outside the ones mentioned in the official [CONTRIBUTING.md](https://github.com/colinhacks/zod/blob/main/CONTRIBUTING.md).",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5657",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/locales_ro.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5617",
+    "repo": "colinhacks/zod",
+    "base_sha": "ca3c8629c0c2715571f70b44c2433cad3db7fe4e",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5617",
+    "issue_title": "\"\u10e1\u10e2\u10e0\u10d8\u10dc\u10d2\u10d8\" is not correct translation for word \"string\" in ka ( Georgian )",
+    "issue_body": "Hello! I\u2019m a native Georgian (ka) speaker.\n\nIn the Georgian localization file\n[ka](https://github.com/colinhacks/zod/blob/main/packages/zod/src/v4/locales/ka.ts), the word \"\u10e1\u10e2\u10e0\u10d8\u10dc\u10d2\u10d8\" is used as a translation for \"string\". This is not correct Georgian \u2014 \u10e1\u10e2\u10e0\u10d8\u10dc\u10d2\u10d8 is not a real or commonly accepted word in the language.\n\nIn Georgian validation and form-error messages, the natural and widely used term is \"\u10d5\u10d4\u10da\u10d8\" (field). This is the wording we consistently use in real applications and user-facing validation errors.\n\nI suggest replacing \"\u10e1\u10e2\u10e0\u10d8\u10dc\u10d2\u10d8\" with \"\u10d5\u10d4\u10da\u10d8\" throughout the Georgian locale to better match actual Georgian usage and improve translation quality.\n\nI can create PR if the issue is approved ^_^",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5655",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/locales_ka.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5593",
+    "repo": "colinhacks/zod",
+    "base_sha": "b6a3b3369a5b9fdde9adde8203b96b71c0634ad5",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5593",
+    "issue_title": "discriminatedUnion fails on encode() when discriminator is a ZodCodec",
+    "issue_body": "## Description\n\nWhen using `z.discriminatedUnion` with a discriminator field implemented as a `ZodCodec`,\n`decode()` works correctly, but `encode()` fails at runtime with\n`No matching discriminator`.\n\nThis happens even though:\n\n- the types of `decode()` / `encode()` inputs are correct\n- the codec itself is fully bidirectional\n- the decoded domain object is valid\n\nThe issue appears to be that `discriminatedUnion` attempts to select a branch\n**before encoding the discriminator field**, using the domain value instead of\nthe encoded (raw) value.\n\n---\n\n## Reproducible example\n\n```ts\nconst LiteralTestCodec1 = z.codec(z.literal(1), z.literal('one'), {\n    decode: (raw) => 'one' as const,\n    encode: (domain) => 1 as const,\n})\n\nconst LiteralTestCodec2 = z.codec(z.literal(2), z.literal('two'), {\n    decode: (raw) => 'two' as const,\n    encode: (domain) => 2 as const,\n})\n\nconst TestUnionSchema = z.discriminatedUnion(\n    'type',\n    [\n        z.object({\n            type: LiteralTestCodec1,\n            valueString: z.string(),\n        }),\n        z.object({\n            type: LiteralTestCodec2,\n            valueNumber: z.number(),\n        }),\n    ]\n)\n\nconst domain = TestUnionSchema.decode({\n    type: 1,\n    valueString: 'test value',\n})\n\nconst raw = TestUnionSchema.encode({\n    type: 'one',\n    valueString: 'test value',\n})\n```\n\n---\n\n## Actual result\n\n`decode()` works correctly.\n\n`encode()` throws the following error:\n\n```json\nZodError: [\n  {\n    \"code\": \"invalid_union\",\n    \"errors\": [],\n    \"note\": \"No matching discriminator\",\n    \"discriminator\": \"type\",\n    \"path\": [\"type\"],\n    \"message\": \"Invalid input\"\n  }\n]\n```\n\n---\n\n## Expected behavior\n\nGiven that:\n\n- the discriminator codec is bidirectional\n- `encode()` should produce a valid raw representation\n\n`encode()` is expected to succeed and return:\n\n```ts\n{\n    type: 1,\n    valueString: \"test value\"\n}\n```\n\n---\n\n## Notes / Workaround\n\nAt the application level, this issue can be worked around by enabling\n`{ unionFallback: true }` when creating the `discriminatedUnion`.\n\nThis forces Zod to fall back to full union validation instead of the fast\ndiscriminator-based path.\n\nHowever, this behavior is surprising when combining:\n\n- `z.discriminatedUnion`\n- codecs used as discriminator fields\n- `encode()` direction\n\n---\n\n## Possible directions\n\nBelow are concrete implementation-oriented ideas based on the current internal behavior of `ZodDiscriminatedUnion` (not prescriptions).\n\n### 1. Make discriminator resolution context-aware\n\nCurrently, branch selection in `ZodDiscriminatedUnion` is based on a precomputed map:\n\n```ts\nconst opt = disc.value.get(input?.[def.discriminator] as any);\nif (opt) {\n  return opt._zod.run(payload, ctx) as any;\n}\n```\n\nWhere `disc` is a `Map` computed once from `propValues`, derived by recursively inspecting each option schema and then cached.\n\nFor `ZodCodec`, `propValues` are defined as:\n\n```ts\nutil.defineLazy(inst._zod, \"propValues\", () => def.in._zod.propValues);\n```\n\nThis means:\n- discriminator values are taken exclusively from the **`in` schema**\n- there is no context available to distinguish `decode` vs `encode`\n- during `encode()`, discriminator resolution still relies on *forward* (`in`) values\n\nOne possible direction would be to make `propValues` resolution context-aware, for example by turning it into a function that receives encoding direction from the parsing context (e.g. `ctx.direction: \"forward\" | \"backward\"`), allowing codecs to expose discriminator values appropriate to the current direction.\n\n---\n\n### 2. Introduce a backward discriminator path\n\nAn alternative (more explicit) approach would be to keep the existing fast-path intact, but add a mirrored mechanism for the backward direction:\n\n- introduce `propValuesBackward` (mirroring `propValues`)\n- derive it from `def.out` instead of `def.in` for codecs\n- build and cache a separate `discBackward` map\n- select between `disc` and `discBackward` based on encoding direction\n\nThis would preserve:\n- current performance characteristics\n- clear separation of forward (`decode`) and backward (`encode`) discriminator resolution\n\nwhile allowing discriminators implemented as codecs to work symmetrically.\n\n---\n\n### Documentation note\n\nRegardless of implementation, this behavior could also be documented explicitly as a current limitation of combining:\n\n- `z.discriminatedUnion`\n- codecs used as discriminator fields\n- `encode()` direction\n\nSee: https://zod.dev/codecs\n\n---\n\n## Question\n\nIs this behavior considered an intentional limitation of `discriminatedUnion`,\nor would a change in discriminator resolution (or explicit documentation of the limitation) be acceptable?\n\nIf this aligns with the intended direction of the API, I am willing to prepare a PR.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5769",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/discriminated-unions.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5564",
+    "repo": "colinhacks/zod",
+    "base_sha": "bc17ac9b330eef18d5ffa14652f40cc803f7a60f",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5564",
+    "issue_title": "Metadata persistence and Global Registry support in toJSONSchema / fromJSONSchema round-trip",
+    "issue_body": "I am testing the new `z.fromJSONSchema` feature in Zod v4.1, specifically looking at how metadata handles the serialization/deserialization round-trip.\n\nCurrently, if I attach metadata via `.meta()` to a schema, convert it to JSON, and then convert it back to a Zod schema, the metadata is lost.\n\n**Minimal Reproduction**\n```typescript\nimport z from \"zod\";\n\ntest(\"should keep meta info after serializing and deserializing\", () => {\n  // 1. Define schema with custom metadata\n  const testSchema = z.string().meta({ metaKey: \"metaValue\" });\n\n  // 2. Round-trip serialization\n  const serializedSchema = z.toJSONSchema(testSchema);\n  const deserializedSchema = z.fromJSONSchema(serializedSchema);\n\n  // 3. Expectation: Metadata should be preserved\n  // This fails for two reasons:\n  // a) \"metaKey\" is likely stripped from the JSON output (not standard JSON Schema)\n  // b) The new schema instance is not auto-registered in z.globalRegistry\n  expect(z.globalRegistry.get(deserializedSchema)).toEqual(\n    z.globalRegistry.get(testSchema)\n  );\n});\n```\n\n**Expected Behavior / Questions**\n\nIs this behaviour expected? If so, may I ask why? Also, what would be the recommended pattern for preserving Zod-specific metadata across this boundary? Would it be ok if:\n\n1.`toJSONSchema` automatically serialize unknown `.meta()` keys to `x-` vendor extensions (e.g., `x-metaKey`)?\n2. `fromJSONSchema` attempt to read these fields and re-hydrate `z.globalRegistry` with the new schema instance?\n\nTIA\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5586",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5546",
+    "repo": "colinhacks/zod",
+    "base_sha": "9712a6707f3d4584f222729965f3b78f076f0435",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5546",
+    "issue_title": "v4 | About typing `includes` method",
+    "issue_body": "Hello! There's a problem with type matching in function arguments.\n\nUnlike other methods that accept `string | core.$ZodCheck...`, this method doesn't support that signature.\n\nPlease clarify: is this a bug or expected behavior?\n\n```ts\n includes(value: string, params?: core.$ZodCheckIncludesParams): this; \n```\n\nhttps://github.com/colinhacks/zod/blob/9712a6707f3d4584f222729965f3b78f076f0435/packages/zod/src/v4/classic/schemas.ts#L254-L264",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5556",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/string.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5542",
+    "repo": "colinhacks/zod",
+    "base_sha": "0b3093dead737f808483e17ed000efd196754f45",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5542",
+    "issue_title": "z.iso.time with minute precision generates incompatible JSON Schema (format: \"time\")",
+    "issue_body": "I don't know if this is intended behavior, but let's suppose that we have a zod schema that successfully validates a payload, should this payload also be successfully validated against the schema.toJsonSchema() representation?\n\nI ran into this issue while declaring a MCP tool using the **modelcontextprotocol/typescript-sdk** library, given the following example:\n\n```ts\n// Define a tool with structured output\nserver.registerTool(\n    'example_tool',\n    {\n        description: 'This is an example',\n        outputSchema: {\n            when: z.iso.time({ precision: -1 }),\n        }\n    },\n    async () => {\n        const untrustedPayload = { when: '14:31' };\n        const structuredContent = z.object({ when: z.iso.time({ precision: -1 }) }).parse(untrustedPayload);\n        return {\n            content: [\n                {\n                    type: 'text',\n                    text: JSON.stringify(structuredContent, null, 2)\n                }\n            ],\n            structuredContent\n        };\n    }\n    },\n);\n```\n\nSomehow, the debugging inspector provided by modelcontextprotocol was complaining about the response not being compliant with the tool output schema, even though it parsed properly, so after some investigation, I found why:\n\n```ts\nimport z from 'zod/v4';\nimport { Validator } from 'jsonschema';\n\nconst schema = z.object({\n  // Notice how we are setting precision: -1\n  when: z.iso.time({ precision: -1 }),\n});\n\nconst jsonSchema = schema.toJSONSchema();\n\nconst payload = {\n  when: '14:31',\n};\n\nschema.parse(payload);\nconsole.log('Payload was successfully validated!');\n\nconst validator = new Validator();\n\nconst { errors } = validator.validate(payload, jsonSchema);\nerrors.forEach((error) =>\n  console.log(`Error: ${error.property} ${error.message}`)\n);\n```\n\nOutput:\n```\nPayload was successfully validated!\nError: instance.when does not conform to the \"time\" format\n```\n\nIn this case, given that an hour without the amount of seconds does not comply with the json schema time definition, should the generated json schema definition use a regex pattern to validate the hour rather than the time format, when precision is different than zero?\n\nIt seems a bit misleading to me that the json schema does not successfully validate but the zod validation does, specially since the generated regex can be easily calculated given the precision, check this for reference:\n\n```ts\nz.iso.time({ precision: -1 }); // HH:MM (minute precision)\nz.iso.time({ precision: 0 });  // HH:MM:SS (second precision)\nz.iso.time({ precision: 1 });  // HH:MM:SS.s (decisecond precision)\nz.iso.time({ precision: 2 });  // HH:MM:SS.ss (centisecond precision)\nz.iso.time({ precision: 3 });  // HH:MM:SS.sss (millisecond precision)\n```",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5557",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5521",
+    "repo": "colinhacks/zod",
+    "base_sha": "6c17232fd5087e1aeb1a4afd1e1463d9035a799c",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5521",
+    "issue_title": "Impossible parsing of `z.record(z.number(), z.any())`",
+    "issue_body": "Because keys are always strings in Javascript, a record will never parse when the schema specifies it should be a number.\n\n```ts\nconst schema = z.record(z.number(), z.number());\nschema.parse({ 1: 100, 2: 88, 3: 99, 4: 60 })\n```\n\nA workaround or the right way would be to coerce the number instead:\n```ts\nconst schema = z.record(z.coerce.number(), z.number());\nschema.parse({ 1: 100, 2: 88, 3: 99, 4: 60 })\n```\nOnly problem being the record throwing type error as the coerced number doesnt have a number input.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5585",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/record.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5517",
+    "repo": "colinhacks/zod",
+    "base_sha": "5b5b129315fbc94a3b0d6244185eaeefcbe438d1",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5517",
+    "issue_title": "E164 phone numbers don't start with +0",
+    "issue_body": "Randomly noticed this:\n\n```\nexport const e164: RegExp = /^\\+(?:[0-9]){6,14}[0-9]$/;\n```\n\nThis allows phone numbers like +000000000 that are invalid.\n\nMaybe ` /^\\+[1-9]\\d{6,14}$/` would be better.\n\nI don't think that the [reference](https://www.itu.int/rec/T-REC-E.164-201011-I/en) is explicit on this, but there are no country codes starting with 0.\n\nSee also: https://github.com/colinhacks/zod/pull/3476/changes#diff-c54113cf61ec99691748a3890bfbeb00e10efb3f0a76f03a0fd9ec49072e410aR625\n\nHappy to send a PR if you think this could be improved in Zod v4.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5524",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/string.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5466",
+    "repo": "colinhacks/zod",
+    "base_sha": "57d80a82bde8877f3eb79e5dad9786096c37490f",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5466",
+    "issue_title": "Mutation of ctx param is unintuitive",
+    "issue_body": "Lines such as this in the zod codebase result in mutation of the passed context object.\n```const ctx = _ctx ? Object.assign(_ctx, { direction: \"backward\" as const }) : { direction: \"backward\" as const };```\n\nThis causes weird issues if the same context object is used in multiple calls.\n\nE.g.\n\n```\nconst myOptions = { reportInput: true } as const;\nz.decode(stringToDateCodec, someDateString, myOptions);\nz.decode(stringToDateCodec, someOtherDateString, myOptions);\n```\n\nIn my particular case it was causing a later decode call to run in reverse which passed a string to the encode function instead of a date.\n\nThe reason I am sharing an options object is because i'm trying to mimic global reportInput: true by simply passing it explicity in each call.\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5632",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/codec.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5414",
+    "repo": "colinhacks/zod",
+    "base_sha": "584b1089e1fc7bfcc97797576eff8da85bcdf031",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5414",
+    "issue_title": "Zod triggers unsafe-eval CSP error",
+    "issue_body": "Previous issues related to this were closed:\n - https://github.com/colinhacks/zod/issues/4461\n - https://github.com/colinhacks/zod/issues/5041\n\nCSP is a critical security layer that helps prevent XSS, code injection, and other attacks. The unsafe-eval directive specifically allows dynamic code evaluation through functions like eval(), Function(), and setTimeout(string), which are common attack vectors.\nGiven Zod's widespread adoption and position, having CSP-compliant behavior by default would significantly benefit the ecosystem.\n\nWorkaround with `z.config({ jitless: true });` works, but I wouldn't consider it a proper solution:\n - This flag does not have any connection with CSP by itself \n - This flag is not enabled by default and will require a major rewrite to enable it, since it has to be added in one place \n\nPlease consider providing CSP-compliant behavior by default, as it would significantly benefit the ecosystem. ",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5864",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/jitless-allows-eval.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5402",
+    "repo": "colinhacks/zod",
+    "base_sha": "359c0db68f9180b44c098a8760e41acef0ffc946",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5402",
+    "issue_title": "Feature Request: Prevents breaking Zod's method chain even when using external functions",
+    "issue_body": "I would like to see the addition of functionality to prevent Zod's method chain from being broken, even when using external functions.\n\n## Reason\n\nI really like Zod's method chaining style because it's refined and beautiful.\n\nHowever, I find it a bit disappointing that using external functions breaks this chain.\n\n```ts\n// ex:\nconst baseSchema = z.object({});\nconst effectedSchema = externalFn(baseObjSchema);\nexport const schema = effectedSchema.partial();\n```\n\nIn such cases, it would be convenient to have a method like the one below.\nFor convenience, I define this function name `chain`.\n\n```ts\nexport const schema = z.object({})\n  .chain(externalFn)\n  .partial();\n```\n\n## Background\n\nMy project is facing the issue discussed in #2607. (omit & pick allowing keys not present in the object)\nIn that project, since the properties of the object schema change frequently, a mechanism for detecting errors before program execution is crucial.\n\nSo I wanted to create my custom pick, omit, and other functions and connect them to Zod's method chain.\n\n```ts\n// ex:\nexport const schema = z.object({\n  a: z.number(),\n  b: z.number(),\n  c: z.number(),\n})\n  .chain(s => customPick(s, {\n     a: true,\n     b: true,\n  }))\n  .chain(s => customOmit(s, {\n     b: true,\n  }))\n  .partial();\n```\n\nHow about this feature?\nMy apologies if it already exists.\nI would be delighted if you would consider implementing it.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5463",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/apply.test.ts",
+      "packages/zod/src/v4/mini/tests/apply.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5390",
+    "repo": "colinhacks/zod",
+    "base_sha": "1c43b7745a47e2a8c46361cf92280a9c03d52797",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5390",
+    "issue_title": "`z.intersection()` compiles to unsatisfiable schema",
+    "issue_body": "The intersection of two objects\n\n```js\nz.toJSONSchema(z.intersection(\n    z.object({foo: z.boolean()}),\n    z.object({bar: z.boolean()}),\n))\n```\n\ncompiles to:\n\n```json\n{ \"allOf\": [{\n    \"type\": \"object\",\n    \"properties\": { \"foo\": { \"type\": \"boolean\" } },\n    \"required\": [\"foo\"],\n    \"additionalProperties\": false\n}, {\n    \"type\": \"object\",\n    \"properties\": { \"bar\": { \"type\": \"boolean\" } },\n    \"required\": [ \"bar\" ],\n    \"additionalProperties\": false\n}]}\n```\n\nwhere `additionalProperties: false` prevents `{ foo: true, bar: false }` from matching at least one of the rules.\n\n`.looseObject` works around this but isn't strict enough for my taste so for now I'm stuck with extending union cases\n\nMaybe [this](https://json-schema.org/draft/2020-12/json-schema-core#name-unevaluatedproperties) helps?\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6461",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5350",
+    "repo": "colinhacks/zod",
+    "base_sha": "db9653efdfcbb54ef76a3f785ca9287c30422dea",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5350",
+    "issue_title": "Missing `Date` variant in types of too small/big errors",
+    "issue_body": "Interfaces `$ZodIssueTooSmall` and `$ZodIssueTooBig` type `minimum` and `maximum` properties respectively as `number | bigint`:\n\nhttps://github.com/colinhacks/zod/blob/3b946107b6c94b2ac8ff9fb451160c34dc4dd794/packages/zod/src/v4/core/errors.ts#L26-L44\n\nThis misses the `Date` variant that occurs at runtime when validating `z.date().min()` or `z.date().max()`:\n\nhttps://github.com/colinhacks/zod/blob/3b946107b6c94b2ac8ff9fb451160c34dc4dd794/packages/zod/src/v4/core/checks.ts#L64-L68\n\nhttps://github.com/colinhacks/zod/blob/3b946107b6c94b2ac8ff9fb451160c34dc4dd794/packages/zod/src/v4/core/checks.ts#L55-L59\n\nFor example, running the following code logs `Date` despite `issue.minimum` being typed as `number | bigint`:\n\n```js\nimport * as z from \"zod\";\n\nconst schema = z.date().min(new Date(\"2025-01-01\"));\nconst result = schema.safeParse(new Date(\"2020\"), {\n\terror: (issue) => {\n\t\tif (issue.code === \"too_small\") {\n\t\t\tconsole.log(issue.minimum.constructor.name);\n\t\t}\n\n\t\treturn \"\";\n\t},\n});\n```",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5351",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/date.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5346",
+    "repo": "colinhacks/zod",
+    "base_sha": "78b523f0e81c0f19939cd8ffeb945ebca76d1d2f",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5346",
+    "issue_title": "Support circular object validation",
+    "issue_body": "Hi!\n\nI'm proposing Zod supported validating circular objects. Here's what I mean by a circular object:\n\n```ts\nconst user = {\n  id: 1,\n  posts: [\n    {\n      get author() { return user }\n    }\n  ]\n}\n```\n\n`user.posts[n].author` is a circular reference back to the root `user`. \n\n## Motivation\n\n1. Circular objects are valid objects in JavaScript. You can certainly create them and they come in handy in data modeling libraries, e.g. when resolving relations between objects.\n2. Zod supports _declaring_ such objects through getters, but it fails to validate them. This makes me feel like this is a bug that has to be addressed. What happens is Zod crawls circular references infinitely since `user.posts[n].author` points back to the user, which has `user.posts`, etc.\n\n## Proposal\n\nI'd love for this to be solved with the minimal involvement from Zod. Here's what I suggest:\n\n```ts\nfunction parse() {\n  const visitedNodes = new Set()\n\n  function zodCrawler(value) {\n    if (isObject(value)) {\n      if (visitedNodes.has(value)) {\n        return\n      }\n\n      visitedNodes.add(value)\n\n      // ...continue with the validation.\n    }\n  }\n  \n  // Once the validation is done.\n  visitedNodes.clear()\n}\n```\n\nFollowing this algorithm, the aforementioned `user` example would result in the following steps:\n\n```\n- user\n  - id (validate z.number()),\n  - posts (array, fall through recursively)\n    - author (the same user ref, skipping)\n```\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6387",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/cyclic-data.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5313",
+    "repo": "colinhacks/zod",
+    "base_sha": "3da0d63f1208fd58efb69c9c057f957d9eaa285e",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5313",
+    "issue_title": "enhancement: min() / max() for ZodMap",
+    "issue_body": "`min()` and `max()` exist on `ZodSet`, but not on `ZodMap`. This would be helpful for my use-case. I could probably wrangle a PR if it would be considered.\n\n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5316",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/map.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5296",
+    "repo": "colinhacks/zod",
+    "base_sha": "195e86962b5156012a4cdcfbff87dffddce87b78",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5296",
+    "issue_title": "Records do not transform keys, even though the Typescript types says it does.",
+    "issue_body": "Consider the following schema:\n\n```typescript\nz.record(\n  z.literal(\"a\").transform(() => \"b\" as const),\n  z.string(),\n);\n```\n(playground: https://zod-playground.vercel.app?appdata=N4IgzgxgFgpgtgQxALhALwHQCcYQPZYAmAFADoB2ABJZgDYCWALjFgrWSAqSAJQaOtyYAGYE4xYj0oBeAHyVuAI26UEYSviGMeAGgrVMYAfXIBzSXvJ8BCIaKzjCCRgkoB6AFSVklAEq4CQgAeJW4dSiMsE1N5DzcZeScXHgBuChAdEAA3NgBXGDAUAG0QYAQfbgApPChybgBfEABdTKyWMHo8chQQABYMAEZBgYyQejAALTxCAFkTehRhNjAYeqA)\n\nI would expect it to transform the `a` key of the input into a `b`, but it doesn\u2019t. Is it expected?\n\nMaybe it is a design decision, but in that case there is still something wrong because when chaining a transform, the input type for the transforming function is `Record<\"b\", string>`, so it looks like it assumes the keys get transformed.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5891",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/record.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5275",
+    "repo": "colinhacks/zod",
+    "base_sha": "fbe8ad1b709460fc45d88fdcb5eca591198de60d",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5275",
+    "issue_title": "Circular imports between `schemas` and `iso`",
+    "issue_body": "Issue is a little related to https://github.com/colinhacks/zod/issues/5095, https://github.com/colinhacks/zod/issues/227\n\nWhen I look into `schemas`, it imports from `iso`, which itself imports from `schemas` again. According to #227 this shouldn't be the case anymore, but I still see this on the latest version of zod.\n\nhttps://github.com/colinhacks/zod/blob/62bf4e439e287e55c843245b49f8d34b1ad024ee/packages/zod/src/v4/classic/schemas.ts#L5\n\nhttps://github.com/colinhacks/zod/blob/62bf4e439e287e55c843245b49f8d34b1ad024ee/packages/zod/src/v4/classic/iso.ts#L2\n\nThis caused issues in our build stack, although I'm not sure what the ultimate culprit is (likely outdated rollup dependency?), but in general it seems like a good idea to avoid circular dependencies.\n\nIf you're happy with that, I can have a look to resolve these circular dependencies, maybe add a test or some configuration to avoid circular dependencies in the future. What do you think?",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5926",
+    "pr_test_files": [
+      "packages/treeshake/tests/no-circular-imports.test.ts",
+      "packages/zod/src/v4/classic/tests/no-circular-imports.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5273",
+    "repo": "colinhacks/zod",
+    "base_sha": "1fb56a5c18c27102dbc92260a4007c7732a0ccca",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5273",
+    "issue_title": "Workaround for \"Dynamic catch values are not supported in JSON Schema\"",
+    "issue_body": "When using `z.toJSONSchema`, I noticed that `.catch((ctx) => somethingCustom(ctx))` was causing a crash. There was not much info on this edge case in docs and discussions, so I decided to create this issue just in case.\n\nRelevant source:\n\nhttps://github.com/colinhacks/zod/blob/62bf4e439e287e55c843245b49f8d34b1ad024ee/packages/zod/src/v4/core/to-json-schema.ts#L561-L573\n\nRelevant test:\n\nhttps://github.com/colinhacks/zod/blob/62bf4e439e287e55c843245b49f8d34b1ad024ee/packages/zod/src/v4/classic/tests/to-json-schema.test.ts#L281-L284\n\n`z.toJSONSchema` supports `unrepresentable: \"any\"` which could potentially used for dynamic catch, similarly to how it's done for `transform()` and others:\n\nhttps://github.com/colinhacks/zod/blob/62bf4e439e287e55c843245b49f8d34b1ad024ee/packages/zod/src/v4/core/to-json-schema.ts#L521-L526\n\nhttps://github.com/colinhacks/zod/blob/62bf4e439e287e55c843245b49f8d34b1ad024ee/packages/zod/src/v4/core/to-json-schema.ts#L617-L628\n\nIt'd be also great if https://zod.dev/json-schema was updated to reflect the caveat of dynamic catch.\n\nHappy to help with a PR if the above makes sense.\n\n---\n\nIn the meantime, I [patched](https://pnpm.io/cli/patch) the logic locally like this:\n\n```diff\n} catch {\n-   throw new Error(\"Dynamic catch values are not supported in JSON Schema\");\n+   // Assume that catch does not change the type of the schema\n+   // Context: https://github.com/colinhacks/zod/issues/5273\n+   break;\n}\n```\n\nIt's more like `unrepresentable: \"passthrough\"` (which does not exist yet) rather than `unrepresentable: \"any\"`.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5925",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5241",
+    "repo": "colinhacks/zod",
+    "base_sha": "923af801fde9f033cfd7e0e753b421a554fe3be8",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5241",
+    "issue_title": "[v4]: z.registry size issue while using with recursive object",
+    "issue_body": "Hey, \n\nI have done early zod v4 adaptation in my app, that for a bit stopped at v3.25.28. \n\nThis week I decided to finally update it to current version (I know it is probably around 100 versions difference). There is one big issue that occurred meantime.\n\n```typescript\nconst Schema = z.strictObject({\n\ttype: z.literal('special').meta({description: 'Type'}),\n\tconfig: z.strictObject({\n\t\ttitle: z.string().meta({description: 'Title'}),\n\t\tget elements(): z.ZodArray<z.ZodDiscriminatedUnion<any>> {\n\t\t\treturn z.array(z.discriminatedUnion([AType, BType, CType])).meta({\n\t\t\t\tid: 'SpecialElements',\n\t\t\t\ttitle: 'SpecialElements',\n\t\t\t\tdescription: 'Array of elements'\n\t\t\t})\n\t\t}\n\t})\n})\n```\n\nSo for this code I got issue:\n\n`Error: ID ArrayWidgets already exists in the registry`\n\nWithout thinking, I just removed `id` and everything was working, but I noticed that my website started to use a lot of memory. When I analysed it, there was z.registry/globalRegistry that weights over 1GB (my schemes are quite big). \n\nSo from my observations, I would assume some issue where recursive is registering everything recursively in registry. @colinhacks what do you think? \n",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5263",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/recursive-types.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5240",
+    "repo": "colinhacks/zod",
+    "base_sha": "92f47984b7412c6b9510fe6e8c7cf106c4c580f1",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5240",
+    "issue_title": "Support for Schema Instance Parameter in Zod Global customError and localeError?",
+    "issue_body": "In Zod v4, the global configuration method z.config allows customizing error messages via the customError and localeError function, which currently only receives the issue parameter. The requirement is for customError localeError to support a second parameter, which provides the actual schema instance responsible for the validation error. This enables direct access to the meta information (such as title, label, etc.) attached to that schema instance and allows developers to implement consistent localized error handling logic.\n\nKey Points:\n\ncustomError(issue, schemaInstance): the second parameter is the schema instance where the error occurred, localeError accepts the same parameters.\nWorks for both base and chained schemas (e.g., min/max/refine), always providing the schema with its associated meta.\nCompatible with localization and meta-driven error formatting, enabling easier access to meta fields like title or label for custom error messages.\n\n```ts\nz.config({\n  localeError,\n  customError(issue, schemaInstance) {\n    const title = schemaInstance.meta()?.title;\n    const message = localeError(issue, schemaInstance);\n    // ...\n    \n    return title ? `${title} - ${message}` : message;\n  }\n})\n```\n\nExpected Benefits:\n\nSimplifies multilingual and meta-driven error handling.\nResolves the problem of losing meta information in chained validations.\nMakes Zod\u2019s error handling API more consistent and easier to use for localization and customization scenarios.\n\nUsing `issue.inst` is not safe, as it may not necessarily point to `schemaInstance`.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6420",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/issue-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5234",
+    "repo": "colinhacks/zod",
+    "base_sha": "9d20fdc3c37207fa3fe77c9524a3421f4399cbf6",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5234",
+    "issue_title": "Feature Request: optionally provide function to `unrepresentable`",
+    "issue_body": "## Problem\n\nI maintain `nestjs-zod`, and there's an issue there about dates: https://github.com/BenLorantfy/nestjs-zod/issues/184\n\nBasically, consumers want to be able to provide a schema like this that describes the HTTP response for a nestjs endpoint:\n```\nz.object({\n  myDate: z.date(),\n})\n```\n\nAnd have it create an OpenAPI schema like this:\n```\n{\n  type: 'object',\n  properties: {\n    myDate: {\n        type: 'string',\n        format: 'date-time'\n    }\n  },\n  required: [\"myDate\"]\n}\n```\n\nI think this is safe to be the default behaviour for `nestjs-zod`, because `nestjs` calls `JSON.stringify()` on the response.  And when you do `JSON.stringify()` on a `Date`, it gets converted to a string:\n\n<img width=\"669\" height=\"271\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/4df4cefd-a0eb-47d7-aaaa-c1a6a441ca14\" />\n\nSo I'm tempted to add this override, as per the zod documentation:\n```\n// support z.date() as ISO datetime strings\nconst result = z.toJSONSchema(z.date(), {\n  unrepresentable: \"any\",\n  override: (ctx) => {\n    const def = ctx.zodSchema._zod.def;\n    if(def.type ===\"date\"){\n      ctx.jsonSchema.type = \"string\";\n      ctx.jsonSchema.format = \"date-time\";\n    }\n  },\n});\n```\nHowever, this would involve setting `unrepresentable: \"any\"`.  I don't necessarily want to do that, because there are other things not representable in JSON that I still want to throw an error by default.  I think all of the following I would still want to throw an error (except for Date)\n\n<img width=\"1012\" height=\"380\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/701d4155-6dd4-4e75-89eb-9f24c74e40fa\" />\n\nI want these other things to still throw, because I want the OpenAPI documentation to be accurate and I want to avoid letting consumers shoot themselves in the foot by using something that's not representable in OpenAPI.\n\n## Proposal\n\nThe feature request is to change `unrepresentable` so it can accept a function.  This function would be passed the zod schema, and would throw if the return value is `throw` and not throw if the return value is `any`.  This would allow the following configuration:\n\n```\n// support z.date() as ISO datetime strings\nconst result = z.toJSONSchema(z.date(), {\n  unrepresentable: (ctx) => ctx.zodSchema._zod.def.type === \"date\" ? \"any\" : \"throw\",\n  override: (ctx) => {\n    const def = ctx.zodSchema._zod.def;\n    if(def.type ===\"date\"){\n      ctx.jsonSchema.type = \"string\";\n      ctx.jsonSchema.format = \"date-time\";\n    }\n  },\n});\n```\nI know I could add the throwing to `override` itself:\n```\n// support z.date() as ISO datetime strings\nconst result = z.toJSONSchema(z.date(), {\n  unrepresentable: (ctx) => ctx.zodSchema._zod.def.type === \"date\" ? \"any\" : \"throw\",\n  override: (ctx) => {\n    const def = ctx.zodSchema._zod.def;\n    if(def.type ===\"date\"){\n      ctx.jsonSchema.type = \"string\";\n      ctx.jsonSchema.format = \"date-time\";\n    }\n\n    if (zodSchema._zod?.def?.type === 'bigint') {\n      throw new Error('BigInt is not representable in JSON Schema');\n    }\n  },\n});\n```\nBut then I would have to add a case for everything that's not representable, which feels brittle.  I'd like to have zod handle what is representable and what is not\n\n## Alternative\nAnother option is to change `unrepresentable` to an `object`:\n```\n// support z.date() as ISO datetime strings\nconst result = z.toJSONSchema(z.date(), {\n  unrepresentable: {\n    \"date\": \"any\"\n    // Throw for anything else\n  },\n  override: (ctx) => {\n    const def = ctx.zodSchema._zod.def;\n    if(def.type ===\"date\"){\n      ctx.jsonSchema.type = \"string\";\n      ctx.jsonSchema.format = \"date-time\";\n    }\n  },\n});\n```\n\n## Codecs\n\nI know `codecs` is another way to solve this problem.  I'm working on adding support for `codecs` in `nestjs-zod`, but the drawback to `codecs` is you have to restructure your schemas.  It would be nice to provide consumers the option to use `codecs` or not - basically I'd like to give consumers the option to serialize the HTTP response using the output schema OR the input schema.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/6380",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  },
+  {
+    "id": "zod-5229",
+    "repo": "colinhacks/zod",
+    "base_sha": "ec979ad783a9e9c992d3c9bd4e5f3b56110b1ef8",
+    "issue_url": "https://github.com/colinhacks/zod/issues/5229",
+    "issue_title": "Tuple Ignoring Default Values",
+    "issue_body": "With a defined tuple that has a fixed length of any value, default values of the property are ignored.\n\n```js\nconst myTuple = z.tuple([z.string(), z.string().default('bravo')]);\nconst outVar = myTuple.parse(['alpha']); // results in \"Invalid input: expected string, received undefined\"\n```\n\nExpected response would be `['alpha', 'bravo']`. I did also try the following:\n\n```js\nconst myTuple = z.tuple([z.string(), z.string()]).default([undefined, 'bravo']);\nconst outVar = myTuple.parse(['alpha']); // results in same error: \"Invalid input: expected string, received undefined\"\n```\n\nAppears to be coming from [v4/core/schemas.ts#2444](https://github.com/colinhacks/zod/blob/v4.1.8/packages/zod/src/v4/core/schemas.ts#L2444) where `if (i >= input.length) if (i >= optStart) continue;` continues out of the loop before running the parser on the optional tuple property.\n\nThis probably isn't a deal breaker as I'd expect the value to be undefined. This problem with this arises when parsing arguments for ZodFunction. There is no way to have an optional param.\n\nUsed in function context:\n```js\nconst myFunc = z.function([z.string(), z.string().default('bravo')]).implement((name, company) => console.log(name, company)); // doesn't work\n\nconst myFunc = z.function([z.string(), z.string().default('bravo')]).implement((name, company = 'bravo') => console.log(name, company)); //  works only if defining on the async function\n```\n\nDefining a default value on the implement function does work, but seems a little anti-pattern. I'd expected a fixed length tuple to return all values or result in an error.\n\n```js\nconst [ name, company ] = z.tuple([z.string(), z.string().default('bravo')]).parse(['alpha']); // doesn't fail\n```\n\nThis not failing allows for company to be `undefined` when I'd be expecting a `String` value.",
+    "pr_url": "https://github.com/colinhacks/zod/pull/5661",
+    "pr_test_files": [
+      "packages/zod/src/v4/classic/tests/catch.test.ts",
+      "packages/zod/src/v4/classic/tests/optional.test.ts",
+      "packages/zod/src/v4/classic/tests/partial.test.ts",
+      "packages/zod/src/v4/classic/tests/tuple.test.ts"
+    ],
+    "setup_cmd": "pnpm install --frozen-lockfile && pnpm build",
+    "test_cmd": "pnpm build && pnpm exec vitest run --reporter=dot"
+  }
+]

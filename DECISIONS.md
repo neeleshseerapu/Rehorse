@@ -954,3 +954,63 @@ from the column.
   survive a runner whose output is shaped differently, and the honest name for that state is alpha.
 - **`v0.2.0-alpha` is tagged here.** The CHANGELOG's Unreleased notes move under it with today's date; `Unreleased`
   stays, empty, for milestone 7.
+
+## Milestone 7, part one: candidates for `fastapi` and `zod` (2026-09-07)
+
+Environment: macOS 25.3.0 (Apple Silicon), Python 3.13.5, uv 0.6.12, Node v24.3.0, pnpm 10.12.1 (corepack, resolved from
+each base's own `packageManager` field), git 2.50.1. No eval ran: this is the candidate list, the per-repo setup and test
+commands behind it, and the baseline sweep that says which bases are usable on this machine.
+
+- **The repo is `fastapi/fastapi`.** `tiangolo/fastapi` still redirects, but `DEFAULTS` in `find_tasks.py` keys on the
+  string, so the old name would have silently produced records with an empty `setup_cmd` and `test_cmd`.
+- **An issue can be closed by a pull request in another repository, and three candidates were.** `zod#5760` is closed
+  by `elastic/kibana#266343`, `fastapi#10321` by `pydantic#7625`, `fastapi#4892` by `Kludex/starlette#1675`;
+  `closedByPullRequestsReferences` returns them, so each produced a record whose `base_sha` is not in the target's
+  history and whose `pr_test_files` are another project's. The query now asks for the PR's `repository.nameWithOwner`
+  and `candidates()` skips the ones that do not match, which is also why the two `fastapi` records with a missing base
+  disappeared rather than being filtered by hand.
+- **`fastapi` has two dependency eras and the setup has to serve both.** From `b4ba7f465` (2026-01-10, "Migrate to uv")
+  there is a `uv.lock` and PEP 735 groups; before it there is `requirements-tests.txt`, whose top entries are unpinned
+  (`anyio[trio] >=3.2.1,<5.0.0`). With today's anyio, `filterwarnings = error` turns one deprecation alias into **296
+  collection errors** at a 2025 base -- the same shape as `rich`'s pygments drift, and not something a pin per package
+  would keep fixing. So the resolution is cut at the base commit's own moment:
+  `uv pip install --exclude-newer "$(git show -s --format=%cI HEAD)" -r requirements-tests.txt`, asked of git in the
+  clone the setup already runs in (no new field in the task record). On the lock side, `uv sync --frozen --python 3.13
+  --extra all --group tests`: `--python 3.13` because uv otherwise builds the venv from its own interpreter (3.11 here,
+  which the eval's methodology rules out), and `--extra all` because `orjson` and `ujson` live in that extra and two
+  test modules import them.
+- **`zod` must be built before every run, not just at setup.** `packages/treeshake/default-locale.test.ts` fails unless
+  the built entry is newer than `packages/zod/src`, and every edit Rehorse makes is newer than the last build, so a
+  suite that was green at baseline goes red on the first test the model writes. `test_cmd` is therefore
+  `pnpm build && pnpm exec vitest run --reporter=dot` (6s of build, ~13s of tests).
+- **Four checks of `testcmd.py` against real vitest output, at base `9f0a3d812` (2026-08-16).** `detect()` finds the
+  runner (`vitest`, `npx vitest run --reporter=dot`); `parse_counts()` reads `Tests  2 failed | 4359 passed`;
+  `failing_ids()` reads the `FAIL |zod| src/v4/classic/tests/nan.test.ts > <name>` lines (project prefix included, which
+  is stable and therefore fine as an id); `scope()` calls `vitest run <path>.test.ts` partial and the recorded command
+  full. Two deliberate failures were added to a real test file to get that output, not invented.
+- **Three things about `zod` that Rehorse does not handle yet, each reproduced rather than predicted.** (1)
+  `testcmd.verify_file()` puts the verifier's test at `tests/rehorse_verify_<id>.test.ts` because `detect()` returns no
+  `test_paths` for a repo whose tests live in `packages/*/src`; `vitest.config.ts` has `projects: ["packages/*"]`, so a
+  root `tests/` file is **not collected** -- a probe file asserting `expect(1).toBe(2)` there left the suite at 367
+  files passed. (2) A vitest file that fails to load or throws in `beforeAll` reports no failed *tests*, so
+  `parse_counts()` reads `4357 passed, 0 failed` on a run that exited 1; `failing_ids()` does see it, so the red gate
+  holds, but the green gate (0 failed, >0 passed) would accept a suite with a broken file. (3) `scope()` knows pytest's
+  `-k`/`-m` but not vitest's `-t`: `vitest run -t "passing validations"` runs 28 of 4359 tests and is recorded as a full
+  run.
+- **A pnpm workspace needs more than the root `node_modules` linked into the worktree.** `worktree.link_deps()`
+  symlinks top-level `DEP_DIRS` only, so `packages/*/node_modules` is missing in the rehearsal worktree and the two
+  `@zod/treeshaking` files fail there (`packages/treeshake/node_modules/zod` resolves to the main checkout's build).
+  A `pnpm install --frozen-lockfile` inside the worktree takes 6s with a warm store and makes it 367 files / 4359 tests
+  green. `fastapi` has no such problem: the `.venv` symlink plus `python -m`'s cwd-first `sys.path` means the worktree's
+  own `fastapi/` package shadows the editable install (checked: `import fastapi` resolved inside the worktree).
+- **Baselines, run once per candidate base in one reused worktree** (`git checkout -f <base>`, the repo's setup, the
+  repo's test command). **`fastapi`: 10 of 10** bases from 2025 or later are green -- 2355 to 3735 passed, 19-63s a run,
+  no failures anywhere. **`zod`: 67 of 73** are green (4088 to 8098 passed, ~25s a run). The six that are not fail
+  nothing but `packages/treeshake/bundle-size.test.ts`, by 5 to 8 gzipped bytes against a ceiling checked into the repo
+  (`expected 3062 to be less than or equal to 3054`): a golden-output test that drifts with the machine, exactly like
+  `rich`'s pygments syntax tests, and the honest answer is the same one -- those bases are not usable here, so
+  `zod-6047`, `zod-6397`, `zod-6463`, `zod-6495`, `zod-6496` and `zod-6550` are out. Excluding the treeshake project
+  from the run would recover them and would also delete the build-staleness canary above, so it was not done.
+- **Every `zod` candidate base is 2025-09 or later** (the oldest is `zod-5241`, 2025-09-16), so the Python-3.13-style
+  constraint that shaped the `rich` list never binds here; for `fastapi` it removes 5 of the 15 same-repo candidates
+  (bases from 2020 to 2024), and one more, `fastapi-10321`, went with the cross-repo filter.
