@@ -177,7 +177,9 @@ Record its command and move on: `testcmd.py set "<command>"`, then
      and says so). If it disagrees, the hook moves the task to `needs-attention` with **both** claims in the reason:
      run `report.py` (§5), quote both to the user and stop. Nobody but the user settles a disagreement between two
      agents that have each read the spec.
-   - phase `needs-attention`: three rounds failed. Run `report.py --summary "..."` (it renders the reason and the
+   - phase `needs-attention`: three rounds failed, or the hook ran the test command on the verifier's own file and
+     the runner collected nothing from it (`verifier file not collected: <path>`, a verdict resting on tests that
+     never executed). Run `report.py --summary "..."` (it renders the reason and the
      findings), print the report, quote the reason to the user, and stop. The user resumes with `/rehorse:build resume`
      (which renders the FAIL report for a merge/discard decision) or discards.
 

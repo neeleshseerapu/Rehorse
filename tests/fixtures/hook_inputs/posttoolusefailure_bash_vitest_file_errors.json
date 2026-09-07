@@ -1,0 +1,20 @@
+{
+  "session_id": "3f66af14-d975-4ea3-884d-dad8a56522c3",
+  "transcript_path": "/home/user/.claude/projects/-private-tmp-claude-501--Users-neelesh-Desktop-Rehorse-ae79a26c-b99e-4983-bb29-4daa202da8ef-scratchpad-spike-toy/3f66af14-d975-4ea3-884d-dad8a56522c3.jsonl",
+  "cwd": "/tmp/rehorse-spike/toy",
+  "prompt_id": "a51729c6-897f-4a1c-b750-8b9d77b2258b",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PostToolUseFailure",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "cd /wt && pnpm build && pnpm exec vitest run --reporter=dot",
+    "description": "Run the zod suite in the worktree"
+  },
+  "tool_use_id": "toolu_01RehorseZodFileLevelErrors",
+  "error": "Exit code 1\nTesting types with tsc and vue-tsc is an experimental feature.\nBreaking changes might not follow SemVer, please pin Vitest's version when using it.\nTesting types with tsc and vue-tsc is an experimental feature.\nBreaking changes might not follow SemVer, please pin Vitest's version when using it.\nTesting types with tsc and vue-tsc is an experimental feature.\nBreaking changes might not follow SemVer, please pin Vitest's version when using it.\n\n RUN  v4.1.5 /wt\n\n\u00b7--------\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7  ... (4299 more)\n\n\u23af\u23af\u23af\u23af\u23af\u23af Failed Suites 2 \u23af\u23af\u23af\u23af\u23af\u23af\u23af\n\n FAIL  |@zod/treeshaking| default-locale.test.ts [ packages/treeshake/default-locale.test.ts ]\nError: /wt/packages/zod/v4/index.js is missing. Run `pnpm build` first.\n \u276f default-locale.test.ts:34:38\n     32|\n     33| beforeAll(() => {\n     34|   if (!existsSync(builtEntry)) throw new Error(`${builtEntry} is missi\u2026\n       |                                      ^\n     35|   if (newestMtime(path.join(zodRoot, \"src\")) > statSync(builtEntry).mt\u2026\n     36|     throw new Error(`${builtEntry} is older than packages/zod/src. Run\u2026\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af[1/2]\u23af\n\n FAIL  |@zod/treeshaking| locale-treeshake.test.ts > locale tree-shaking\nError: zod is not built \u2014 run `pnpm build` first (/wt/packages/treeshake/node_modules/zod/index.js)\n \u276f locale-treeshake.test.ts:57:41\n     55| describe(\"locale tree-shaking\", () => {\n     56|   beforeAll(() => {\n     57|     if (!existsSync(BUILT_ENTRY)) throw new Error(`zod is not built \u2014 \u2026\n       |                                         ^\n     58|   });\n     59|\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af[2/2]\u23af\n\n\n Test Files  2 failed | 365 passed (367)\n      Tests  4351 passed | 8 skipped (4359)\nType Errors  no errors\n   Start at  12:43:14\n   Duration  10.60s (transform 6.45s, setup 1.27s, import 19.32s, tests 6.66s, environment 8ms, typecheck 5.67s)\n\n",
+  "is_interrupt": false,
+  "duration_ms": 25441
+}

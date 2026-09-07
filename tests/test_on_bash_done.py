@@ -353,3 +353,23 @@ def test_diagnostic_runs_are_capped_so_state_does_not_grow_without_saying_more(r
         done(repo, cwd=wt, command="cd %s && python3 -m pytest -q -k case%d" % (wt, n), stdout="1 passed in 0.01s")
     runs = task_state(repo)["diagnostic_runs"]
     assert len(runs) == on_bash_done.MAX_DIAGNOSTIC and runs[-1]["command"].endswith("case%d" % (on_bash_done.MAX_DIAGNOSTIC + 4))
+
+
+def test_a_run_that_exits_non_zero_with_nothing_counted_as_failed_is_recorded_as_failed(repo):
+    """zod, real output: two files threw in `beforeAll`, so vitest counted `4351 passed` and no failed test on a run
+    that exited 1. Recorded as green, that run would satisfy the green gate with a broken suite."""
+    wt = task_in(repo, "implement", test_cmd="pnpm build && pnpm exec vitest run --reporter=dot", edit_seq=4)
+    out = done(repo, "posttoolusefailure_bash_vitest_file_errors", cwd=wt,
+               command="cd %s && pnpm build && pnpm exec vitest run --reporter=dot" % wt)
+    msg = context(out, "PostToolUseFailure")
+    assert "4351 passed, 2 failed" in msg and "suite exited non-zero (file-level errors)" in msg
+    run = task_state(repo)["last_test_run"]
+    assert (run["passed"], run["failed"], run["file_errors"]) == (4351, 2, True)
+
+
+def test_a_passing_run_is_not_turned_into_a_failure_by_something_chained_after_it(repo):
+    """The command failed, but the runner named no failure its summary missed: nothing here says the suite is red."""
+    wt = task_in(repo, "implement", edit_seq=1)
+    out = done(repo, "posttooluse_bash_pytest_pass", cwd=wt, error="Exit code 1\n2 passed in 0.01s\nruff: 3 errors\n")
+    assert "2 passed, 0 failed" in context(out, "PostToolUse")
+    assert not task_state(repo)["last_test_run"].get("file_errors")

@@ -340,6 +340,7 @@ def test_failing_ids_is_none_when_the_runner_printed_failures_but_no_ids():
 # ---- scope: is this run the whole suite the task is judged by, or a slice of it? ----------------------------------
 
 RICH = "/private/tmp/rehorse-eval/rich-3871/.venv/bin/python -m pytest -q --tb=short -rfE"
+ZOD = "pnpm build && pnpm exec vitest run --reporter=dot"  # the recorded zod command: the build is part of the suite
 
 
 @pytest.mark.parametrize("test_cmd, command, expected", [
@@ -369,6 +370,14 @@ RICH = "/private/tmp/rehorse-eval/rich-3871/.venv/bin/python -m pytest -q --tb=s
     ("python3 -m pytest -m smoke", "cd /wt && python3 -m pytest -m smoke", "full"),
     ("python3 -m pytest -m smoke", "python3 -m pytest -q -m smoke", "full"),
     ("python3 -m pytest -m smoke", "python3 -m pytest -q -m other", "partial"),
+    # vitest/jest narrow by test name, not by path: `-t` ran 28 of zod's 4359 tests and its summary said "28 passed"
+    (ZOD, "cd /wt && " + ZOD, "full"),
+    (ZOD, 'cd /wt && pnpm build && pnpm exec vitest run --reporter=dot -t "passing validations"', "partial"),
+    ("npx vitest run", 'npx vitest run -t="string schemas"', "partial"),
+    ("npx jest", "npx jest -t nan", "partial"),
+    ("npx jest", "npx jest --testNamePattern 'nan'", "partial"),
+    ("npx jest", "npx jest --testNamePattern=nan", "partial"),
+    ("npx jest --testNamePattern=nan", "npx jest --testNamePattern=nan", "full"),  # that pattern is this suite
 ])
 def test_scope_calls_a_narrowed_run_partial_and_everything_else_full(test_cmd, command, expected):
     assert testcmd.scope(command, test_cmd) == expected
@@ -379,3 +388,123 @@ def test_scope_defaults_to_full_when_it_recognises_nothing():
     So the classifier only ever answers `partial` on evidence it can point at."""
     assert testcmd.scope("./run-my-tests.sh", "python3 -m pytest -q") == "full"
     assert testcmd.scope("", "python3 -m pytest -q") == "full"
+
+
+# ---- vitest/jest placement: a workspace runner collects only inside its own projects -------------------------------
+
+
+
+def workspace(tmp_path, packages, projects='["packages/*", "./vitest.compile.config.ts"]'):
+    """A pnpm/vitest workspace shaped like zod's: projects are directory globs, and tests live inside the packages."""
+    (tmp_path / "vitest.config.ts").write_text("export default defineConfig({ test: { projects: %s } });\n" % projects)
+    (tmp_path / "tsconfig.json").write_text("{}\n")
+    (tmp_path / "tests").mkdir()  # a root test dir the runner does not look in: the trap this placement avoids
+    for rel in packages:
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text("")
+    return {"id": "t-1", "test_cmd": ZOD, "test_paths": []}
+
+
+ZOD_TREE = ["packages/zod/src/v4/classic/schemas.ts", "packages/zod/src/v4/classic/tests/nan.test.ts",
+            "packages/zod/src/v3/tests/string.test.ts", "packages/treeshake/bundle-size.test.ts",
+            "packages/bench/index.ts"]
+
+
+def test_verify_file_lands_in_the_test_dir_of_the_package_the_diff_touches(tmp_path):
+    """zod's `projects: ["packages/*"]` means a file in the repo's root tests/ is collected by nothing, and a verifier
+    whose tests never run reports on a suite it never exercised."""
+    task = workspace(tmp_path, ZOD_TREE)
+    assert testcmd.verify_file(task, str(tmp_path), ["packages/zod/src/v4/classic/schemas.ts"]) == \
+        "packages/zod/src/v4/classic/tests/rehorse_verify_t-1.test.ts"
+
+
+def test_verify_file_walks_up_to_the_packages_own_test_dir_but_no_further(tmp_path):
+    """A change deeper than any tests/ dir uses the package's, never the repo root's."""
+    task = workspace(tmp_path, ZOD_TREE + ["packages/zod/src/v4/core/util.ts"])
+    got = testcmd.verify_file(task, str(tmp_path), ["packages/zod/src/v4/core/util.ts"])
+    assert got.startswith("packages/zod/") and got.endswith("rehorse_verify_t-1.test.ts") and "/tests/" in got
+
+
+def test_verify_file_falls_back_to_the_package_root_when_the_package_has_no_tests(tmp_path):
+    task = workspace(tmp_path, ZOD_TREE + ["packages/plain/src/x.ts"])
+    assert testcmd.verify_file(task, str(tmp_path), ["packages/plain/src/x.ts"]) == \
+        "packages/plain/rehorse_verify_t-1.test.ts"
+
+
+def test_verify_file_falls_back_to_the_first_configured_project_that_has_tests(tmp_path):
+    """No diff yet (the edit guard asks before any commit exists): the configured projects decide, in their own order."""
+    task = workspace(tmp_path, ZOD_TREE)
+    assert testcmd.verify_file(task, str(tmp_path), []) == "packages/treeshake/rehorse_verify_t-1.test.ts"
+
+
+def test_verify_file_outside_a_workspace_still_uses_the_test_dir_next_to_the_change(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "sum.ts").write_text("")
+    (tmp_path / "src" / "__tests__").mkdir()
+    task = {"id": "t-1", "test_cmd": "npx vitest run", "test_paths": ["test/"]}
+    assert testcmd.verify_file(task, str(tmp_path), ["src/sum.ts"]) == "src/__tests__/rehorse_verify_t-1.test.js"
+
+
+def test_verify_file_recorded_in_state_wins_over_any_rederivation(tmp_path):
+    """The path is derived once and kept: the brief, the edit guard's message and the round-trip step must name the
+    same file, and round 2 must not move a file round 1 already committed."""
+    task = dict(workspace(tmp_path, ZOD_TREE), verify_file="packages/zod/src/v3/tests/rehorse_verify_t-1.test.ts")
+    assert testcmd.verify_file(task, str(tmp_path), ["packages/treeshake/bundle-size.test.ts"]) == \
+        "packages/zod/src/v3/tests/rehorse_verify_t-1.test.ts"
+
+
+def test_diff_paths_reads_the_files_a_diff_touches():
+    diff = ("diff --git a/packages/zod/src/v4/classic/schemas.ts b/packages/zod/src/v4/classic/schemas.ts\n"
+            "--- a/packages/zod/src/v4/classic/schemas.ts\n+++ b/packages/zod/src/v4/classic/schemas.ts\n@@ -1 +1 @@\n"
+            "diff --git a/gone.ts b/gone.ts\n--- a/gone.ts\n+++ /dev/null\n")
+    assert testcmd.diff_paths(diff) == ["packages/zod/src/v4/classic/schemas.ts"]
+
+
+# ---- the file-alone run behind the collection check -----------------------------------------------------------
+
+@pytest.mark.parametrize("test_cmd,test_paths,expected", [
+    (".venv/bin/python -m pytest -q --tb=short -rfE tests/", ["tests/"],
+     ".venv/bin/python -m pytest -q --tb=short -rfE tests/test_rehorse_verify_t-1.py"),  # the suite's path argument is replaced
+    ("python3 -m pytest -q", ["tests/"], "python3 -m pytest -q tests/test_rehorse_verify_t-1.py"),
+    (ZOD, [], ZOD + " tests/test_rehorse_verify_t-1.py"),  # `pnpm build &&` stays: the build is how zod's suite runs at all
+    ("npx jest", [], "npx jest tests/test_rehorse_verify_t-1.py"),
+    ("make test", ["tests/"], None),  # a runner that cannot be pointed at one file is not asked to be
+    ("go test ./...", [], None),
+])
+def test_file_run_narrows_the_recorded_command_to_one_file(test_cmd, test_paths, expected):
+    assert testcmd.file_run(test_cmd, "tests/test_rehorse_verify_t-1.py", test_paths) == expected
+
+
+# ---- a non-zero exit with nothing counted as failed ---------------------------------------------------------------
+
+def test_a_suite_that_exits_non_zero_with_no_failed_test_is_recorded_as_failed():
+    """zod, real output: a file that throws in beforeAll never reaches a per-test result, so vitest's summary reads
+    `4351 passed | 8 skipped` on a run that exited 1. The green gate (0 failed, >0 passed) would accept it."""
+    out = open(os.path.join(FIXTURES_DIR, "runner_output", "vitest_file_level_errors.txt")).read()
+    counts, ids = testcmd.parse_counts(out), testcmd.failing_ids(out)
+    assert (counts["passed"], counts["failed"]) == (4351, 0) and len(ids) == 2
+    fixed = testcmd.with_exit_status(counts, ids, nonzero=True)
+    assert (fixed["passed"], fixed["failed"], fixed["file_errors"]) == (4351, 2, True)
+
+
+def test_a_non_zero_exit_the_runner_never_explained_is_left_alone():
+    """Positive evidence only, like scope(): the runner must have named a failure its summary did not count. A test
+    command with something else chained after it (a linter, a coverage gate) exits non-zero and names no test."""
+    counts = {"passed": 4351, "failed": 0}
+    assert testcmd.with_exit_status(dict(counts), [], nonzero=True) == counts
+    assert testcmd.with_exit_status(dict(counts), None, nonzero=True) == counts
+    assert testcmd.with_exit_status(dict(counts), ["a.test.ts"], nonzero=False) == counts
+    green = {"passed": 0, "failed": 0}
+    assert testcmd.with_exit_status(dict(green), ["a.test.ts"], nonzero=True) == green  # 0 tests is its own gate's business
+
+
+@pytest.mark.parametrize("name,expected", [
+    # zod, real output: the same file in the repo's root tests/ and inside the package the diff touches
+    ("vitest_file_not_collected.txt", {"passed": 0, "failed": 0}),
+    ("vitest_file_collected.txt", {"passed": 4, "failed": 0}),
+])
+def test_a_file_alone_run_says_whether_the_runner_collected_it(name, expected):
+    """What the collection check reads. `projects: ["packages/*"]` matched nothing in tests/, so vitest printed
+    "No test files found, exiting with code 1" and ran the file not at all; from the package it ran (twice: the file
+    matches both the package project and the compile config)."""
+    assert testcmd.parse_counts(open(os.path.join(FIXTURES_DIR, "runner_output", name)).read()) == expected

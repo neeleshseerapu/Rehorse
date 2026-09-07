@@ -3,7 +3,9 @@
 
 A run counts only if the command runs the task's test runner (not --collect-only/--version/--help), it ran inside
 the task's worktree, and the output parses to the runner's own summary line (grep hits never do). A passing run
-arrives as PostToolUse (tool_response.stdout/stderr); a failing one as PostToolUseFailure (error). By phase:
+arrives as PostToolUse (tool_response.stdout/stderr); a failing one as PostToolUseFailure (error), and a
+PostToolUseFailure whose summary counted no failed test is recorded as failed by the ids the runner named
+(testcmd.with_exit_status: a file that throws on import fails without any test failing). By phase:
 spec -> baseline with the failing test ids (0 tests => needs-attention), tests -> red_check with new_failed (failing ids that
 were not failing at baseline; counts with ids_unavailable when the runner printed none), red_kind ("build_failed" when the
 output shows a compiler error or fewer tests ran than at baseline: the new tests reference symbols that do not exist yet)
@@ -80,12 +82,14 @@ def main():
         if not broken:
             return 0
         counts = {"passed": 0, "failed": 0}  # the build failed before any test ran; the attempt still counts as a run
+    counts = testcmd.with_exit_status(counts, ids, bool(hook.get("error")) or hook["hook_event_name"] == "PostToolUseFailure")
     if testcmd.scope(command, task["test_cmd"]) == "partial":
         return diagnostic(root, s, task, hook, counts, command, wt)
     task["last_test_run"] = dict(counts, at=datetime.datetime.now().isoformat(timespec="seconds"), build_failed=broken,
                                  after_edit_seq=task["edit_seq"], command=command, output=text[-4000:])  # tail: verifier + report
-    msg = "recorded test run: %d passed, %d failed%s (edit_seq %d)." % (
-        counts["passed"], counts["failed"], ", build failed" if broken else "", task["edit_seq"])
+    msg = "recorded test run: %d passed, %d failed%s%s (edit_seq %d)." % (
+        counts["passed"], counts["failed"], ", build failed" if broken else "",
+        ", " + testcmd.FILE_ERROR if counts.get("file_errors") else "", task["edit_seq"])
     if task["phase"] == "spec":
         task["baseline"] = dict(counts, failing=ids)
         if counts["failed"]:

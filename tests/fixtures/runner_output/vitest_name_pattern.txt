@@ -1,0 +1,15 @@
+Testing types with tsc and vue-tsc is an experimental feature.
+Breaking changes might not follow SemVer, please pin Vitest's version when using it.
+Testing types with tsc and vue-tsc is an experimental feature.
+Breaking changes might not follow SemVer, please pin Vitest's version when using it.
+
+ RUN  v4.0.10 /wt
+
+------------------------------------------------------------  ... (4052 more)
+
+ Test Files  181 passed | 305 skipped (335)
+      Tests  28 passed | 3737 skipped (3765)
+Type Errors  no errors
+   Start at  13:39:24
+   Duration  3.20s (transform 5.46s, setup 1.02s, collect 18.50s, tests 18ms, environment 9ms, prepare 570ms, typecheck 682ms)
+

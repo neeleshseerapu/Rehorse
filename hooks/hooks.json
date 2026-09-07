@@ -67,7 +67,7 @@
       {
         "matcher": "^rehorse:rehorse-verifier$",
         "hooks": [
-          {"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/verify.py", "--verdict"], "timeout": 30}
+          {"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/verify.py", "--verdict"], "timeout": 600}
         ]
       }
     ],

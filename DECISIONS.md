@@ -1014,3 +1014,41 @@ commands behind it, and the baseline sweep that says which bases are usable on t
 - **Every `zod` candidate base is 2025-09 or later** (the oldest is `zod-5241`, 2025-09-16), so the Python-3.13-style
   constraint that shaped the `rich` list never binds here; for `fastapi` it removes 5 of the 15 same-repo candidates
   (bases from 2020 to 2024), and one more, `fastapi-10321`, went with the cross-repo filter.
+
+## Milestone 7, part two: the three things `zod` broke (2026-09-07)
+
+Each of the three was reproduced against the real repo in part one and is fixed here against fixtures taken from those
+runs. No eval ran.
+
+- **The verifier's file goes where the runner will collect it, and the hook proves it did.** `verify_file()` derived a
+  path from `test_paths`, which `detect()` leaves empty for a repo whose tests live in `packages/*/src`, so zod's
+  verifier was told to write `tests/rehorse_verify_<id>.test.ts` — a directory `projects: ["packages/*"]` collects
+  nothing from. The probe is exact: that file, asserting `expect(1).toBe(2)`, left the suite at 367 files passed, and
+  run alone it printed **"No test files found, exiting with code 1"**. So for vitest and jest the path now comes from
+  the diff: the configured project (vitest `projects:`, package.json `workspaces`, `pnpm-workspace.yaml`) holding a
+  changed file decides, and inside it the nearest existing test directory above that file wins, stopping at the package
+  boundary so the walk can never reach the repo's own root `tests/`. A package with no tests takes its root (vitest's
+  default include still collects there); with no diff yet — the edit guard asks before any commit exists — the first
+  configured project that has tests answers. The path is derived once, in `brief.write()`, and **recorded in
+  `task["verify_file"]`**, so the guard's message, the round-trip step and round 2 all name the file round 1 committed.
+- **Placement is a heuristic, so it is checked rather than trusted.** After the verifier commits, the SubagentStop hook
+  runs the test command on that file alone (`testcmd.file_run`: the recorded command's own test-path arguments are
+  replaced by the file, everything else kept — zod's `pnpm build &&` is how its suite runs at all) and refuses to let a
+  verdict stand on a file the runner collected nothing from: the phase stops with `verifier file not collected: <path>`
+  and the report says `NOT COLLECTED by the runner`. The verdict is recorded first, so the report shows both. A check
+  that *could not* run never stops a task — a runner that cannot be handed one file (`make`, `go`, `cargo`, `swift`), a
+  timeout, output with no summary line — records `checked: false` and its reason instead. This is the one hook that
+  runs the project's test command, so `hooks.json` gives it the documented 600s command default rather than the 30s the
+  other hooks carry: Claude Code cancels a hook at its timeout and **discards its output**, which would drop the
+  verdict along with the check.
+- **A run that exits non-zero having counted no failure is failed, by the ids the runner named.** A vitest file that
+  throws on import or in `beforeAll` never reaches a per-test result: the real output reads `Test Files 2 failed | 365
+  passed` and `Tests 4351 passed | 8 skipped` on a run that exited 1, and the green gate (0 failed, >0 passed) would
+  have taken it. `with_exit_status()` records `failed = len(failing_ids)` — 2, the failures the runner itself named —
+  and sets `file_errors`, which the hook message and the report spell out as "suite exited non-zero (file-level
+  errors)". Positive evidence only, the same asymmetry as `scope()`: the runner must have named failures its own
+  summary did not count, so a test command with a linter chained after it is not read as a red suite.
+- **`-t` narrows a vitest or jest run the way `-k` narrows pytest's**, and its summary hides it: `vitest run -t
+  "passing validations"` ran **28 of 4359** tests and printed "28 passed | 3737 skipped". `SELECTORS` now carries `-t`
+  and `--testNamePattern` beside `-k` and `-m`, with the existing rule intact — a selector the recorded command itself
+  carries is that suite, not a slice of it — so such a run is a diagnostic and satisfies no gate.

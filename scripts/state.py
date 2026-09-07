@@ -61,7 +61,8 @@ def new_task(state, tid):
             "worktree": ".rehorse/worktrees/" + tid, "branch": "rehorse/" + tid, "base_sha": None, "test_cmd": None, "test_paths": [],
             "baseline": None, "red_check": None, "red_kind": None, "weak_tests": 0, "guards": [], "last_test_run": None, "diagnostic_runs": [], "tests_sha": None, "summary": None,
             "edit_seq": 0, "stop_blocks": 0, "attention": None, "plan": [], "step": 0, "report_path": None, "linked_deps": [],
-            "verifier": None, "verify_round": 0, "verify_run": None, "verify_history": [], "coverage": [], "expected_test_changes": []}
+            "verifier": None, "verify_round": 0, "verify_run": None, "verify_history": [], "verify_file": None,
+            "verify_collect": None, "coverage": [], "expected_test_changes": []}
     state["tasks"][tid] = task
     state["active_task"] = tid
     return task

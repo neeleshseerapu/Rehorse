@@ -457,3 +457,76 @@ def test_the_report_of_that_task_names_the_revision_and_counts_the_changed_test(
     assert "Round 1: test revision (%s, criterion 1 says the ellipsis is inside the budget)" % PINNED_TEST in text
     assert "Existing tests changed: 1" in text and "GREEN" in text
     assert wt  # the worktree the report describes
+
+
+# ---- the collection check: a file the runner skips is a verdict with no tests behind it ---------------------------
+
+def wrote(repo, wt, body, name="tests/test_rehorse_verify_t-1.py"):
+    """The verifier's file, written and committed the way its own stop hook insists on."""
+    commit_in(wt, name, body, "verify: round 1 tests for t-1")
+    ran(repo)
+
+
+def test_a_verifier_file_the_runner_does_not_collect_stops_the_phase(repo):
+    """zod's shape: `projects: ["packages/*"]` collects nothing in the repo's root tests/, so the verifier's file never
+    ran and its PASS rests on nothing. Reproduced here with pytest, whose equivalent is a file with no test in it."""
+    wt = verify_task(repo)
+    wrote(repo, wt, "import app\n\n\ndef helper():\n    assert app.sub(3, 1) == 2\n")
+    out = stop(repo)
+    t = task_state(repo)
+    assert t["phase"] == state.ATTENTION
+    assert t["attention"]["reason"] == "verifier file not collected: tests/test_rehorse_verify_t-1.py"
+    assert "not collected" in (out or {}).get("systemMessage", "")
+    assert t["verifier"] and t["verifier"]["verdict"] == "concerns"  # the verdict is still recorded, for the report
+    assert (t["verify_collect"]["collected"], t["verify_collect"]["passed"]) == (False, 0)
+    report = open(os.path.join(str(repo), t["report_path"])).read()
+    assert "NEEDS ATTENTION: verifier file not collected" in report
+    assert "tests/test_rehorse_verify_t-1.py" in report and "NOT COLLECTED" in report
+
+
+def test_a_collected_verifier_file_passes_the_check_and_the_verdict_stands(repo):
+    wt = verify_task(repo)
+    wrote(repo, wt, "import app\n\n\ndef test_sub_rejects_strings():\n    assert app.sub(3, 1) == 2\n")
+    stop(repo)
+    t = task_state(repo)
+    assert t["phase"] == "verify" and t["verifier"]["verdict"] == "concerns"
+    c = t["verify_collect"]
+    assert (c["collected"], c["passed"], c["failed"]) == (True, 1, 0)
+    assert c["command"].endswith("tests/test_rehorse_verify_t-1.py") and "-m pytest" in c["command"]
+
+
+def test_a_verifier_that_wrote_no_file_is_not_asked_to_collect_one(repo):
+    """The brief allows a verdict with no new test; there is then nothing to collect and nothing to stop for."""
+    verify_task(repo)
+    ran(repo)
+    stop(repo)
+    t = task_state(repo)
+    assert t["phase"] == "verify" and t["verify_collect"] is None
+
+
+def test_the_check_is_skipped_for_a_runner_that_cannot_be_handed_one_file(repo):
+    wt = verify_task(repo, test_cmd="make test")
+    wrote(repo, wt, "def helper():\n    pass\n")
+    stop(repo)
+    t = task_state(repo)
+    assert t["phase"] == "verify"
+    assert t["verify_collect"]["checked"] is False and "make" not in t["verify_collect"].get("command", "")
+
+
+def test_the_brief_records_the_verifiers_one_writable_path_in_state(repo):
+    """Derived once, from the diff, and kept: the guard's message, the collection check and a round-trip step must all
+    name the file the verifier was actually told to write."""
+    verify_task(repo)
+    r = run_script("verify", ["brief"], cwd=str(repo))
+    assert r.returncode == 0, r.stderr
+    assert task_state(repo)["verify_file"] == "tests/test_rehorse_verify_t-1.py"
+    assert "tests/test_rehorse_verify_t-1.py" in r.stdout
+
+
+def test_the_verify_hook_is_given_time_for_the_file_alone_run():
+    """The collection check runs the project's test command inside the SubagentStop hook; Claude Code cancels a hook at
+    its timeout and discards its output, which would drop the verdict with it. 600s is the documented command default."""
+    hooks = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks", "hooks.json")))["hooks"]
+    entry = next(h for h in hooks["SubagentStop"] if h["hooks"][0]["args"][0].endswith("verify.py"))
+    import verify
+    assert entry["hooks"][0]["timeout"] >= verify.COLLECT_TIMEOUT

@@ -4,7 +4,8 @@
 The spec, `git diff base_sha..HEAD`, the last test output, the existing tests the change rewrote and (from round 2)
 the verifier's own earlier findings — never the implementer's transcript, its step summaries, PROGRESS.md or an
 earlier report. Written to .rehorse/verify/<id>-round<n>.md so the orchestrator hands over a path, not a payload it
-could edit on the way past.
+could edit on the way past. This is also where the verifier's one writable path is derived (from the diff, so a
+workspace runner will collect it) and recorded in state, so every later caller names the same file.
 """
 import os
 
@@ -28,7 +29,7 @@ def write(root, task):
     diff = worktree.diff(root, tid, task["base_sha"]) if task["base_sha"] else ""
     if len(diff) > DIFF_CAP:
         diff = diff[:DIFF_CAP] + "\n... (diff truncated at %d characters)" % DIFF_CAP
-    vfile = testcmd.verify_file(task, wt)
+    vfile = task["verify_file"] = testcmd.verify_file(task, wt, testcmd.diff_paths(diff))
     lines = ["# Rehorse verifier brief: %s, round %d" % (tid, n), "", "Worktree: %s" % wt,
              "Test command: cd %s && %s" % (wt, task["test_cmd"]), "The only file you may write: %s/%s" % (wt, vfile), "",
              "## Spec (REHORSE_SPEC.md)", "", spec.strip(), "", "## Diff (base %s..HEAD)" % (task["base_sha"] or "")[:7], "",

@@ -110,6 +110,26 @@ def red_lines(task):
     return out + [""] if out else []
 
 
+def collect_line(task):
+    """Whether the runner actually collected the verifier's file when handed it alone. A file it skips (a workspace
+    runner collects only inside its own projects) is a verdict resting on tests that never ran, so the report says so
+    next to the verdict rather than leaving the count to imply it."""
+    c = task.get("verify_collect")
+    if not c:
+        return []
+    if not c["checked"]:
+        return ["Verifier file: `%s` — collection not checked (%s)." % (c["file"], c["why"]), ""]
+    return ["Verifier file: `%s` — %s." % (c["file"], "**NOT COLLECTED by the runner** (0 tests when run alone: it never ran)"
+                                           if not c["collected"] else "%d test(s) collected when run alone" % (c["passed"] + c["failed"])), ""]
+
+
+def file_error_line(task):
+    """A run whose runner exited non-zero while counting no failed test: the failures are file-level (a module that
+    threw on import, a fixture that threw before any test), and the passed count alone would read green."""
+    return ["**%s** — the last run's failures are file-level, not assertion-level." % testcmd.FILE_ERROR, ""] \
+        if (task.get("last_test_run") or {}).get("file_errors") else []
+
+
 def findings_text(v):
     return "\n".join("- [%s] %s:%s %s" % (f["severity"], f["file"], "?" if f["line"] is None else f["line"], f["description"])
                      for f in v["findings"]) or "- (none)"
@@ -179,10 +199,11 @@ def verifier_section(task, name, crits=None):
     v, hist = task.get("verifier"), task.get("verify_history") or []
     if not v:  # a task can stop before the verifier ever runs and still have spent rounds; those still belong in the report
         return ["## Verifier: not run", "", "no verdict recorded." if not hist else
-                "no verdict recorded; %d round trip(s) came first:" % len(hist), "", *rounds(task)], None
+                "no verdict recorded; %d round trip(s) came first:" % len(hist), "", *collect_line(task), *rounds(task)], None
     n = len(v["findings"])
     lines = ["## Verifier: %s (round %d of %d)" % (v["verdict"].upper(), v["round"], verdict.MAX_ROUNDS), "",
              "Its run: %s. Tests added: %s" % (progress.counts(v.get("tests")).replace(" / ", ", "), tests_added(v["tests_added"])), "",
+             *collect_line(task),
              "Findings:" if n else "Findings: none", *([findings_text({"findings": v["findings"][:MAX_FINDINGS]})] if n else [])]
     if n > MAX_FINDINGS:
         lines.append("- ... %d more in %s/verifier/%s" % (n - MAX_FINDINGS, REPORTS, name))
@@ -229,6 +250,7 @@ def render(root, task, name):
         BUILD_FAILED_ROW if task.get("red_kind") == "build_failed" else row("red (tests written, no implementation)", task["red_check"]),
         row("green (last run)", task["last_test_run"]), "",
         "Command: `%s`" % task["test_cmd"], "",
+        *file_error_line(task),
         *diagnostic_line(task),
         *red_lines(task),
         *guard_line(task),

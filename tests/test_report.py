@@ -373,3 +373,15 @@ def test_the_coverage_table_shows_where_each_criterion_came_from(repo):
     assert "| acceptance criterion | source | evidence | ref |" in text
     assert "| 1. sub(3, 1) == 2 | issue | test | tests/test_sub.py::test_sub |" in text
     assert "| 2 | inferred | none |  |" in text
+
+
+def test_the_report_names_a_run_whose_failures_were_file_level(repo):
+    """A count of `4351 passed, 0 failed` on a run that exited 1 reads green; the report says which kind of failure it
+    was, so the row and the banner cannot be read as a clean suite."""
+    import report
+    task_in(repo, "verify", last_test_run={"passed": 4351, "failed": 2, "file_errors": True, "after_edit_seq": 0,
+                                           "output": "Test Files  2 failed | 365 passed (367)"})
+    s = state.load(str(repo))
+    text, _ = report.render(str(repo), s["tasks"]["t-1"], "r.md")
+    assert "suite exited non-zero (file-level errors)" in text
+    assert "file-level, not assertion-level" in text

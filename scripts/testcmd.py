@@ -5,6 +5,7 @@
                                        (its .venv/venv, pyproject/pytest.ini, package.json, Makefile; never sys.executable)
   is_test_command(cmd, test_cmd)    -> does this Bash command run the project's test runner?
   scope(cmd, test_cmd)              -> "full" (the whole suite the task is judged by) or "partial" (narrowed to some of it)
+  with_exit_status(counts, ids, nonzero) -> counts, with a non-zero exit the summary never explained recorded as failed
   is_test_path(rel_path, dirs)      -> is this file a test file (locked/unlocked by phase)?
   parse_counts(text)                -> {"passed", "failed"} from pytest / vitest / jest / cargo output, or None
                                        (0-test runs like `no tests ran` are {0, 0}; --collect-only, --version, grep hits are None)
@@ -12,11 +13,15 @@
                                        XCTest, vitest FAIL/× lines); [] when nothing failed; None when the runner gave counts but no ids
   effective_cwd(cmd, cwd)           -> where a Bash command really runs after a leading `cd <dir> &&`
   build_failed(text)                -> did the runner output show a compiler/build error (swift, cargo, go, tsc, xcodebuild)?
-  verify_file(task, wt)             -> the one file the verifier may write, named so the runner discovers it
+  verify_file(task, wt, changed)    -> the one file the verifier may write, placed where this runner will collect it
+  file_run(test_cmd, path, dirs)    -> the recorded command narrowed to one file (the collection check), or None
+  diff_paths(diff_text)             -> the files a unified diff touches
   run_cmd(root)                     -> how to run the project (package.json dev/start, make run, build.sh, cargo/go/swift, README) or None
   affected_tests(root, changed, dirs) -> existing test files that look like they cover the changed files
 CLI: testcmd.py detect | testcmd.py set "<cmd>" (record a user-supplied command in the active task) | testcmd.py parse
 """
+import fnmatch
+import glob
 import json
 import os
 import re
@@ -27,6 +32,14 @@ TEST_DIRS = ["tests", "test", "Tests", "__tests__", "spec"]
 TEST_FILE_RE = re.compile(r"^(test_.*\.py|.*_test\.py|conftest\.py|.*\.(test|spec)\.[cm]?[jt]sx?|.*_test\.go)$")
 RUNNER_TOKENS = {"pytest": ["pytest"], "vitest": ["vitest"], "jest": ["jest"], "npm": ["npm test", "npm t "],
                  "make": ["make test"], "cargo": ["cargo test"], "go": ["go test"], "swift": ["swift test"]}
+SELECTORS = ("-k", "-m", "-t", "--testNamePattern")  # narrow a suite to some of its tests: pytest -k/-m, vitest/jest -t
+PROJECTS_RE = re.compile(r"projects\s*:\s*\[([^\]]*)\]", re.S)  # vitest config / workspace file: the globs it collects in
+PNPM_PACKAGES_RE = re.compile(r"^packages:\s*\n((?:[ \t]*-[ \t]*\S.*\n?)+)", re.M)
+LIST_ITEM_RE = re.compile(r"""^\s*-\s*['"]?([^'"\s]+)""", re.M)
+QUOTED_RE = re.compile(r"""['"]([^'"]+)['"]""")
+DIFF_PATH_RE = re.compile(r"^\+\+\+ b/(.+)$", re.M)
+FILE_ERROR = "suite exited non-zero (file-level errors)"
+FILE_RUNNERS = ("pytest", "vitest", "jest")  # runners a single file can be handed on the command line
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 NOT_A_RUN_RE = re.compile(r"(?:^|\s)(?:--collect-only|--co|--version|--help|-h)(?:\s|$)")
 PYTEST_SUMMARY_RE = re.compile(r"^=*\s*(?:no tests ran|\d+ [a-z]+(?:, \d+ [a-z]+)*) in \d+(?:\.\d+)?s(?: \(.*\))?\s*=*$")
@@ -135,20 +148,36 @@ def scope(command, test_cmd):
     """"full" when the run exercises the whole suite the task is judged by, "partial" when it narrows to part of it.
 
     Partial on positive evidence only: an argument beyond the recorded test command that names a file path, a node id
-    (`::`), or a `-k` / `-m` selector. A token the recorded command already carries is not evidence -- a suite whose own
-    command says `tests/`, or `go test ./...`, is still the whole suite -- and a command nothing matches is `full`,
+    (`::`), or one of SELECTORS -- pytest's `-k` / `-m`, vitest's and jest's `-t` / `--testNamePattern`, which narrow by
+    test name and leave the summary reading like a whole run (`vitest run -t "passing validations"` ran 28 of zod's
+    4359 tests and printed "28 passed"). A token the recorded command already carries is not evidence -- a suite whose
+    own command says `tests/`, or `go test ./...`, is still the whole suite -- and a command nothing matches is `full`,
     because a run wrongly called partial leaves the task unable to satisfy any gate, while one wrongly called full only
     costs a warning."""
     want = _tokens(test_cmd)
     args = _beyond(command, test_cmd)
     for i, a in enumerate(args):
-        flag, val = (a[:2], a[3:]) if a[:3] in ("-k=", "-m=") else (a, args[i + 1] if i + 1 < len(args) else "")
-        if flag in ("-k", "-m"):  # `python -m pytest`'s -m is not pytest's: only the ones past the runner reach here
+        head, eq, tail = a.partition("=")
+        flag, val = (head, tail) if eq and head in SELECTORS else (a, args[i + 1] if i + 1 < len(args) else "")
+        if flag in SELECTORS:  # `python -m pytest`'s -m is not pytest's: only the ones past the runner reach here
             if _run_of(want, [flag, val]) is None and _run_of(want, [flag + "=" + val]) is None:
                 return "partial"  # the same selector the recorded command carries is that suite, not a slice of it
         elif not a.startswith("-") and a not in want and ("::" in a or "/" in a or TEST_FILE_RE.match(a)):
             return "partial"
     return "full"
+
+
+def with_exit_status(counts, ids, nonzero):
+    """A run whose runner exited non-zero while its summary counted no failure failed at file level: a file that throws
+    on import or in a `beforeAll` never reaches a per-test result, so vitest reports `Test Files 2 failed` and
+    `Tests 4351 passed` on a run that exited 1 -- which the green gate (0 failed, >0 passed) would accept.
+
+    Positive evidence only, like scope(): the runner must have named failures (`ids`) its own summary did not count, so
+    a test command with a linter or a coverage gate chained after it is not read as a failing suite. The named failures
+    are the count, because they are what the runner said failed; FILE_ERROR is how every message explains the number."""
+    if nonzero and counts and counts["passed"] and not counts["failed"] and ids:
+        return dict(counts, failed=len(ids), file_errors=True)
+    return counts
 
 
 def effective_cwd(command, cwd):
@@ -207,9 +236,94 @@ def failing_ids(text):
     return [] if counts and not counts["failed"] else None
 
 
-def verify_file(task, wt):
+def _read(path):
+    return open(path, errors="ignore").read() if os.path.exists(path) else ""
+
+
+def _project_globs(wt):
+    """Directory globs this project treats as packages: vitest's `projects:` (or a vitest.workspace file), package.json
+    `workspaces`, pnpm-workspace.yaml. Config files listed among the projects (`./vitest.compile.config.ts`) are not
+    directories and are dropped."""
+    out = []
+    for name in ("vitest.config.ts", "vitest.config.js", "vitest.config.mts", "vitest.workspace.ts", "vitest.workspace.js"):
+        m = PROJECTS_RE.search(_read(os.path.join(wt, name)))
+        out += QUOTED_RE.findall(m.group(1)) if m else []
+    try:
+        ws = json.loads(_read(os.path.join(wt, "package.json")) or "{}").get("workspaces") or []
+    except ValueError:
+        ws = []
+    out += (ws.get("packages") or []) if isinstance(ws, dict) else list(ws)
+    m = PNPM_PACKAGES_RE.search(_read(os.path.join(wt, "pnpm-workspace.yaml")))
+    out += LIST_ITEM_RE.findall(m.group(1)) if m else []
+    return [g.rstrip("/") for g in out if not g.startswith(("!", ".")) and not g.endswith((".ts", ".js", ".json", ".mts"))]
+
+
+def _pkg_of(rel, globs):
+    """The configured package directory holding `rel`, or None: `packages/*` owns `packages/zod/src/v4/schemas.ts`."""
+    parts = rel.split("/")
+    for g in globs:
+        depth = len(g.split("/"))
+        if len(parts) > depth and fnmatch.fnmatch("/".join(parts[:depth]), g):
+            return "/".join(parts[:depth])
+    return None
+
+
+def _test_dir_near(wt, rel, stop=None):
+    """Nearest existing test directory at or above `rel`'s own directory, going no higher than `stop`. The file's own
+    neighbourhood first: a change in packages/zod/src/v4/classic belongs in that directory's tests/, not the repo's."""
+    d = os.path.dirname(rel)
+    while True:
+        for name in TEST_DIRS:
+            cand = "/".join(filter(None, [d, name]))
+            if os.path.isdir(os.path.join(wt, cand)):
+                return cand + "/"
+        if d == (stop or "") or not d:
+            return None
+        d = os.path.dirname(d)
+
+
+def _pkg_test_dir(wt, pkg):
+    """The directory inside `pkg` that already holds test files (one named tests/, test/, __tests__/ wins), or None."""
+    best = None
+    for dirpath, dirnames, filenames in os.walk(os.path.join(wt, pkg)):
+        dirnames[:] = sorted(d for d in dirnames if d != "node_modules" and not d.startswith("."))
+        if any(TEST_FILE_RE.match(f) for f in filenames):
+            rel = os.path.relpath(dirpath, wt).replace(os.sep, "/")
+            if os.path.basename(rel) in TEST_DIRS:
+                return rel + "/"
+            best = best or rel + "/"
+    return best
+
+
+def _js_dir(wt, changed):
+    """Where a vitest/jest file has to live to be collected. A workspace runner looks only inside its configured
+    projects, so the package the diff touches decides; with no diff yet, the first configured project that has tests
+    does. None when neither answers and the caller's test_paths default stands."""
+    globs = _project_globs(wt)
+    for rel in changed:
+        pkg = _pkg_of(rel, globs)
+        if pkg:
+            return _test_dir_near(wt, rel, stop=pkg) or _pkg_test_dir(wt, pkg) or pkg + "/"
+    for rel in changed:  # no workspace: the test dir next to the change still beats the repo's first one
+        d = _test_dir_near(wt, rel)
+        if d:
+            return d
+    projects = [os.path.relpath(p, wt).replace(os.sep, "/") for g in globs
+                for p in sorted(glob.glob(os.path.join(wt, g))) if os.path.isdir(p)]
+    return next((d for p in projects for d in [_pkg_test_dir(wt, p)] if d), projects[0] + "/" if projects else None)
+
+
+def verify_file(task, wt, changed=()):
     """The verifier's one writable file, relative to the worktree: pytest only collects test_*.py, vitest/jest *.test.*,
-    go *_test.go next to the package, cargo tests/*.rs, XCTest any .swift in the test target's directory."""
+    go *_test.go next to the package, cargo tests/*.rs, XCTest any .swift in the test target's directory.
+
+    Recorded in state the first time it is derived (`task["verify_file"]`), so the brief, the edit guard's message and a
+    round-trip step all name one path, and round 2 does not move the file round 1 committed. For vitest and jest the
+    path comes from the diff: those runners collect only inside their configured projects, so a file in the repo's root
+    tests/ is run by nothing at all (zod: `projects: ["packages/*"]`) and the verifier's verdict would rest on tests
+    that never executed."""
+    if task.get("verify_file"):
+        return task["verify_file"]
     tid, runner, d = task["id"], runner_of(task.get("test_cmd") or ""), (task.get("test_paths") or ["tests/"])[0]
     if runner == "go":
         return "rehorse_verify_%s_test.go" % tid
@@ -219,8 +333,24 @@ def verify_file(task, wt):
         subs = sorted(x for x in (os.listdir(os.path.join(wt, d)) if os.path.isdir(os.path.join(wt, d)) else []) if os.path.isdir(os.path.join(wt, d, x)))
         return "%s%s/rehorse_verify_%s.swift" % (d, subs[0], tid) if subs else "%srehorse_verify_%s.swift" % (d, tid)
     if runner in ("vitest", "jest", "npm"):
+        d = _js_dir(wt, changed) or d
         return "%srehorse_verify_%s.test.%s" % (d, tid, "ts" if os.path.exists(os.path.join(wt, "tsconfig.json")) else "js")
     return "%stest_rehorse_verify_%s.py" % (d, tid)
+
+
+def file_run(test_cmd, rel_path, test_paths=()):
+    """The recorded test command narrowed to one file: its test-path arguments replaced by that file, everything else
+    kept (zod's `pnpm build &&` is how its suite runs at all). None for a runner that cannot be handed a file, where
+    "this file alone" is not a question it can be asked."""
+    if runner_of(test_cmd) not in FILE_RUNNERS:
+        return None
+    kept = [t for i, t in enumerate(_tokens(test_cmd)) if i == 0 or t.startswith("-") or not is_test_path(t, test_paths)]
+    return " ".join(kept + [shlex.quote(rel_path)])
+
+
+def diff_paths(diff_text):
+    """The files a unified diff touches, in the order it lists them (a deleted file's /dev/null is not one)."""
+    return [p for p in DIFF_PATH_RE.findall(diff_text or "") if p != "/dev/null"]
 
 
 def affected_tests(root, changed_files, test_dirs):

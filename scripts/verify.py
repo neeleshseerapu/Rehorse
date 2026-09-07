@@ -3,7 +3,9 @@
 rehorse-verifier subagent, so what the verifier sees is decided in rehorse_lib/brief.py, not by the orchestrator.
 `verify.py --verdict` is the SubagentStop hook for that agent: it blocks the stop until the verifier ran the test command
 after its last edit, committed its test file, and ended its reply with the JSON verdict block; then it records the verdict
-in state. The orchestrator never copies a verdict by hand, so it cannot soften one, and a `fail` whose findings cite no
+in state and runs the test command on that file alone. A file the runner does not collect (zod collects only inside its
+configured projects, so a root `tests/` file is run by nothing) is a verdict resting on tests that never executed, and
+the phase stops with `verifier file not collected: <path>` rather than reporting it as evidence. The orchestrator never copies a verdict by hand, so it cannot soften one, and a `fail` whose findings cite no
 acceptance criterion is recorded as `concerns`: a stop points at the spec, not at the verifier's taste. A `fail`, or a failing
 verifier test, sends the task back to implement with the findings as plan steps (the verifier's file is then locked like every
 test); a finding that says an existing test pins the very behaviour the spec calls a bug goes back to `tests` instead,
@@ -13,6 +15,7 @@ The verdict vocabulary, the parser and the round-trip steps live in rehorse_lib/
 import datetime
 import json
 import os
+import subprocess
 import sys
 
 import guard_stop
@@ -25,6 +28,27 @@ from rehorse_lib import brief, verdict as vd
 
 AGENT = "rehorse-verifier"
 MAX_ROUNDS = vd.MAX_ROUNDS
+COLLECT_TIMEOUT = 300  # the hook's own budget for the file-alone run; hooks.json gives the hook 600
+
+
+def collected(task, wt):
+    """Run the test command on the verifier's file alone and say how many tests came back, or None when it wrote no
+    file. `checked` is False when the answer could not be had (a runner that takes no file, a run that timed out):
+    a check that could not run must not stop a task, so only a real zero does."""
+    vfile = testcmd.verify_file(task, wt)
+    if not os.path.exists(os.path.join(wt, vfile)):
+        return None
+    cmd = testcmd.file_run(task["test_cmd"], vfile, task.get("test_paths") or [])
+    if not cmd:
+        return {"file": vfile, "checked": False, "why": "%s cannot be pointed at one file" % task["test_cmd"]}
+    try:
+        p = subprocess.run(cmd, shell=True, cwd=wt, capture_output=True, text=True, timeout=COLLECT_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return {"file": vfile, "checked": False, "command": cmd, "why": "timed out after %ds" % COLLECT_TIMEOUT}
+    counts = testcmd.parse_counts(p.stdout + p.stderr)
+    if counts is None:
+        return {"file": vfile, "checked": False, "command": cmd, "why": "the run printed no summary line"}
+    return dict(counts, file=vfile, checked=True, command=cmd, collected=bool(counts["passed"] + counts["failed"]))
 
 
 def verdict(hook):
@@ -48,6 +72,9 @@ def verdict(hook):
     task.update(verify_round=n, stop_blocks=0, verifier=dict(
         v, round=n, tests=run, at=datetime.datetime.now().isoformat(timespec="seconds"),
         revision=[{"test": f["test"], "why": f["description"]} for f in rev]))
+    task["verify_collect"] = coll = collected(task, wt)
+    if coll and coll["checked"] and not coll["collected"]:
+        return guard_stop.attention(root, s, task, "verifier file not collected: %s" % coll["file"])
     msg = "REHORSE: verifier round %d: %s%s, %d finding(s); its run: %d passed, %d failed." % (
         n, v["verdict"].upper(), " (fail recorded as concerns: no finding cited a criterion)" if v["downgraded"] else "", len(v["findings"]), run["passed"], run["failed"])
     failing = v["verdict"] == "fail" or run["failed"] > 0
@@ -80,6 +107,7 @@ def main(argv):
     if task["phase"] != "verify":
         sys.exit("verify.py brief: task %s is in phase %s; the brief is written in phase verify." % (task["id"], task["phase"]))
     sys.stdout.write(brief.write(root, task))
+    state.save(root, s)  # brief.write derives the verifier's one writable path; it is recorded, not re-derived
     return 0
 
 
