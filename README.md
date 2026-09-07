@@ -18,7 +18,7 @@ git clone https://github.com/neeleshseerapu/Rehorse.git ~/Rehorse
 cd your-project && claude --plugin-dir ~/Rehorse
 ```
 
-`/rehorse:status` should say there is no active task; the hooks use only the stdlib.
+`/rehorse:status` should say there is no active task.
 
 ## Use it
 
@@ -72,9 +72,10 @@ Every denial says what is allowed instead. Hooks stop shortcuts, not an adversar
 
 ## Results
 
-Nine of ten `rich` issues pass, graded by each upstream PR's own tests and never by Rehorse's. The one that does not,
-`rich-3577`, fixed the bug one level above `AnsiDecoder.decode` and added a guard pinning that function's line-oriented
-contract — the exact behaviour the maintainer's own fix changed. Everything else: [eval/results.md](eval/results.md).
+Nine of ten `rich` issues pass, graded by each upstream PR's own tests, never Rehorse's, and the first three
+`fastapi` issues pass too, with 17 of 30 tasks still to run. `rich-3871`, the run that stopped itself, refused to
+rewrite a snapshot test pinning the bug; its diff passes upstream anyway. Every row, with the version it
+measured: [eval/results.md](eval/results.md).
 
 ## Status
 
