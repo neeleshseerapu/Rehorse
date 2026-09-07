@@ -1,0 +1,23 @@
+{
+  "name": "rehorse",
+  "owner": {
+    "name": "Neelesh Seerapu",
+    "url": "https://github.com/neeleshseerapu"
+  },
+  "description": "Rehorse: auto mode for Claude Code that you can walk away from.",
+  "plugins": [
+    {
+      "name": "rehorse",
+      "source": "./",
+      "description": "Auto mode you can walk away from: every task rehearses on a git worktree, goes red-then-green, is checked by an independent verifier, and stops with a report. Hooks, not prose, keep it off your real branch.",
+      "author": {
+        "name": "Neelesh Seerapu"
+      },
+      "homepage": "https://github.com/neeleshseerapu/Rehorse",
+      "repository": "https://github.com/neeleshseerapu/Rehorse",
+      "license": "MIT",
+      "keywords": ["worktree", "tests", "verifier", "hooks", "autonomy", "tdd"],
+      "category": "workflow"
+    }
+  ]
+}

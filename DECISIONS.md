@@ -1108,3 +1108,21 @@ changes, and the remaining 17 run later against the version that ships.
   page says otherwise, so `write_results()` counts the tasks in `tasks.json` with no result file and renders "17 of the
   30 ... have not run yet" under the table. The count comes from the same files `pending()` reads, so it cannot drift
   from what a resumed batch would actually do.
+
+## Milestone 8: shipped as an installable plugin (2026-09-07)
+
+- **The repo is its own marketplace.** `.claude-plugin/marketplace.json` sits beside `plugin.json` and lists one
+  plugin whose `source` is `"./"` — the marketplace root and the plugin root are the same directory — so
+  `claude plugin marketplace add neeleshseerapu/Rehorse` followed by `claude plugin install rehorse` is the whole
+  install. Both names are `rehorse`, which is why the bare `install rehorse` resolves: Claude Code reported
+  `Successfully installed plugin: rehorse@rehorse (scope: user)`. The marketplace entry deliberately carries no
+  `version`: `plugin.json` is the authority (the docs say it wins), and a second copy would be a second thing to bump.
+- **`claude plugin validate .` checks the manifest, not the install.** With a `marketplace.json` present it validates
+  *that* file — "Validating marketplace manifest ... ✔ Validation passed", with `--strict` too. Probed on purpose:
+  pointing the entry's `source` at `./nope` still passed. So validation is a syntax gate, and the real check is an
+  actual install — done here from a local-path marketplace and again from GitHub, each into a scratch repo, with
+  `/rehorse:status` run there. The `SessionStart` hook fired from the installed copy and injected
+  `REHORSE: no active task`, which is the proof that hooks resolve from an install and not just from `--plugin-dir`.
+- **`--plugin-dir` stays documented as the from-a-clone alternative.** It is how the eval loads the plugin and how
+  development works, and the docs give it precedence over an installed plugin of the same name, so a contributor with
+  both does not have to uninstall to test a change.

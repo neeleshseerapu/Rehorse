@@ -10,15 +10,15 @@ with permissions bypassed.
 
 ## Install
 
-Claude Code, git, Python 3, and a suite Rehorse can run (pytest, vitest, jest, `cargo test`, `go test`,
-`swift test`, `make test`); red-then-green needs something to go red.
+Claude Code, git, Python 3, and a suite Rehorse can run (pytest, vitest, jest, cargo, go, swift, make);
+red-then-green needs something to go red.
 
 ```bash
-git clone https://github.com/neeleshseerapu/Rehorse.git ~/Rehorse
-cd your-project && claude --plugin-dir ~/Rehorse
+claude plugin marketplace add neeleshseerapu/Rehorse
+claude plugin install rehorse
 ```
 
-`/rehorse:status` should say there is no active task.
+`/rehorse:status` in your project says there is no active task. From a clone: `claude --plugin-dir ~/Rehorse`.
 
 ## Use it
 
@@ -52,8 +52,8 @@ none: test files unchanged since the tests phase (`e51ad94`).
 **tests** — a fresh subagent writes failing tests, test files only. **implement** — 1 to 6 steps, each a fresh subagent
 that edits implementation files only, runs the tests and commits; the orchestrator reads two-line summaries, never
 source. **verify** — a subagent that never saw how the code was built, given only the spec, the diff and the last
-test output. **report** — written, committed, session ends. A stuck task stops at `needs-attention`, and the
-hook that stopped it still writes one.
+test output. **report** — written, committed, session ends. A stuck task stops at `needs-attention`; the hook
+that stopped it writes the report.
 
 ## Guarantees
 
@@ -73,14 +73,14 @@ Every denial says what is allowed instead. Hooks stop shortcuts, not an adversar
 ## Results
 
 Nine of ten `rich` issues pass, graded by each upstream PR's own tests, never Rehorse's, and the first three
-`fastapi` issues pass too, with 17 of 30 tasks still to run. `rich-3871`, the run that stopped itself, refused to
+`fastapi` issues pass too; 17 of 30 tasks are still to run. `rich-3871`, the run that stopped itself, refused to
 rewrite a snapshot test pinning the bug; its diff passes upstream anyway. Every row, with the version it
 measured: [eval/results.md](eval/results.md).
 
 ## Status
 
-`v0.2.0-alpha`. Milestones 1–6 are done and live-checked: guard hooks, skills, the verifier and its round trips, the
-eval harness. Next: `fastapi` and `zod`, then a listing. `main` is kept green.
+`v0.2.0-alpha`. Milestones 1–6 and the listing are done and live-checked. Next: the rest of the `fastapi` and `zod`
+eval, on the version you install. `main` is kept green.
 
 ## Contributing
 
