@@ -1,0 +1,42 @@
+{
+ "id": "fastapi-9424",
+ "merged_green": true,
+ "upstream_pass": true,
+ "verdict": "pass",
+ "rounds": 1,
+ "wall_s": 760.5,
+ "turns": 26,
+ "report": "results/fastapi-9424.report.md",
+ "session_id": "3954af69-3601-4cbe-8a76-55eec94769ff",
+ "cost_usd": 3.034334,
+ "is_error": false,
+ "phase": "report",
+ "attention": null,
+ "baseline": {
+  "passed": 2355,
+  "failed": 0,
+  "failing": []
+ },
+ "last_test_run": {
+  "passed": 2378,
+  "failed": 0,
+  "at": "2026-09-07T14:33:02",
+  "build_failed": false,
+  "after_edit_seq": 7,
+  "command": "/private/tmp/rehorse-eval/fastapi-9424/.venv/bin/python -m pytest -q --tb=short -rfE 2>&1 | tail -25",
+  "output": "sss.........sss................................................ssssss... [ 68%]\n...ssssss......ssssss......ssssss......ssssss........................... [ 71%]\n........................................................................ [ 74%]\n........................................................................ [ 77%]\n...............................................................sssssssss [ 80%]\nssssssssssss............................................................ [ 83%]\n..............................ssss...................................... [ 86%]\n........................................................................ [ 88%]\n........................................................................ [ 91%]\n.............................................s.......................... [ 94%]\n........................................................................ [ 97%]\n.............................................................            [100%]\n2378 passed, 131 skipped in 13.66s\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x111451e40>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x1113a2d40>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x11135d120>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x1114517b0>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x111453c40>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x111a806d0>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x111a14f40>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x1119b0d60>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x111a817b0>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x111a836a0>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x111bd9120>\n<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x1113fc9a0>"
+ },
+ "grade": {
+  "upstream_pass": true,
+  "counts": {
+   "passed": 1,
+   "failed": 0
+  },
+  "command": ".venv/bin/python -m pytest -q --tb=short -rfE tests/ tests/test_return_none_stringified_annotations.py",
+  "where": "/tmp/rehorse-eval/fastapi-9424/.rehorse/worktrees/t-20260907-204-status-with-pep-563-none",
+  "tests_from": "b51ec36f2e442495de5e4c22ae51a8f5c44917eb",
+  "output_tail": ".                                                                        [100%]\n1 passed in 0.17s\n"
+ },
+ "rehorse_commit": "15b5eff",
+ "rehorse_commit_backfilled": true
+}

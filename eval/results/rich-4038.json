@@ -36,5 +36,7 @@
   "where": "/tmp/rehorse-eval/rich-4038/.rehorse/worktrees/t-20260904-preserve-inline-code-highlight-spans-in",
   "tests_from": "ffe2edc5968eac19d5493c2d7b27965031a692e9",
   "output_tail": "........                                                                 [100%]\n8 passed in 0.05s\n"
- }
+ },
+ "rehorse_commit": "ddfa5b7",
+ "rehorse_commit_backfilled": true
 }

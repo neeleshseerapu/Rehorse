@@ -36,5 +36,7 @@
   "where": "/tmp/rehorse-eval/rich-3796/.rehorse/worktrees/t-20260904-live-empty-render-spurious-newline",
   "tests_from": "e9a5680682e0dbaf9e0f3f0fc2a771612307bc3d",
   "output_tail": "...........                                                              [100%]\n11 passed in 2.11s\n"
- }
+ },
+ "rehorse_commit": "ddfa5b7",
+ "rehorse_commit_backfilled": true
 }

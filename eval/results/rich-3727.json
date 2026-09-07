@@ -36,5 +36,7 @@
   "where": "/tmp/rehorse-eval/rich-3727/.rehorse/worktrees/t-20260904-syntax-wrapping-ignores-padding",
   "tests_from": "b6aae7c342b23656e8d4559909c8a2efd3a4d7c1",
   "output_tail": ".........................                                                [100%]\n25 passed in 0.15s\n"
- }
+ },
+ "rehorse_commit": "ddfa5b7",
+ "rehorse_commit_backfilled": true
 }

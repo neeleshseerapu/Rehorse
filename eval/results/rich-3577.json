@@ -36,5 +36,7 @@
   "where": "/tmp/rehorse-eval/rich-3577/.rehorse/worktrees/t-20260905-text-from-ansi-trailing-newline",
   "tests_from": "58ac15120fe254886c10d6253667733c83604cb4",
   "output_tail": "F.......................                                                 [100%]\n=================================== FAILURES ===================================\n_________________________________ test_decode __________________________________\ntests/test_ansi.py:33: in test_decode\n    assert lines == expected\nE   AssertionError: assert [<text 'Hello...ue=0))))] ''>] == [<text 'Hello...ext '' [] ''>]\nE     \nE     Right contains one more item: <text '' [] ''>\nE     Use -v to get more diff\n----------------------------- Captured stdout call -----------------------------\n[<text 'Hello' [] ''>, <text 'foo' [Span(0, 3, Style(bold=True))] ''>, <text 'bar' [Span(0, 3, Style(link='http://example.org'))] ''>, <text 'red' [Span(0, 3, Style(color=Color('#ff0000', ColorType.TRUECOLOR, triplet=ColorTriplet(red=255, green=0, blue=0)), bgcolor=Color('color(200)', ColorType.EIGHT_BIT, number=200)))] ''>, <text 'red' [Span(0, 3, Style(color=Color('color(200)', ColorType.EIGHT_BIT, number=200), bgcolor=Color('#ff0000', ColorType.TRUECOLOR, triplet=ColorTriplet(red=255, green=0, blue=0))))] ''>]\n=========================== short test summary info ============================\nFAILED tests/test_ansi.py::test_decode - AssertionError: assert [<text 'Hello...\n1 failed, 23 passed in 0.04s\n"
- }
+ },
+ "rehorse_commit": "7cb16d8",
+ "rehorse_commit_backfilled": true
 }

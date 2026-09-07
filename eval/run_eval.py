@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import testcmd  # noqa: E402
 
 RESULTS = os.path.join(HERE, "results")
-COLUMNS = ["task", "tier", "self-green", "rehorse-outcome", "upstream-tests-pass", "verifier", "rounds", "wall", "turns", "report"]
+COLUMNS = ["task", "rehorse", "tier", "self-green", "rehorse-outcome", "upstream-tests-pass", "verifier", "rounds", "wall", "turns", "report"]
 WALL_NOTE = ("Wall time is dominated by verify round-trips, not by the size of the fix: every failing verdict sends the task back to\n"
              "implement and buys another verifier round, so the number of rounds sets the slowest rows.")
 METHODOLOGY = """## Methodology
@@ -41,6 +41,9 @@ METHODOLOGY = """## Methodology
   Rehorse's own tests therefore never count toward the grade; `self-green` is only Rehorse's self-report (phase
   `report` reached with 0 failed), and `rehorse-outcome` is the phase it stopped in. `verifier` is its verdict and how
   many rounds it took.
+- **Version.** Rows may come from different Rehorse versions, and each row says which: `rehorse` is the short commit the
+  plugin directory was on when the task ran, read at run time and suffixed `-dirty` when the working tree that ran was
+  not that commit. A `~` marks a version back-filled from the run's timestamp rather than recorded by the run itself.
 - **Environment.** Each task gets a fresh clone and its own venv (`setup_cmd`). For `rich`, `pygments` is pinned to the
   version in the repo's `poetry.lock` (the syntax tests are golden ANSI output that drift with pygments) and `attrs`, a
   dev dependency the tests import, is installed. The machine runs Python 3.13, so tasks are chosen from bases that
@@ -125,7 +128,8 @@ def run_claude(task, clone, log, max_turns, timeout):
 
 def run_task(task, work, max_turns, timeout):
     tid, clone = task["id"], os.path.join(work, task["id"])
-    row = {"id": tid, "merged_green": False, "upstream_pass": False, "verdict": None, "rounds": 0, "wall_s": 0, "turns": None, "report": None}
+    row = {"id": tid, "merged_green": False, "upstream_pass": False, "verdict": None, "rounds": 0, "wall_s": 0, "turns": None, "report": None,
+           "rehorse_commit": rehorse_commit()}
     log = os.path.join(work, tid + ".log")
     shutil.rmtree(clone, ignore_errors=True)
     for f in (log, os.path.join(work, tid + ".claude.json")):
@@ -157,6 +161,19 @@ def run_task(task, work, max_turns, timeout):
     return row
 
 
+def rehorse_commit(root=ROOT):
+    """Which Rehorse a run measured: the short commit the plugin directory is on, since that directory is what
+    `--plugin-dir` loads. Suffixed `-dirty` when the tree loaded is not that commit; None when it is not a git repo."""
+    try:
+        sha = subprocess.run(["git", "-C", root, "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True,
+                             timeout=60).stdout.strip()
+        dirty = subprocess.run(["git", "-C", root, "status", "--porcelain"], capture_output=True, text=True, check=True,
+                               timeout=60).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return sha + "-dirty" if dirty else sha
+
+
 def fmt_wall(s):
     s = int(s or 0)
     return "%dm%02ds" % divmod(s, 60) if s >= 60 else "%ds" % s
@@ -173,7 +190,13 @@ def outcome_label(row):
     return phase or "error"
 
 
-def render(rows, tiers=None):
+def version_cell(row):
+    """The Rehorse the row measured; `~` marks one back-filled from the run's timestamp, not recorded by the run."""
+    sha = row.get("rehorse_commit")
+    return ("~" + sha if row.get("rehorse_commit_backfilled") else sha) if sha else "–"
+
+
+def render(rows, tiers=None, remaining=0, total=None):
     n = len(rows)
     summary = "%d of %d tasks pass the upstream PR's tests; %d self-reported green; %d errored." % (
         sum(r["upstream_pass"] for r in rows), n, sum(r["merged_green"] for r in rows), sum(1 for r in rows if r.get("error")))
@@ -181,10 +204,13 @@ def render(rows, tiers=None):
              "| " + " | ".join(COLUMNS) + " |", "|" + "---|" * len(COLUMNS)]
     for r in rows:
         report = "[report](%s)" % r["report"] if r.get("report") else r.get("error") or "–"
-        lines.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
-            r["id"], (tiers or {}).get(r["id"], "–"), "yes" if r["merged_green"] else "no", outcome_label(r),
+        lines.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+            r["id"], version_cell(r), (tiers or {}).get(r["id"], "–"), "yes" if r["merged_green"] else "no", outcome_label(r),
             "**yes**" if r["upstream_pass"] else "no", r.get("verdict") or "–", r.get("rounds", 0), fmt_wall(r.get("wall_s")),
             r["turns"] if r.get("turns") is not None else "–", report))
+    if remaining:
+        lines += ["", "%d of the %d tasks in `eval/tasks.json` have not run yet: the `fastapi`/`zod` batch was stopped after three so that\n"
+                  "shipping an installable plugin could come first, and the rest run against the version that ships." % (remaining, total or n + remaining)]
     return "\n".join(lines) + "\n"
 
 
@@ -197,9 +223,11 @@ def result_files(results_dir):
 def write_results(results_dir, tasks_path=None):
     rows = [json.load(open(p)) for p in result_files(results_dir)]
     tasks_path = tasks_path or os.path.join(HERE, "tasks.json")
-    tiers = {t["id"]: t.get("tier", "–") for t in json.load(open(tasks_path))} if os.path.exists(tasks_path) else {}
+    tasks = json.load(open(tasks_path)) if os.path.exists(tasks_path) else []
+    tiers = {t["id"]: t.get("tier", "–") for t in tasks}
+    done = {r["id"] for r in rows}
     with open(os.path.join(HERE, "results.md"), "w") as f:
-        f.write(render(rows, tiers))
+        f.write(render(rows, tiers, remaining=sum(1 for t in tasks if t["id"] not in done), total=len(tasks)))
     return rows
 
 

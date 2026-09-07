@@ -36,5 +36,7 @@
   "where": "/tmp/rehorse-eval/rich-3708/.rehorse/worktrees/t-20260904-fix-infinite-loop-in-traceback-cause",
   "tests_from": "2a282af76d3f7a731e1c23145e13977044150f1e",
   "output_tail": "...................s...                                                  [100%]\n22 passed, 1 skipped in 0.23s\n"
- }
+ },
+ "rehorse_commit": "ddfa5b7",
+ "rehorse_commit_backfilled": true
 }

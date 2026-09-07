@@ -36,5 +36,7 @@
   "where": "/tmp/rehorse-eval/rich-3841/.rehorse/worktrees/t-20260904-trailing-background-trimmed-with-soft-wrap",
   "tests_from": "05ff970926cbd0b5d0acb6fc18cdbd1fc971e582",
   "output_tail": "........................................................................ [ 64%]\n........................................                                 [100%]\n112 passed in 0.11s\n"
- }
+ },
+ "rehorse_commit": "ddfa5b7",
+ "rehorse_commit_backfilled": true
 }

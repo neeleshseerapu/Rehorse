@@ -36,5 +36,7 @@
   "where": "/tmp/rehorse-eval/rich-3871/.rehorse/worktrees/t-20260905-fix-double-padding-in-table-first",
   "tests_from": "9e18b96652f37293121b04017fb6aa95af21b013",
   "output_tail": "......................                                                   [100%]\n22 passed in 0.06s\n"
- }
+ },
+ "rehorse_commit": "63d0bdc",
+ "rehorse_commit_backfilled": true
 }

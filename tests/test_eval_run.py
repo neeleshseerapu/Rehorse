@@ -50,23 +50,25 @@ def test_tasks_with_a_result_file_are_skipped_unless_rerun(tmp_path):
 
 def test_results_table_and_one_line_summary():
     rows = [{"id": "rich-2942", "merged_green": True, "upstream_pass": True, "verdict": "pass", "rounds": 1, "wall_s": 601.4, "turns": 23,
-             "report": "results/rich-2942.report.md", "phase": "report"},
+             "report": "results/rich-2942.report.md", "phase": "report", "rehorse_commit": "abc1234"},
             {"id": "rich-3881", "merged_green": True, "upstream_pass": False, "verdict": "concerns", "rounds": 2, "wall_s": 88, "turns": 9,
-             "report": "results/rich-3881.report.md", "phase": "report"},
+             "report": "results/rich-3881.report.md", "phase": "report", "rehorse_commit": "def5678",
+             "rehorse_commit_backfilled": True},
             {"id": "rich-3479", "merged_green": False, "upstream_pass": False, "verdict": None, "rounds": 0, "wall_s": 12, "turns": None,
              "report": None, "phase": None, "error": "setup_cmd failed (exit 1)"}]
     md = run_eval.render(rows, {"rich-2942": 1, "rich-3881": 2})
-    assert "| task | tier | self-green | rehorse-outcome | upstream-tests-pass | verifier | rounds | wall | turns | report |" in md
-    assert "| rich-2942 | 1 | yes | green | **yes** | pass | 1 | 10m01s | 23 | [report](results/rich-2942.report.md) |" in md
-    assert "| rich-3881 | 2 | yes | green | no | concerns | 2 | 1m28s | 9 | [report](results/rich-3881.report.md) |" in md
-    assert "| rich-3479 | – | no | error | no | – | 0 | 12s | – | setup_cmd failed (exit 1) |" in md
+    assert "| task | rehorse | tier | self-green | rehorse-outcome | upstream-tests-pass | verifier | rounds | wall | turns | report |" in md
+    assert "| rich-2942 | abc1234 | 1 | yes | green | **yes** | pass | 1 | 10m01s | 23 | [report](results/rich-2942.report.md) |" in md
+    assert "| rich-3881 | ~def5678 | 2 | yes | green | no | concerns | 2 | 1m28s | 9 | [report](results/rich-3881.report.md) |" in md
+    assert "| rich-3479 | – | – | no | error | no | – | 0 | 12s | – | setup_cmd failed (exit 1) |" in md
     method = md[md.index("## Methodology"):md.index("## Results")]
     for phrase in ("merge commit's first parent", "*merge commit*", "never from\n  the PR head", "replacing\n  Rehorse's edits",
                    "never count toward the grade", "`poetry.lock`", "`attrs`", "Python 3.13"):
         assert phrase in method, phrase
+    assert "different Rehorse versions" in method and "`~`" in method, "the table says which version each row measured"
     summary = "1 of 3 tasks pass the upstream PR's tests; 2 self-reported green; 1 errored."
-    assert summary in md and md.index(summary) < md.index("| task | tier |"), "the headline reads before the table, not after it"
-    assert "verify round-trips" in md[md.index(summary):md.index("| task | tier |")]
+    assert summary in md and md.index(summary) < md.index("| task | rehorse |"), "the headline reads before the table, not after it"
+    assert "verify round-trips" in md[md.index(summary):md.index("| task | rehorse |")]
 
 
 def test_rehorse_outcome_names_the_phase_the_task_stopped_in():
@@ -170,3 +172,36 @@ def test_only_top_level_id_json_files_are_rows(tmp_path):
     (tmp_path / "archive" / "rich-2.json").write_text(row)
     (tmp_path / "notes.md").write_text("not a result")
     assert [os.path.basename(p) for p in run_eval.result_files(str(tmp_path))] == ["rich-1.json"]
+
+
+def test_the_rehorse_commit_is_read_from_git_in_the_plugin_directory():
+    """Which Rehorse a row measured. The eval loads the plugin from ROOT with --plugin-dir, so the version is that
+    directory's HEAD — marked `-dirty` when the working tree it loads is not that commit."""
+    head = git(run_eval.ROOT, "rev-parse", "--short", "HEAD")
+    dirty = bool(git(run_eval.ROOT, "status", "--porcelain"))
+    assert run_eval.rehorse_commit() == (head + "-dirty" if dirty else head)
+
+
+def test_a_plugin_directory_that_is_not_a_git_repo_records_no_commit(tmp_path):
+    assert run_eval.rehorse_commit(str(tmp_path)) is None
+
+
+def test_a_dirty_plugin_directory_is_marked(tmp_path):
+    git(tmp_path, "init", "-q", "-b", "main")
+    git(tmp_path, "config", "user.email", "t@example.com")
+    git(tmp_path, "config", "user.name", "t")
+    (tmp_path / "f").write_text("one\n")
+    git(tmp_path, "add", "-A")
+    git(tmp_path, "commit", "-q", "-m", "one")
+    clean = run_eval.rehorse_commit(str(tmp_path))
+    assert clean == git(tmp_path, "rev-parse", "--short", "HEAD")
+    (tmp_path / "f").write_text("two\n")
+    assert run_eval.rehorse_commit(str(tmp_path)) == clean + "-dirty"
+
+
+def test_tasks_with_no_result_yet_are_counted_under_the_table(tmp_path):
+    """The table is the tasks that ran, and it says how many have not: a reader must not read 13 rows as the whole eval."""
+    rows = [{"id": "rich-2942", "merged_green": True, "upstream_pass": True, "verdict": "pass", "rounds": 1, "wall_s": 1, "turns": 1,
+             "report": None, "phase": "report"}]
+    assert "17 of the 30 tasks in `eval/tasks.json` have not run yet" in run_eval.render(rows, remaining=17, total=30)
+    assert "have not run yet" not in run_eval.render(rows, remaining=0, total=1)

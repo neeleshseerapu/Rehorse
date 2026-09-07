@@ -1,0 +1,8 @@
+20 task(s) to run
+== fastapi-5623: Defect: Dependency scope propagation is broken
+   merged-green True, upstream True, verifier pass, 11m06s, 20 turn(s)
+== fastapi-9424: Using PEP 649 annotations with status code `204 No Content` and return type `None` raises `AssertionError`
+   merged-green True, upstream True, verifier pass, 12m40s, 26 turn(s)
+== fastapi-13533: Multiple regressions in the handling of forms & form validation
+   merged-green True, upstream True, verifier pass, 25m29s, 37 turn(s)
+== fastapi-15401: SSE `stream_item_type` not propagated through `APIRouter` + `include_router`

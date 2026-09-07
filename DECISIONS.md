@@ -1095,3 +1095,16 @@ changes, and the remaining 17 run later against the version that ships.
   `eval/results/fastapi-15401.json` was ever written. `pending()` reads exactly those files, so the task is simply
   pending again and a later batch redoes it from a fresh clone; a partial run leaves no row and grades nothing. The
   four `fastapi` tasks the log names are therefore three results and one non-result.
+- **Every eval row says which Rehorse it measured.** With the eval now spanning versions — the `rich` ten ran on the
+  milestone-6 tree, the `fastapi` three on a tree four commits newer, the remaining 17 on whatever ships — a table
+  without a version column reads as one experiment when it is several. `rehorse_commit` is read at run time by
+  `git -C <plugin dir> rev-parse --short HEAD`, the directory `--plugin-dir` actually loads, with `-dirty` appended
+  when that tree is not the commit (the eval loads a working tree, not a checkout, so this is the common case during
+  development and worth seeing). The thirteen existing rows were **back-filled**: for each, the last commit before the
+  run's clock time, which is `results/<id>.json`'s mtime minus its recorded `wall_s`. Every one of the thirteen began
+  and ended on the same commit, so no row straddles two versions, but a back-filled value is still an inference and is
+  marked `~` in the table with the reason in the methodology.
+- **The table says how many tasks have not run.** Thirteen rows out of thirty tasks read as the whole eval unless the
+  page says otherwise, so `write_results()` counts the tasks in `tasks.json` with no result file and renders "17 of the
+  30 ... have not run yet" under the table. The count comes from the same files `pending()` reads, so it cannot drift
+  from what a resumed batch would actually do.

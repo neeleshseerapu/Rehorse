@@ -1,0 +1,3 @@
+usage: run_eval.py [-h] [--tasks TASKS] [--only [ONLY ...]] [--rerun]
+                   [--work WORK] [--max-turns MAX_TURNS] [--timeout TIMEOUT]
+run_eval.py: error: unrecognized arguments: --only-repo fastapi/fastapi
