@@ -6,6 +6,7 @@ checks out, merges, or resets the user's branch. CLI (JSON out):
   worktree.py create <id> | list | diff <id> --base SHA [--stat] [--paths p ...] | dirty <id> | remove <id>
 """
 import datetime
+import glob
 import json
 import os
 import re
@@ -39,6 +40,7 @@ def ensure_ignored(root):
 
 EXCLUDE = ["REHORSE_SPEC.md", "__pycache__/", ".pytest_cache/"]
 DEP_DIRS = [".venv", "venv", "node_modules", "target", ".tox"]
+NESTED_DEPS = ["packages/*/node_modules", "*/*/node_modules"]  # a workspace installs per package: pnpm's shape, then the same depth under any other name (apps/, libs/)
 
 
 def ensure_excluded(root, names=EXCLUDE):
@@ -53,14 +55,26 @@ def ensure_excluded(root, names=EXCLUDE):
             f.write(("" if not lines or lines[-1] == "" else "\n") + "\n".join(missing) + "\n")
 
 
+def nested_deps(root):
+    """Per-package dependency dirs in the main checkout, deduped and sorted. The patterns describe one depth from two
+    directions, because that is the shape that occurs and the shape it generalises to."""
+    return sorted({os.path.relpath(p, root).replace(os.sep, "/")
+                   for pat in NESTED_DEPS for p in glob.glob(os.path.join(root, pat)) if os.path.isdir(p)})
+
+
 def link_deps(root, wt):
     """Symlink (never copy) the main checkout's gitignored dependency dirs into a fresh worktree, so the test command
-    finds the same interpreter, packages and build cache there. Returns the names linked."""
+    finds the same interpreter, packages and build cache there. Returns the names linked.
+
+    A workspace installs inside each package as well as at the root, and a worktree with only the root link resolves a
+    workspace package to the main checkout's build instead of its own: zod's two treeshaking files fail there and pass
+    once packages/*/node_modules is linked too. A package the worktree does not have (untracked, so no directory to
+    hang the link off) is skipped rather than created."""
     linked = []
-    for name in DEP_DIRS:
-        src = os.path.join(root, name)
-        if os.path.isdir(src) and not os.path.lexists(os.path.join(wt, name)):
-            os.symlink(src, os.path.join(wt, name))
+    for name in DEP_DIRS + nested_deps(root):
+        src, dst = os.path.join(root, name), os.path.join(wt, name)
+        if os.path.isdir(src) and not os.path.lexists(dst) and os.path.isdir(os.path.dirname(dst)):
+            os.symlink(src, dst)
             linked.append(name)
     ensure_excluded(root, linked)  # bare names: the user's `.venv/` pattern matches directories, and a symlink is a file
     return linked

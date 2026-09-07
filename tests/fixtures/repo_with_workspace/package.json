@@ -1,0 +1,6 @@
+{
+  "name": "@fixture/workspace",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {"test": "vitest run --reporter=dot"}
+}

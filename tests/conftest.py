@@ -110,6 +110,24 @@ def venv_repo(tmp_path):
 
 
 @pytest.fixture
+def workspace_repo(tmp_path):
+    """tests/fixtures/repo_with_workspace with the installs a package manager would have made: node_modules at the
+    root and inside each package, which are gitignored and so exist only in the main checkout, never in a worktree."""
+    import shutil
+    dst = tmp_path / "target"
+    shutil.copytree(os.path.join(ROOT, "tests", "fixtures", "repo_with_workspace"), dst)
+    for rel in ("node_modules", "packages/a/node_modules", "packages/b/node_modules"):
+        (dst / rel).mkdir(parents=True)
+        (dst / rel / "installed.marker").write_text(rel)
+    git(dst, "init", "-q", "-b", "main")
+    git(dst, "config", "user.email", "t@example.com")
+    git(dst, "config", "user.name", "t")
+    git(dst, "add", "-A")
+    git(dst, "commit", "-q", "-m", "init")
+    return dst
+
+
+@pytest.fixture
 def home(tmp_path, monkeypatch):
     """A throwaway HOME so grant tokens (~/.rehorse/) never touch the developer's real home."""
     h = tmp_path / "home"

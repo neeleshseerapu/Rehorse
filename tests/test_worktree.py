@@ -123,3 +123,24 @@ def test_cli_create_list_diff_remove(repo):
     assert r.returncode == 0 and r.stdout == ""
     r = run_script("worktree", ["remove", "t-1"], cwd=str(repo))
     assert r.returncode == 0 and json.loads(run_script("worktree", ["list"], cwd=str(repo)).stdout) == []
+
+
+def test_create_also_links_a_workspaces_per_package_dependency_dirs(workspace_repo):
+    """pnpm installs per package as well as at the root: without packages/*/node_modules the worktree resolves a
+    workspace package to the main checkout's build, and zod's two treeshaking files fail there and pass with them."""
+    root = str(workspace_repo)
+    info = worktree.create(root, "t-1")
+    wt = workspace_repo / ".rehorse" / "worktrees" / "t-1"
+    assert info["linked_deps"] == ["node_modules", "packages/a/node_modules", "packages/b/node_modules"]
+    for name in info["linked_deps"]:
+        assert os.path.islink(wt / name) and os.path.realpath(wt / name) == os.path.realpath(workspace_repo / name)
+        assert (wt / name / "installed.marker").read_text() == name  # the same install, not a copy of it
+    assert worktree.dirty(root, "t-1") == []  # each link is excluded, so none of them shows up as work to commit
+
+
+def test_a_package_that_is_not_in_the_worktree_is_not_linked_into_it(workspace_repo):
+    """An untracked package has no directory in the worktree to hang the link off; skipping it beats creating one."""
+    (workspace_repo / "packages" / "untracked").mkdir()
+    (workspace_repo / "packages" / "untracked" / "node_modules").mkdir()
+    info = worktree.create(str(workspace_repo), "t-1")
+    assert "packages/untracked/node_modules" not in info["linked_deps"]

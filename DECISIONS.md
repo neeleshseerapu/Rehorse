@@ -1052,3 +1052,13 @@ runs. No eval ran.
   "passing validations"` ran **28 of 4359** tests and printed "28 passed | 3737 skipped". `SELECTORS` now carries `-t`
   and `--testNamePattern` beside `-k` and `-m`, with the existing rule intact — a selector the recorded command itself
   carries is that suite, not a slice of it — so such a run is a diagnostic and satisfies no gate.
+- **A worktree gets the workspace's per-package installs too.** `link_deps()` symlinked the five top-level `DEP_DIRS`
+  and stopped, so zod's rehearsal worktree had the root `node_modules` and none of `packages/*/node_modules` — and
+  `packages/treeshake/node_modules/zod` then resolved to **the main checkout's** build, which is the one thing a
+  rehearsal worktree must never depend on. `pnpm install --frozen-lockfile` inside the worktree fixed it in 6s with a
+  warm store, and linking is the same fix without the install: `nested_deps()` globs `packages/*/node_modules` and
+  `*/*/node_modules` (one depth described from two directions — the shape pnpm actually produces, and the same depth
+  under `apps/`, `libs/` or any other name), dedupes, and each link is recorded in `linked_deps` and excluded like the
+  top-level ones. A package with no directory in the worktree — untracked, so gitignored — is skipped rather than
+  created: a link into a directory the branch does not have would be work the worktree invented. Checked against the
+  real checkout, where 7 of zod's 9 packages have their own `node_modules` and `packages/zod` does not.
