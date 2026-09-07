@@ -1126,3 +1126,9 @@ changes, and the remaining 17 run later against the version that ships.
 - **`--plugin-dir` stays documented as the from-a-clone alternative.** It is how the eval loads the plugin and how
   development works, and the docs give it precedence over an installed plugin of the same name, so a contributor with
   both does not have to uninstall to test a change.
+- **`CONTRIBUTING.md` holds what the README no longer can.** The README is capped at 100 lines and 700 words by
+  `tests/test_readme.py`, and the install now costs two commands and a from-a-clone alternative, so the dev notes moved
+  out: setup, the three hook rules, the `DECISIONS.md` convention, how to run the eval, and AI disclosure. The
+  disclosure section takes the only position consistent with a repo built this way — AI tools are welcome, and every
+  pull request needs a human who can explain every line of it — and asks for the rehearsal report as verification
+  evidence, since red-then-green counts and a verifier verdict say more about a change than its description does.

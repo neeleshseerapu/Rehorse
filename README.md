@@ -84,15 +84,15 @@ eval, on the version you install. `main` is kept green.
 
 ## Contributing
 
-`SPEC.md` is the spec; `DECISIONS.md` every decision with its evidence.
+`SPEC.md` is the spec; `DECISIONS.md` every decision with its evidence; [CONTRIBUTING.md](CONTRIBUTING.md) the setup,
+the hook rules and how to send a change (AI tools welcome; a human must be able to explain every line).
 
 ```bash
 .venv/bin/python -m pytest tests/ -q       # real hook payloads
 bash tests/e2e_live.sh /tmp/rehorse-e2e    # real sessions
 ```
 
-Hook scripts are test-first, stdlib only, and each one Claude Code invokes stays under 150 lines, so you can read
-what enforces a guarantee before trusting it. Run it on a real repo and open an issue with the report.
+Run it on a real repo and open an issue with the report.
 
 ## License
 
