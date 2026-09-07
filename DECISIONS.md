@@ -1132,3 +1132,9 @@ changes, and the remaining 17 run later against the version that ships.
   disclosure section takes the only position consistent with a repo built this way — AI tools are welcome, and every
   pull request needs a human who can explain every line of it — and asks for the rehearsal report as verification
   evidence, since red-then-green counts and a verifier verdict say more about a change than its description does.
+- **The install was proven, not assumed: `rehorse@rehorse` installed from GitHub and answered `/rehorse:status`.**
+  `claude plugin marketplace add neeleshseerapu/Rehorse` cloned the repo at `c819b5e` into
+  `~/.claude/plugins/marketplaces/rehorse`, `claude plugin install rehorse` resolved the bare name and installed at
+  user scope, and in a scratch git repo with a two-line pytest suite `/rehorse:status` rendered "No tasks yet" through
+  `progress.py` — the plugin's own script, run from the installed copy. Claude Code 2.1.263. The scratch marketplace
+  and install were then removed, so the check left nothing behind.

@@ -4,8 +4,20 @@ All notable changes to Rehorse are recorded here. Format: [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-07
+
+Rehorse is installable: `claude plugin marketplace add neeleshseerapu/Rehorse` and `claude plugin install rehorse`.
+The `fastapi`/`zod` eval was stopped after three tasks (all green, all passing the upstream PR's tests) so that
+shipping could come first; the remaining 17 run against this version rather than against a version nobody installed.
+
+### Added
+- A marketplace manifest (`.claude-plugin/marketplace.json`) listing the repo as its own plugin, so installing takes two commands instead of a clone. `claude --plugin-dir` still works from a clone, and still takes precedence over an installed copy while you develop.
+- `CONTRIBUTING.md`: development setup, the three hook rules (test-first, stdlib only, entry scripts under 150 lines), the `DECISIONS.md` convention, how to run the eval, and an AI-disclosure section — AI tools are welcome, every pull request needs a human who can explain every line, and a rehearsal report is welcome as verification evidence.
+- Every eval result records `rehorse_commit`, the commit the plugin directory was on when the task ran, read at run time and marked `-dirty` when the working tree was not that commit. `eval/results.md` shows it as a column, with `~` on the thirteen rows back-filled from run timestamps, and says how many tasks have not run yet.
+
 ### Changed
 - The README is under 100 lines and 700 words, with the eval reduced to one paragraph that links `eval/results.md`; `tests/test_readme.py` enforces both, and the per-section limits with them.
+- The README's results paragraph reports `rich` nine of ten and the first three `fastapi` tasks, with `rich-3871` — the run that stopped itself rather than rewrite a test pinning the bug — as the honest row.
 
 ## [0.2.0-alpha] - 2026-09-05
 

@@ -79,7 +79,7 @@ measured: [eval/results.md](eval/results.md).
 
 ## Status
 
-`v0.2.0-alpha`. Milestones 1–6 and the listing are done and live-checked. Next: the rest of the `fastapi` and `zod`
+`v0.3.0`. Milestones 1–6 and the listing are done and live-checked. Next: the rest of the `fastapi` and `zod`
 eval, on the version you install. `main` is kept green.
 
 ## Contributing
