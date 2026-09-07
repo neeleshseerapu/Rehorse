@@ -1062,3 +1062,17 @@ runs. No eval ran.
   top-level ones. A package with no directory in the worktree — untracked, so gitignored — is skipped rather than
   created: a link into a directory the branch does not have would be work the worktree invented. Checked against the
   real checkout, where 7 of zod's 9 packages have their own `node_modules` and `packages/zod` does not.
+- **`eval/tasks.json` is thirty tasks: ten `rich`, ten `fastapi`, ten `zod`.** The `fastapi` ten are every candidate
+  whose base is 2025 or later — the Python 3.13 cut from the `rich` run — and all ten baselined green; the other eight
+  candidates sit between 2020 and 2024 and are out for that reason alone. The `zod` ten were picked by hand from the 67
+  green bases. **Tiers for `zod` were given; `fastapi`'s were derived by the same rule the `zod` list used** (one source
+  file and at most four changed lines is tier 1, four or more source files is tier 3, a title matching the
+  hard-pattern — inference, recursion, async, performance, type aliases — is tier 3, everything else tier 2), which
+  gives 4/4/2 across the tiers, the same shape as `rich`'s. `fastapi-10719` is tier 3 for `Annotated` type aliases
+  across three files and `fastapi-10720` for `functools.partial` on an async dependable; both are the rule's judgement,
+  not a hand-placed one, and the column is cheap to correct.
+- **A test now reads `tasks.json` rather than trusting it.** The records are pasted in by hand, and the one kind of
+  drift nothing else would catch is a retyped `setup_cmd` or `test_cmd`: the eval would still run, and it would be
+  measuring an environment nobody chose. `test_eval_find_tasks.py` asserts every record's keys, its tier, that its id
+  matches its repo and issue number, and that its two commands are `find_tasks.DEFAULTS[repo]`'s, character for
+  character — plus ten tasks per repo, which is the methodology the table is read against.

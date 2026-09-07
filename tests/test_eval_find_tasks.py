@@ -59,3 +59,29 @@ def test_a_closing_pr_in_another_repository_is_not_a_candidate():
     foreign = issue(5760, [pr(266343, ["src/a.ts", "src/a.test.ts"], repo="elastic/kibana")])
     own = issue(5761, [pr(12, ["src/b.ts", "src/b.test.ts"], repo="colinhacks/zod")])
     assert [c["issue"] for c in find_tasks.candidates("colinhacks/zod", [foreign, own])] == [5761]
+
+
+# ---- eval/tasks.json: thirty tasks pasted by hand, so what is pasted is checked --------------------------------
+
+def tasks_json():
+    return json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "eval", "tasks.json")))
+
+
+def test_every_task_carries_the_candidate_schema_a_tier_and_its_repos_own_commands():
+    """The records are copied out of eval/candidates-<repo>.json by hand. A retyped setup or test command is the kind
+    of drift nothing else would catch: the eval would run, and it would be measuring a different environment."""
+    tasks = tasks_json()
+    assert len(tasks) == len({t["id"] for t in tasks}) == 30
+    for t in tasks:
+        assert set(t) == {"id", "repo", "base_sha", "issue_url", "issue_title", "issue_body", "pr_url",
+                          "pr_test_files", "test_cmd", "setup_cmd", "tier"}, t["id"]
+        assert t["tier"] in (1, 2, 3) and len(t["base_sha"]) == 40 and t["pr_test_files"]
+        assert t["id"].startswith(t["repo"].split("/")[1] + "-") and t["id"].split("-")[1] in t["issue_url"]
+        assert (t["setup_cmd"], t["test_cmd"]) == (find_tasks.DEFAULTS[t["repo"]]["setup_cmd"],
+                                                   find_tasks.DEFAULTS[t["repo"]]["test_cmd"]), t["id"]
+
+
+def test_the_three_repos_carry_ten_tasks_each():
+    """Ten per repo is the eval's own methodology; a repo short of ten is a table that cannot be compared across them."""
+    from collections import Counter
+    assert Counter(t["repo"] for t in tasks_json()) == {"Textualize/rich": 10, "fastapi/fastapi": 10, "colinhacks/zod": 10}
