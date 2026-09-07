@@ -202,13 +202,22 @@ If 8 fails on the "subagent tool calls pass through hooks" half, the step-based 
 
 
 
-1. Day-1 spikes (section above), with evidence in `DECISIONS.md`.
-2. `state.py`, `worktree.py`, `testcmd.py` + tests.
-3. Hooks: `guard_edit.py`, `guard_bash.py`, `on_bash_done.py`, `guard_stop.py` + tests; `hooks.json` wired.
-4. Skills: build / status / merge / discard; `report.py`, `progress.py`, `handoff.py`; step-based implement via subagents; end-to-end on a toy repo with a tiny pytest suite, including a forced compaction and a resume from a fresh session.
-5. Red-before-green check and test-path lock; verifier agent; report includes verdict and drift.
-6. `eval/`: tasks.json for `rich` (10 tasks), `run_eval.py`, first results table. **Done 2026-09-05, tagged `v0.2.0-alpha`**: 9 of 10 pass the upstream PR's tests, 9 self-green, 10 reports, 0 errors; the design changes the runs forced are in `DECISIONS.md`.
-7. `fastapi` and `zod` tasks; results in README; demo recording of "type one command, walk away, come back to a report."
-8. Publish: plugin marketplace entry, install instructions, CONTRIBUTING with an AI-disclosure section.
+## Milestones
+
+Numbered by design order, run in the order listed. **Milestone 8 comes before the rest of milestone 7**: ship an
+installable plugin, get it in front of real users, and then finish the eval on the version those users can install
+rather than on a version no one ran.
+
+- **M1.** Day-1 spikes (section above), with evidence in `DECISIONS.md`.
+- **M2.** `state.py`, `worktree.py`, `testcmd.py` + tests.
+- **M3.** Hooks: `guard_edit.py`, `guard_bash.py`, `on_bash_done.py`, `guard_stop.py` + tests; `hooks.json` wired.
+- **M4.** Skills: build / status / merge / discard; `report.py`, `progress.py`, `handoff.py`; step-based implement via subagents; end-to-end on a toy repo with a tiny pytest suite, including a forced compaction and a resume from a fresh session.
+- **M5.** Red-before-green check and test-path lock; verifier agent; report includes verdict and drift.
+- **M6.** `eval/`: tasks.json for `rich` (10 tasks), `run_eval.py`, first results table. **Done 2026-09-05, tagged `v0.2.0-alpha`**: 9 of 10 pass the upstream PR's tests, 9 self-green, 10 reports, 0 errors; the design changes the runs forced are in `DECISIONS.md`.
+- **M7, part one.** `fastapi` and `zod` tasks in `eval/tasks.json`, with their bases checked. **Done 2026-09-07.**
+- **M8.** Publish: plugin marketplace entry, install instructions, CONTRIBUTING with an AI-disclosure section.
+- **M7, the rest.** The remaining 17 of the 20 `fastapi`/`zod` tasks, run against the shipped version; results in
+  README; demo recording of "type one command, walk away, come back to a report." **Stopped after 3 on 2026-09-07**
+  (`fastapi-5623`, `-9424`, `-13533`: all green, all upstream-pass), deliberately, so milestone 8 could go first.
 
 Start with milestone 1. Show me the spike results before writing any production code.

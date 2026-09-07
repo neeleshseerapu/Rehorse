@@ -1076,3 +1076,22 @@ runs. No eval ran.
   measuring an environment nobody chose. `test_eval_find_tasks.py` asserts every record's keys, its tier, that its id
   matches its repo and issue number, and that its two commands are `find_tasks.DEFAULTS[repo]`'s, character for
   character — plus ten tasks per repo, which is the methodology the table is read against.
+
+## Milestone 7, part two: three fastapi runs, then a deliberate stop (2026-09-07)
+
+The `fastapi`/`zod` batch of 20 was started and stopped after three tasks so that milestone 8 — shipping an
+installable plugin — could run first. The stop is a scheduling decision, not a result: nothing about the three rows
+changes, and the remaining 17 run later against the version that ships.
+
+- **Three `fastapi` tasks ran, all three green and all three upstream-pass.** Every one is tier 1, every one reached
+  `report` with 0 failed, and every one passes the upstream PR's own tests: `fastapi-5623` (verifier pass, 1 round,
+  11m06s, 20 turns), `fastapi-9424` (pass, 1 round, 12m40s, 26 turns), `fastapi-13533` (pass, 2 rounds, 25m29s, 37
+  turns). The three are the first evidence that Rehorse holds on a second Python repo; `zod` — the second language —
+  has still not run, so nothing here says anything about TypeScript.
+- **The eval stops where a shipped version can measure it.** Running the other 17 against today's working tree would
+  produce rows nobody can reproduce: the version they measured would never have been installed by anyone. Milestone 8
+  moves ahead of them, and the remaining tasks run against the tagged, installable plugin.
+- **`fastapi-15401` was interrupted mid-run and removed.** The batch was stopped during its `claude -p` call, so no
+  `eval/results/fastapi-15401.json` was ever written. `pending()` reads exactly those files, so the task is simply
+  pending again and a later batch redoes it from a fresh clone; a partial run leaves no row and grades nothing. The
+  four `fastapi` tasks the log names are therefore three results and one non-result.
